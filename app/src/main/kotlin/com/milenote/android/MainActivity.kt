@@ -1,0 +1,153 @@
+package com.milenote.android
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.provider.OpenableColumns
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.milenote.android.data.share.SharedImport
+import com.milenote.android.data.settings.AppSettings
+import com.milenote.android.data.settings.DarkMode
+import com.milenote.android.navigation.MileNoteApp
+import com.milenote.android.ui.MileNoteViewModel
+import com.milenote.android.ui.theme.AppTheme
+import com.milenote.android.ui.theme.MileNoteTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        val container = (application as MileNoteApplication).container
+        handleShareIntent(intent)
+        setContent {
+            LaunchedEffect(Unit) { container.garageRepository.load() }
+            val garage by container.garageRepository.garage.collectAsStateWithLifecycle(null)
+            val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(AppSettings())
+            val vm: MileNoteViewModel = viewModel(factory = MileNoteViewModel.factory(container))
+
+            // 系统分享进来的导入内容：交给 VM，MileNoteApp 会自动跳到导入向导。
+            val pendingShare by container.pendingShare.collectAsStateWithLifecycle(null)
+            LaunchedEffect(pendingShare) {
+                pendingShare?.let {
+                    vm.setSharedImport(it)
+                    container.pendingShare.value = null
+                }
+            }
+
+            // WebDAV 自动同步仅在前台运行：打开应用时同步一次，退出后不保留后台任务。
+            LaunchedEffect(Unit) {
+                vm.maybeAutoSyncOnOpen()
+            }
+            val appTheme = remember(garage?.theme) { AppTheme.fromId(garage?.theme) }
+            val dark = when (settings.darkMode) {
+                DarkMode.SYSTEM -> isSystemInDarkTheme()
+                DarkMode.LIGHT -> false
+                DarkMode.DARK -> true
+            }
+            MileNoteTheme(
+                appTheme = appTheme,
+                darkTheme = dark,
+            ) {
+                MileNoteApp(vm = vm)
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    /** 接收 ACTION_SEND（钱迹「分享到其他 App」、文件管理器分享等），读取文本或文件字节。 */
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val container = (application as MileNoteApplication).container
+        lifecycleScope.launch {
+            val shared = withContext(Dispatchers.IO) { readSharedContent(intent) }
+            if (shared != null) {
+                container.pendingShare.value = shared
+            } else {
+                Toast.makeText(this@MainActivity, "没有读取到可导入的内容", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun readSharedContent(intent: Intent): SharedImport? {
+        val mime = intent.type
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        if (!text.isNullOrBlank()) {
+            return SharedImport(
+                bytes = text.toByteArray(Charsets.UTF_8),
+                fileName = guessShareFileName(text, mime),
+                mimeType = mime ?: "text/plain",
+            )
+        }
+        val clip = intent.clipData
+        if (clip != null && clip.itemCount > 0) {
+            val item = clip.getItemAt(0)
+            item.text?.takeIf { it.isNotBlank() }?.let { textItem ->
+                val textValue = textItem.toString()
+                return SharedImport(
+                    bytes = textValue.toByteArray(Charsets.UTF_8),
+                    fileName = guessShareFileName(textValue, mime),
+                    mimeType = mime,
+                )
+            }
+            item.uri?.let { return readSharedUri(it, mime ?: clip.description?.getMimeType(0)) }
+        }
+        @Suppress("DEPRECATION")
+        val stream: Uri? = intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        stream?.let { return readSharedUri(it, mime) }
+        return null
+    }
+
+    private fun readSharedUri(uri: Uri, mime: String?): SharedImport? = try {
+        val resolvedMime = contentResolver.getType(uri) ?: mime
+        val name = contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        } ?: "分享导入"
+        val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        when {
+            bytes == null -> null
+            bytes.size > 20 * 1024 * 1024 -> {
+                Toast.makeText(this, "分享文件超过 20 MB，请先在钱迹中拆分导出", Toast.LENGTH_LONG).show()
+                null
+            }
+            else -> SharedImport(bytes = bytes, fileName = name, mimeType = resolvedMime)
+        }
+    } catch (t: Throwable) {
+        null
+    }
+
+    private fun guessShareFileName(text: String, mime: String?): String {
+        val trimmed = text.trimStart()
+        return when {
+            trimmed.startsWith("[") || trimmed.startsWith("{") -> "分享导入.json"
+            mime?.contains("json", ignoreCase = true) == true -> "分享导入.json"
+            mime?.contains("csv", ignoreCase = true) == true -> "分享导入.csv"
+            else -> "分享导入.txt"
+        }
+    }
+}

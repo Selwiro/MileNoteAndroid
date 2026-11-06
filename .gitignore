@@ -1,0 +1,30 @@
+# Gradle / Android 构建产物
+.gradle/
+build/
+app/build/
+domain/build/
+.kotlin/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE / 系统
+.idea/
+*.iml
+*.hprof
+.DS_Store
+
+# 日志与临时产物（构建日志按惯例写到 /tmp）
+*.log
+*.apk
+
+# 签名密钥：不入库，需单独备份（口令见 README「构建」；丢了会导致覆盖安装失败）
+keystore/
+
+# 本机专有说明（不入库）
+AGENTS.local.md
+
+# 本地环境与构建产物（build.sh 默认输出到 dist/）
+local.env
+dist/

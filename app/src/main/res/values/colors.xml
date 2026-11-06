@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用窗口背景（Splash / 首帧），深色见 values-night/colors.xml -->
+    <color name="window_background">#F6FAFC</color>
+    <!-- 自适应图标背景层：与 Logo 白底一致，避免系统裁切露出杂色 -->
+    <color name="ic_launcher_background">#FAFAFC</color>
+    <!-- 品牌基色（仅非 Compose 场景使用，Compose 侧以 ui/theme/Color.kt 为准） -->
+    <color name="brand_primary">#55758B</color>
+    <color name="brand_secondary">#7E9EAF</color>
+    <color name="brand_tertiary">#8F9E57</color>
+</resources>

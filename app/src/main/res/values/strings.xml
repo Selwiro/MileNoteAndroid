@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 只有应用名走资源（Manifest 引用）；界面文案在 Compose 中直接写中文 -->
+    <string name="app_name">里程志</string>
+</resources>

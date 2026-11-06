@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色窗口背景（避免 Splash / 首帧白闪） -->
+    <color name="window_background">#121416</color>
+</resources>
