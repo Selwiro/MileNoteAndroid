@@ -216,6 +216,109 @@
     });
   }
 
+
+  /* ---------- 版本信息：自动读取最新 GitHub Release ---------- */
+  var RELEASE_API = 'https://api.github.com/repos/Selwiro/MileNoteAndroid/releases?per_page=20';
+  var RELEASE_CACHE = 'milenote-release-cache-v1';
+  var RELEASE_TTL = 10 * 60 * 1000;
+
+  function formatReleaseSize(bytes) {
+    if (!bytes) return '';
+    return '约 ' + Math.round(bytes / 1048576) + ' MB';
+  }
+
+  function applyRelease(data) {
+    document.querySelectorAll('[data-release-link]').forEach(function (link) {
+      link.href = data.apkUrl;
+    });
+    document.querySelectorAll('[data-release-tag]').forEach(function (el) {
+      el.textContent = 'v' + data.version + ' beta';
+    });
+    document.querySelectorAll('[data-release-version]').forEach(function (el) {
+      el.textContent = data.version;
+    });
+    var sizeText = formatReleaseSize(data.size);
+    if (sizeText) {
+      document.querySelectorAll('[data-release-size]').forEach(function (el) { el.textContent = sizeText; });
+    }
+    if (data.sha) {
+      document.querySelectorAll('[data-release-sha]').forEach(function (el) { el.textContent = data.sha; });
+    }
+    if (data.versionCode) {
+      document.querySelectorAll('[data-release-code]').forEach(function (el) { el.textContent = data.versionCode; });
+    } else {
+      document.querySelectorAll('[data-release-code-row]').forEach(function (el) { el.hidden = true; });
+    }
+    if (data.notesUrl) {
+      document.querySelectorAll('[data-release-notes]').forEach(function (el) { el.href = data.notesUrl; });
+    }
+    var ld = document.querySelector('script[type="application/ld+json"]');
+    if (ld) {
+      try {
+        var json = JSON.parse(ld.textContent);
+        json.softwareVersion = data.version;
+        json.downloadUrl = data.apkUrl;
+        ld.textContent = JSON.stringify(json);
+      } catch (e) { /* 保留原 JSON-LD */ }
+    }
+  }
+
+  function parseRelease(release) {
+    if (!release || release.draft || !release.published_at) return null;
+    var apk = (release.assets || []).filter(function (asset) {
+      return /\.apk$/i.test(asset.name || '');
+    })[0];
+    if (!apk || !apk.browser_download_url) return null;
+    var version = String(release.tag_name || '').replace(/^v/i, '');
+    if (!version) return null;
+    var sha = '';
+    if (apk.digest && /^sha256:/i.test(apk.digest)) sha = apk.digest.split(':')[1];
+    var codeMatch = /(?:versionCode|vc)\s*[:：]?\s*(\d+)/i.exec(release.body || '');
+    return {
+      version: version,
+      apkUrl: apk.browser_download_url,
+      size: apk.size,
+      sha: sha,
+      versionCode: codeMatch ? codeMatch[1] : '',
+      notesUrl: release.html_url || ''
+    };
+  }
+
+  function initRelease() {
+    if (!document.querySelector('[data-release-link]')) return;
+
+    var cached = null;
+    try { cached = JSON.parse(sessionStorage.getItem(RELEASE_CACHE) || 'null'); } catch (e) { /* ignore */ }
+    if (cached && cached.data && cached.at && Date.now() - cached.at < RELEASE_TTL) {
+      applyRelease(cached.data);
+      return;
+    }
+    if (!window.fetch) return;
+
+    fetch(RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (list) {
+        if (!Array.isArray(list)) return;
+        var releases = list
+          .filter(function (item) { return item && !item.draft && item.published_at; })
+          .sort(function (a, b) { return new Date(b.published_at) - new Date(a.published_at); });
+        for (var i = 0; i < releases.length; i += 1) {
+          var data = parseRelease(releases[i]);
+          if (data) {
+            applyRelease(data);
+            try {
+              sessionStorage.setItem(RELEASE_CACHE, JSON.stringify({ at: Date.now(), data: data }));
+            } catch (e) { /* ignore */ }
+            return;
+          }
+        }
+      })
+      .catch(function () { /* 网络或限流失败时保留页面静态回退 */ });
+  }
+
   /* ---------- 复制 SHA-256 ---------- */
   function initCopy() {
     document.querySelectorAll('[data-copy]').forEach(function (btn) {
@@ -283,6 +386,7 @@
     initLightbox();
     initCopy();
     initFaq();
+    initRelease();
     initYear();
   }
 
