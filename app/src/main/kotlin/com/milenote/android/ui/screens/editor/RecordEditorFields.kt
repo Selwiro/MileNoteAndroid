@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -17,6 +18,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -25,6 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -236,33 +243,63 @@ internal fun OdometerField(
     )
 }
 
-/** 油费分组：燃油标号 + 加油量 / 油价 + 应付 / 优惠 + 加满 / 漏记。 */
-@OptIn(ExperimentalLayoutApi::class)
+/** 油费分组：燃油标号下拉 + 加油量 / 油价 + 应付 / 优惠 + 加满 / 漏记。 */
 @Composable
 internal fun FuelFields(
     form: RecordEditorState,
     modifier: Modifier = Modifier,
 ) {
+    var gradeMenu by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(text = "燃油标号", style = MaterialTheme.typography.titleSmall)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FuelGradeOptions.forEach { grade ->
-                FilterChip(
-                    selected = form.fuelGrade == grade,
-                    onClick = { form.fuelGrade = grade },
-                    label = {
-                        Text(
-                            text = if (grade == "0#") "0# 柴油" else grade,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    },
-                )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            FormField(
+                value = fuelGradeLabel(form.fuelGrade),
+                onValueChange = {},
+                label = "燃油标号",
+                readOnly = true,
+                trailing = {
+                    Icon(
+                        imageVector = MileNoteIcons.ChevronDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+            )
+            Spacer(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable(
+                        onClickLabel = "选择燃油标号",
+                        role = Role.Button,
+                    ) { gradeMenu = true },
+            )
+            DropdownMenu(
+                expanded = gradeMenu,
+                onDismissRequest = { gradeMenu = false },
+            ) {
+                FuelGradeOptions.forEach { grade ->
+                    DropdownMenuItem(
+                        text = { Text(fuelGradeLabel(grade)) },
+                        onClick = {
+                            form.fuelGrade = grade
+                            gradeMenu = false
+                        },
+                        trailingIcon = if (form.fuelGrade == grade) {
+                            {
+                                Icon(
+                                    imageVector = MileNoteIcons.Check,
+                                    contentDescription = "已选中",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -505,3 +542,6 @@ internal fun CheckRow(
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
     }
 }
+
+/** 燃油标号展示文案（柴油补全为「0# 柴油」）。 */
+private fun fuelGradeLabel(grade: String): String = if (grade == "0#") "0# 柴油" else grade

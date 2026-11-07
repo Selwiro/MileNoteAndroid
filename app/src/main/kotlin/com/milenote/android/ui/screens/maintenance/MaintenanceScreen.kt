@@ -973,7 +973,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
         CategoryBadge(categoryName = record.category)
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
             // 第一行：日期（左）与金额（右）顶部对齐；金额不参与挤压，日期过长时截断。
             Row(verticalAlignment = Alignment.Top) {
@@ -993,7 +993,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
                 )
                 MoneyText(
                     amount = Format.money(record.amount),
-                    size = MoneySize.MEDIUM,
+                    size = MoneySize.SMALL,
                     unit = "元",
                     modifier = Modifier.padding(start = 8.dp),
                 )
@@ -1018,7 +1018,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
                 )
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(26.dp)
                         .clip(CircleShape)
                         .clickable(onClickLabel = "编辑") { onClick() },
                     contentAlignment = Alignment.Center,
@@ -1026,7 +1026,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
                     Icon(
                         imageVector = MileNoteIcons.Edit,
                         contentDescription = "编辑",
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = scheme.primary,
                     )
                 }
