@@ -10,18 +10,29 @@
 
 ```
 gh-pages/
-├─ index.html            # 单页：导航 / Hero / 三卖点 / 截图画廊 / 皮肤 / 功能矩阵 / 隐私 / 下载 / FAQ
-├─ 404.html              # GitHub Pages 根目录 404 页
+├─ index.html            # 单页：Hero / 数据约定 / 为什么 / 界面巡览 / 外观 / 功能清单 / 隐私 / 下载 / FAQ
+├─ 404.html              # GitHub Pages 根目录 404 页（同样跟随深浅色）
 ├─ site.webmanifest      # PWA manifest（图标、主题色）
 ├─ sitemap.xml / robots.txt
 ├─ .nojekyll             # 关闭 Jekyll，静态文件原样发布
 └─ assets/
    ├─ style.css          # 设计系统 + 布局（深浅色用 data-theme）
-   ├─ app.js             # 主题切换 / 移动菜单 / 滚动进场 / 截图大图 / 复制 SHA-256 / FAQ
+   ├─ app.js             # 主题 / 移动菜单 / 滚动进场 / 界面巡览切换 / 大图灯箱 / 复制 SHA-256 / FAQ
    ├─ og.png             # 社交分享卡（1200×630）
    ├─ favicon-16.png、favicon-32.png、apple-touch-icon.png
    └─ screens/*.webp     # 9 张演示账本截图（720×1600，WebP q82，共约 325 KB）
 ```
+
+页面结构（2026-11-07 重设计后）：
+1. **Hero**：标题 + 下载/看界面两个入口 + 版本信息，右侧手机实拍与三个数据浮卡；
+2. **数据约定**（卡片，叠在 Hero 下沿）：本地优先存储 / 无需注册账号 / 满箱法口径透明 / 数据可完整带走，四条并列；
+3. **为什么是里程志**：左侧粘性标题 + 右侧三条编号条目（一车一本账 / 满箱法 / 保养先到为准）；
+4. **界面巡览**：左侧六个章节 tab，右侧手机舞台切换对应截图，点手机开大图（键盘 ← → 切换、Esc 关闭）；
+5. **外观**：两台手机 + 五套皮肤色板（色值取自 `ui/theme/Theme.kt`）；
+6. **功能清单**：3×3 细线索引；
+7. **数据与隐私**：深色区 + 「数据流向」示意卡（手机 → 私有目录 → 可选 WebDAV，开发者服务器划掉）；
+8. **下载**：渐变卡 + 规格表 + SHA-256 复制 + 三步安装；
+9. **FAQ**：手风琴 + 右侧反馈卡；页脚。
 
 ## 本地预览
 
@@ -32,8 +43,9 @@ python3 -m http.server 5190 --bind 127.0.0.1 --directory /tmp/milenote-pages
 # 打开 http://127.0.0.1:5190/
 ```
 
-验收：桌面 1440×900 / 移动 390×844、浅色 + 深色各过一遍；点截图能开大图；导航能跳区块；
-下载区「复制」能拿到完整 SHA-256。
+验收：桌面 1440×900 / 移动 390×844、浅色 + 深色各过一遍；界面巡览六个 tab 能切换舞台截图与说明；
+点舞台手机能开大图、← → 能切、Esc 能关；导航能跳区块并高亮；下载区「复制」能拿到完整 SHA-256；
+移动端菜单能开合；无横向溢出。
 
 ## 更新与发布
 
@@ -70,13 +82,17 @@ git add -A && git commit -m "deploy: 更新官网文案" && git push origin gh-p
 - **APK 下载地址**用 GitHub Releases 固定 URL：
   `https://github.com/Selwiro/MileNoteAndroid/releases/download/v<版本>/milenote-<版本>-android.apk`。
   发新版时改 `index.html`（Hero 与下载区各一处）与 Release 资产名即可。
-- **OG 分享图** `assets/og.png` 由应用图标 + 首屏截图合成；换主视觉时同步更新
-  `index.html` 的 `og:image` 与 `twitter:image`（绝对 URL）。
+- **OG 分享图** `assets/og.png`：本机用临时 HTML（1200×630，系统字体 + `brand-tile.png` + `dashboard.webp`）
+  在浏览器里渲染后截图生成，临时文件不入库；换文案或主视觉时重画，并确认 `index.html` 的 `og:image` /
+  `twitter:image` 仍为绝对 URL、`og:image:width/height` 为 1200×630。
 
 ## 设计约束（和 App 保持一致）
 
-- 品牌基色：`#55758B`（里程蓝 seed），主色 `#446378` / 深色 `#2E4A5D` / Hero 渐变 `#2E4A5D → #7E9EAF`；
-  圆角、留白与字阶按 Material 3 Expressive 的观感走。
+- 品牌基色：`#55758B`（里程蓝 seed），主色 `#446378` / 深色 `#2E4A5D` / 渐变 `#20394A → #446378 → #7E9EAF`；
+  浅色底 `#F7FAFB`，深色底 `#0E1316`；暖沙色 `#8F6239`（深色 `#C79A72`）只用于编号等细节，正文不用。
+  圆角、留白与字阶按 Material 3 Expressive 的观感走；页面走「账本」语汇：细线、编号、规格表、行线纹理。
+- 不再使用「六张截图平铺网格」：截图统一由「界面巡览」的舞台 + 章节列表承载，一次只显示一张，
+  避免一屏堆六个手机。
 - 字体只用系统字体栈（PingFang SC / Hiragino Sans GB / Microsoft YaHei / Noto Sans SC），不加载外部字体。
 - 深浅色：`<html data-theme="light|dark">`；首屏前内联脚本读 `localStorage` 与 `prefers-color-scheme`
   以避免深色闪白，切换按钮写入 `milenote-theme`。
