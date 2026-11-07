@@ -1090,6 +1090,9 @@ private fun FuelRecordDetailDialog(
                 DetailRow("来源", record.source.ifBlank { "手动记录" })
                 DetailRow("实付金额", "¥ ${Format.money(record.amount)}")
                 DetailRow("加油量", record.liters?.let { "${Format.fmt(it)}升" } ?: "—")
+                record.fuelGrade?.takeIf { it.isNotBlank() }?.let { grade ->
+                    DetailRow("燃油标号", if (grade == "0#") "0# 柴油" else grade)
+                }
                 DetailRow("总里程", record.odometer?.let { "${Format.fmt(it)}公里" } ?: "—")
                 DetailRow("加满状态", buildString {
                     append(if (record.full) "已加满" else "未加满")

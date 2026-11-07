@@ -17,6 +17,9 @@ import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.ui.EditorTarget
 
+/** 燃油标号选项（车辆设置与油费记录共用同一口径）。 */
+internal val FuelGradeOptions: List<String> = listOf("92#", "95#", "98#", "0#")
+
 /**
  * 「记一笔 / 记录加油 / 编辑记录」弹层的表单状态。
  *
@@ -52,6 +55,11 @@ internal class RecordEditorState(
     var odometer by mutableStateOf(numberText(original?.odometer))
     var liters by mutableStateOf(numberText(original?.liters))
     var unitPrice by mutableStateOf(numberText(original?.unitPrice))
+    var fuelGrade by mutableStateOf(
+        original?.fuelGrade?.takeIf { it in FuelGradeOptions }
+            ?: ledger.vehicle.fuelGrade?.takeIf { it in FuelGradeOptions }
+            ?: "92#",
+    )
     var payable by mutableStateOf(numberText(original?.payable))
     var discount by mutableStateOf(numberText(original?.discount))
     var rate by mutableStateOf(numberText(original?.rate))
@@ -226,6 +234,7 @@ internal class RecordEditorState(
             odometer = Numbers.parse(odometer),
             liters = if (isFuel) Numbers.parse(liters) else null,
             unitPrice = if (isFuel) Numbers.parse(unitPrice) else null,
+            fuelGrade = if (isFuel) fuelGrade.takeIf { it in FuelGradeOptions } else null,
             payable = if (isFuel) Numbers.parse(payable) else null,
             discount = if (isFuel) Numbers.parse(discount) else null,
             rate = if (isManual) Numbers.parse(rate) else null,

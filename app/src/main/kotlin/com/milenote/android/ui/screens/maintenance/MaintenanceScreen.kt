@@ -961,19 +961,22 @@ private fun progressSummary(progress: ServiceProgress): String {
 private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val projects = record.projects?.takeIf { it.isNotBlank() }
+    // 地点为空时用「-」占位，保证第三行存在、编辑按钮有对齐基准。
+    val location = record.location?.takeIf { it.isNotBlank() } ?: "-"
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-            CategoryBadge(categoryName = record.category)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                // 第一行：完整年月日 + 里程（小号、浅色）。
+        CategoryBadge(categoryName = record.category)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            // 第一行：日期（左）与金额（右）顶部对齐；金额不参与挤压，日期过长时截断。
+            Row(verticalAlignment = Alignment.Top) {
                 Text(
                     text = buildString {
                         append(fullDateLabel(record.date))
@@ -984,44 +987,51 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
-                )
-                // 项目：主信息，字号更大、颜色更深。
-                Text(
-                    text = projects ?: record.category,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = scheme.onSurface,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
-                // 地点
-                record.location?.takeIf { it.isNotBlank() }?.let { location ->
-                    Text(
-                        text = location,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
                 MoneyText(
                     amount = Format.money(record.amount),
                     size = MoneySize.MEDIUM,
                     unit = "元",
+                    modifier = Modifier.padding(start = 8.dp),
                 )
-                IconButton(onClick = onClick) {
+            }
+            // 项目：主信息，字号更大、颜色更深。
+            Text(
+                text = projects ?: record.category,
+                style = MaterialTheme.typography.titleMedium,
+                color = scheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // 第三行：地点（空显示「-」）与编辑按钮垂直居中；铅笔缩小到 32dp 避免撑高行。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = location,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable(onClickLabel = "编辑") { onClick() },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(
                         imageVector = MileNoteIcons.Edit,
                         contentDescription = "编辑",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                        tint = scheme.primary,
                     )
                 }
             }
+        }
     }
 }
 

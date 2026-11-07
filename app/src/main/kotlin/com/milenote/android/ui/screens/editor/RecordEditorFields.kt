@@ -236,7 +236,8 @@ internal fun OdometerField(
     )
 }
 
-/** 油费分组：加油量 + 加满 / 漏记（OCR 相机已移到金额字段，避免重复入口）。 */
+/** 油费分组：燃油标号 + 加油量 / 油价 + 应付 / 优惠 + 加满 / 漏记。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun FuelFields(
     form: RecordEditorState,
@@ -246,6 +247,24 @@ internal fun FuelFields(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Text(text = "燃油标号", style = MaterialTheme.typography.titleSmall)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FuelGradeOptions.forEach { grade ->
+                FilterChip(
+                    selected = form.fuelGrade == grade,
+                    onClick = { form.fuelGrade = grade },
+                    label = {
+                        Text(
+                            text = if (grade == "0#") "0# 柴油" else grade,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                )
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FormField(
                 value = form.liters,

@@ -85,6 +85,29 @@ class BackupModelTest {
     }
 
     @Test
+    fun `fuel grade survives backup round trip`() {
+        val fuel = Record(
+            id = "f1",
+            date = "2026-10-01",
+            category = "油费",
+            amount = 300.0,
+            liters = 40.0,
+            fuelGrade = "95#",
+        )
+        val garage = simpleGarage().let { g ->
+            g.copy(cars = listOf(g.cars[0].copy(records = listOf(fuel))))
+        }
+        assertEquals("95#", BackupCodec.decode(BackupCodec.encode(garage)).cars[0].records[0].fuelGrade)
+
+        // 未指定标号的记录不写入字段（explicitNulls = false）。
+        val withoutGrade = fuel.copy(id = "f2", fuelGrade = null)
+        val garage2 = simpleGarage().let { g ->
+            g.copy(cars = listOf(g.cars[0].copy(records = listOf(withoutGrade))))
+        }
+        assertFalse(BackupCodec.encode(garage2).contains("fuelGrade"))
+    }
+
+    @Test
     fun `v1 backup migrates to v2 single car`() {
         val v1 = """
             {"version":1,"vehicle":{"name":"旧车","startKm":1000,"currentKm":3000},

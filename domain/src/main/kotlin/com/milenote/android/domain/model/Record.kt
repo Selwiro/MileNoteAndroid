@@ -58,4 +58,6 @@ data class Record(
     val currency: String? = null,
     /** 旧版遗留时刻字段；Web 编辑时会删除，但备份中可能存在。 */
     val time: String? = null,
+    /** 燃油标号（仅油费记录）：`92#` / `95#` / `98#` / `0#`；缺省表示未指定。 */
+    val fuelGrade: String? = null,
 )
