@@ -612,23 +612,6 @@ class MileNoteViewModel(
         }
     }
 
-    /** 保养台账导入：合并/更新提醒。 */
-    fun applyServiceImport(reminders: List<Reminder>) {
-        viewModelScope.launch {
-            repository.update(syncHistory = true) { garage ->
-                updateActive(garage) { ledger ->
-                    val merged = ledger.reminders.toMutableList()
-                    reminders.forEach { incoming ->
-                        val index = merged.indexOfFirst { it.id == incoming.id }
-                        if (index >= 0) merged[index] = incoming else merged.add(incoming)
-                    }
-                    ledger.copy(reminders = merged)
-                }
-            }
-            _state.value = _state.value.copy(message = "保养提醒导入完成：${reminders.size} 项")
-        }
-    }
-
     // ---------- 备份 / 演示 ----------
 
     suspend fun exportBackup(): String = repository.exportBackup()

@@ -31,9 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,7 +59,6 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.components.ListRowCard
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MessageBar
@@ -79,15 +75,16 @@ import com.milenote.android.ui.theme.MileNoteDimens
 /**
  * 导入向导（二级页）：三步完成从文件到账本的导入。
  *
- * 1. 选择来源：账本备份 JSON / 小熊油耗 XLS-XLSX / 钱迹 TXT-JSON-CSV / 保养台账 Excel-CSV；
- * 2. 读取与预览：SAF 选文件（≤10 MB；备份 ≤20 MB）→ 字段映射 → 逐行预览 / 排除 →
- *    油费冲突选择（默认小熊）→ 钱迹默认分类 / 保养周期基准；
- * 3. 确认：调用 `vm.applyImport` / `vm.applyServiceImport` / `vm.restoreBackup`，展示结果。
+ * 1. 选择来源：小熊油耗 XLS-XLSX / 钱迹 TXT-JSON-CSV；
+ * 2. 读取与预览：SAF 选文件（≤10 MB）→ 字段映射 → 逐行预览 / 排除 →
+ *    油费冲突选择（默认小熊）→ 钱迹默认分类；
+ * 3. 确认：调用 `vm.applyImport` / `vm.restoreBackup`，展示结果。
  *
+ * 账本备份 JSON 不在手动来源列表里：只在系统分享 JSON 进来时自动识别并恢复。
  * 只写 UI；解析、合并、校验全部复用 `domain` 纯函数与 [MileNoteViewModel]。
  *
  * @param vm 主 ViewModel（读取 `state.activeCar`、写入导入结果）。
- * @param initialSource 可选初始来源（`backup` / `bear` / `qianji` / `service` 及别名），传入后自动打开文件选择器。
+ * @param initialSource 可选初始来源（`bear` / `qianji` / `backup` 及别名），传入后自动打开文件选择器。
  * @param onClose 关闭/完成后回调（由导航层 `popBackStack`）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -373,7 +370,7 @@ private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
         if (wizard.busy) {
             item { LoadingState(label = wizard.busyMessage ?: "正在处理…") }
         }
-        ImportSource.entries.forEach { source ->
+        MANUAL_IMPORT_SOURCES.forEach { source ->
             item(key = source.key) {
                 SourceCard(
                     source = source,
@@ -386,8 +383,8 @@ private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
         }
         item {
             Text(
-                text = "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；保养台账：Excel / CSV；" +
-                    "账本备份：JSON（version 2 多车或旧版单车）。",
+                text = "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；" +
+                    "账本备份 JSON（version 2 多车或旧版单车）仅在系统分享导入时自动识别。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -431,7 +428,6 @@ private fun ImportSource.icon(): ImageVector = when (this) {
     ImportSource.BACKUP -> MileNoteIcons.Import
     ImportSource.BEAR -> MileNoteIcons.CategoryFuel
     ImportSource.QIANJI -> MileNoteIcons.Wallet
-    ImportSource.SERVICE -> MileNoteIcons.Maintenance
 }
 
 /** 系统分享进入时的顶部提示：文件名 + 识别来源 + 重新选择来源。 */
@@ -490,34 +486,6 @@ private fun PreviewStep(
         when (wizard.source) {
             ImportSource.BACKUP -> {
                 item { BackupSummaryCard(wizard = wizard) }
-            }
-
-            ImportSource.SERVICE -> {
-                item { ServiceOptionsCard(wizard = wizard) }
-                item {
-                    MappingCard(
-                        wizard = wizard,
-                        fields = if (wizard.serviceMode == "schedule") {
-                            SERVICE_SCHEDULE_FIELDS
-                        } else {
-                            SERVICE_HISTORY_FIELDS
-                        },
-                        labels = SERVICE_FIELD_LABELS,
-                        requiredHint = if (wizard.serviceMode == "schedule") {
-                            "项目必填，周期公里数 / 月数至少填一项。"
-                        } else {
-                            "项目与费用必填（免费请填 0）。"
-                        },
-                    )
-                }
-                item { ServiceStatsCard(wizard = wizard) }
-                val shown = minOf(wizard.servicePreview.size, PREVIEW_ROW_LIMIT)
-                items(shown) { index ->
-                    ServicePreviewRow(wizard = wizard, index = index)
-                }
-                if (wizard.servicePreview.size > shown) {
-                    item { PreviewLimitNote(total = wizard.servicePreview.size, shown = shown) }
-                }
             }
 
             ImportSource.BEAR, ImportSource.QIANJI -> {
@@ -795,167 +763,6 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
                 )
             }
         },
-        containerColor = if (hasError) {
-            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        },
-    )
-}
-
-// ---------------------------------------------------------------------------------------------
-// 保养台账预览
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-private fun ServiceOptionsCard(wizard: ImportWizardState) {
-    SectionCard(title = "导入内容") {
-        val options = listOf("schedule" to "周期方案", "history" to "历史记录")
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            options.forEachIndexed { index, (value, label) ->
-                SegmentedButton(
-                    selected = wizard.serviceMode == value,
-                    onClick = { wizard.changeServiceMode(value) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                    label = {
-                        Text(text = label, style = MaterialTheme.typography.labelLarge)
-                    },
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        if (wizard.serviceMode == "schedule") {
-            FormField(
-                value = wizard.baseDate,
-                onValueChange = { wizard.changeBaseDate(it) },
-                label = "默认基准日期（表格空白时使用）",
-                placeholder = "YYYY-MM-DD",
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            FormField(
-                value = wizard.baseKm,
-                onValueChange = { wizard.changeBaseKm(it) },
-                label = "默认基准公里数（表格空白时使用）",
-                suffix = "公里",
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "下次提醒 = 基准 + 周期；公里或月份任一先到即提醒。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Text(
-                text = "历史记录导入当前车辆，分类为「保养」，费用计入用车成本；免费服务请明确填 0。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ServiceStatsCard(wizard: ImportWizardState) {
-    SectionCard(title = "预览", subtitle = "共 ${wizard.servicePreview.size} 行") {
-        val valid = wizard.validServiceCount()
-        val skipped = wizard.servicePreview.count { it.error.isNotEmpty() }
-        val excluded = wizard.serviceExcluded.size
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusPill(text = "可导入 $valid", status = StatusKind.DONE)
-            if (skipped > 0) StatusPill(text = "错误 $skipped", status = StatusKind.OVERDUE)
-            if (excluded > 0) StatusPill(text = "已排除 $excluded", status = StatusKind.NORMAL)
-        }
-        if (wizard.serviceMode == "schedule" && wizard.serviceDuplicates.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "其中 ${wizard.serviceDuplicates.size} 项与现有提醒重复，确认时会自动跳过。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "未通过检查的行不可导入；仅显示前 $PREVIEW_ROW_LIMIT 行。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (wizard.servicePreview.isNotEmpty() && wizard.validServiceCount() == 0) {
-            Spacer(modifier = Modifier.height(8.dp))
-            MessageBar(
-                message = "没有可导入的行：请检查「项目 / 日期 / 费用 / 周期」字段匹配，" +
-                    "以及周期方案的基准日期与基准里程。",
-                kind = MessageKind.WARNING,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ServicePreviewRow(wizard: ImportWizardState, index: Int) {
-    val row = wizard.servicePreview.getOrNull(index) ?: return
-    val hasError = row.error.isNotEmpty()
-    val duplicate = index in wizard.serviceDuplicates
-    val checked = !hasError && index !in wizard.serviceExcluded
-    val title: String
-    val subtitle: String
-    val supporting: String
-    val trailing: (@Composable () -> Unit)?
-    if (wizard.serviceMode == "schedule") {
-        val reminder = row.reminder
-        title = reminder?.title?.ifBlank { "缺少项目" } ?: "缺少项目"
-        subtitle = "第 ${row.row} 行 · " + (reminder?.let {
-            cycleText(it.intervalKm, it.intervalMonths)
-        } ?: "—")
-        supporting = when {
-            hasError -> row.error
-            duplicate -> "与现有提醒重复，将跳过"
-            else -> listOfNotNull(
-                reminder?.dueDate?.takeIf { it.isNotBlank() }?.let { "下次 $it" },
-                reminder?.dueKm?.let { "或 ${Format.fmt(it)} 公里" },
-            ).joinToString(" · ")
-        }
-        trailing = null
-    } else {
-        val record = row.record
-        title = record?.projects?.ifBlank { record.note.orEmpty() } ?: "缺少项目"
-        subtitle = "第 ${row.row} 行 · " + (record?.let {
-            listOfNotNull(it.date.ifBlank { "日期无效" }, it.location?.takeIf { loc -> loc.isNotBlank() })
-                .joinToString(" · ")
-        } ?: "—")
-        supporting = when {
-            hasError -> row.error
-            else -> record?.note.orEmpty().ifBlank { "可导入" }
-        }
-        trailing = record?.let {
-            {
-                MoneyText(
-                    amount = Format.money(it.amount),
-                    size = MoneySize.SMALL,
-                    unit = "元",
-                )
-            }
-        }
-    }
-    ListRowCard(
-        title = title,
-        subtitle = subtitle,
-        supporting = supporting,
-        leading = {
-            if (hasError) {
-                Icon(
-                    imageVector = MileNoteIcons.Warning,
-                    contentDescription = "错误",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(24.dp),
-                )
-            } else {
-                Checkbox(
-                    checked = checked,
-                    onCheckedChange = { value -> wizard.setServiceExcluded(index, !value) },
-                )
-            }
-        },
-        trailing = trailing,
         containerColor = if (hasError) {
             MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
         } else {

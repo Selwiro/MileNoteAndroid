@@ -17,22 +17,6 @@ import org.junit.Test
 class ServicePlanTest {
 
     @Test
-    fun `schedule rows generate due date and km`() {
-        val headers = listOf("项目", "周期公里数", "周期月数", "上次保养日期", "上次保养公里数")
-        val rows = serviceRows(
-            listOf(listOf("机油", 5000, 6, "2026-10-01", 10000)),
-            serviceMap(headers),
-            "schedule",
-            "",
-            null,
-        )
-        val row = rows[0]
-        assertEquals("", row.error)
-        assertEquals("2027-04-01", row.reminder!!.dueDate)
-        assertEquals(15000.0, row.reminder.dueKm!!, 1e-9)
-    }
-
-    @Test
     fun `month end clamp and no cycle next service`() {
         assertEquals("2026-02-28", Dates.addMonths("2026-01-31", 1))
         val next = nextService(
@@ -43,62 +27,6 @@ class ServicePlanTest {
         assertEquals(14000.0, next!!.dueKm!!, 1e-9)
         assertEquals("2027-04-29", next.dueDate)
         assertNull(nextService(Reminder(title = "机油"), "2026-10-29", 9000.0))
-    }
-
-    @Test
-    fun `history rows keep only date location km projects amount`() {
-        val headers = listOf("日期", "时刻", "地点", "公里数", "项目", "费用")
-        val rows = serviceRows(
-            listOf(
-                listOf("2026-10-01", "10:30", "4S店", 10000, "更换滤芯", 380),
-                listOf("2026-10-02", "12:00", "4S店", 10100, "保修检查", 0),
-            ),
-            serviceMap(headers),
-            "history",
-            "",
-            null,
-        )
-        assertTrue(rows.all { it.error.isEmpty() })
-        assertEquals("4S店", rows[0].record!!.location)
-        assertNull(rows[0].record!!.time)
-        assertEquals("更换滤芯", rows[0].record!!.projects)
-        assertEquals(0.0, rows[1].record!!.amount, 1e-9)
-        assertEquals("保养", rows[0].record!!.category)
-        assertEquals("保养记录导入", rows[0].record!!.source)
-    }
-
-    @Test
-    fun `invalid schedule and history rows report errors`() {
-        val scheduleHeaders = listOf("项目", "周期公里数", "周期月数")
-        assertTrue(
-            serviceRows(
-                listOf(listOf("机油", "", -6)),
-                serviceMap(scheduleHeaders),
-                "schedule",
-                "2026-10-01",
-                10000.0,
-            )[0].error.isNotEmpty(),
-        )
-        val historyHeaders = listOf("日期", "项目", "费用")
-        assertTrue(
-            serviceRows(
-                listOf(listOf("2026-10-01", "机油", "")),
-                serviceMap(historyHeaders),
-                "history",
-                "",
-                null,
-            )[0].error.isNotEmpty(),
-        )
-        // 月数非整数
-        assertTrue(
-            serviceRows(
-                listOf(listOf("机油", "", 6.5)),
-                serviceMap(scheduleHeaders),
-                "schedule",
-                "2026-10-01",
-                10000.0,
-            )[0].error.isNotEmpty(),
-        )
     }
 
     @Test
@@ -116,26 +44,6 @@ class ServicePlanTest {
         assertEquals(48, reminders.first { it.title == "变速器油" }.intervalMonths)
         assertEquals(11, defaultServiceReminders("2026-01-01", 0.0, false).size)
         assertEquals(listOf("机油机滤"), reminders[0].projects)
-    }
-
-    @Test
-    fun `parse chinese combined cycle text`() {
-        assertEquals(CycleText(10000.0, 12.0), parseCycleText("1万公里或1年"))
-        assertEquals(CycleText(8000.0, 9.0), parseCycleText("8千公里或9月"))
-        assertEquals(CycleText(100000.0, null), parseCycleText("10万公里"))
-        assertEquals(CycleText(null, 6.0), parseCycleText("6个月"))
-        assertEquals(CycleText(null, null), parseCycleText(""))
-
-        val row = serviceRows(
-            listOf(listOf("机油机滤", "1万公里或1年")),
-            serviceMap(listOf("项目", "周期")),
-            "schedule",
-            "2026-01-01",
-            0.0,
-        )[0]
-        assertEquals("", row.error)
-        assertEquals(10000.0, row.reminder!!.dueKm!!, 1e-9)
-        assertEquals("2027-01-01", row.reminder.dueDate)
     }
 
     @Test
@@ -314,11 +222,4 @@ class ServicePlanTest {
         assertNotNull(next.presetKey ?: "nullable")
     }
 
-    @Test
-    fun `service map ignores time column equal to date`() {
-        val map = serviceMap(listOf("日期", "项目"))
-        assertNull(map["time"])
-        assertEquals(0, map["date"])
-        assertEquals(1, map["project"])
-    }
 }

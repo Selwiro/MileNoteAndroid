@@ -7,7 +7,6 @@ import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.BackupException
 import com.milenote.android.domain.backup.BackupPayload
 import com.milenote.android.domain.calc.Categories
-import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.FIELDS
 import com.milenote.android.domain.import.file.SpreadsheetData
@@ -23,13 +22,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.math.BigDecimal
 
 // ---------------------------------------------------------------------------------------------
 // 来源
 // ---------------------------------------------------------------------------------------------
 
-/** 导入向导的 4 个来源（与 Web「账本备份 / 小熊 / 钱迹 / 保养台账」一致）。 */
+/** 导入向导的来源：账本备份 JSON / 小熊 / 钱迹。 */
 internal enum class ImportSource(
     val key: String,
     val title: String,
@@ -50,27 +48,32 @@ internal enum class ImportSource(
         title = "钱迹 TXT / JSON / CSV",
         description = "支出记录 → 费用，可自动完成保养待办",
     ),
-    SERVICE(
-        key = "service",
-        title = "保养台账 Excel / CSV",
-        description = "周期方案生成提醒，或历史记录入账",
-    ),
     ;
 
     companion object {
-        /** 接受 `bear/qianji/service/backup` 及其常见别名；未知返回 null。 */
+        /** 接受 `bear/qianji/backup` 及其常见别名；未知返回 null。 */
         fun fromKey(value: String?): ImportSource? {
             val key = value?.trim()?.lowercase() ?: return null
             return when (key) {
                 "backup", "json", "restore", "ledger_backup", "账本备份" -> BACKUP
                 "bear", "xiaoxiong", "fuel", "小熊", "小熊油耗" -> BEAR
                 "qianji", "qianji_records", "钱迹", "钱迹记账" -> QIANJI
-                "service", "maintenance", "service_import", "保养", "保养台账" -> SERVICE
                 else -> entries.firstOrNull { it.key == key }
             }
         }
     }
 }
+
+/**
+ * 「手动选择来源」列表：只列小熊 / 钱迹。
+ *
+ * 账本备份（[ImportSource.BACKUP]）枚举保留，仅用于系统分享 JSON 的自动识别，
+ * 不出现在手动来源列表里。
+ */
+internal val MANUAL_IMPORT_SOURCES: List<ImportSource> = listOf(
+    ImportSource.BEAR,
+    ImportSource.QIANJI,
+)
 
 /** 备份文件上限（Web 恢复备份 20 MB）。 */
 internal const val BACKUP_MAX_BYTES: Long = 20L * 1024 * 1024
@@ -112,7 +115,7 @@ internal class ImportFileException(message: String, cause: Throwable? = null) :
     RuntimeException(message, cause)
 
 // ---------------------------------------------------------------------------------------------
-// 字段标签（对齐 Web fieldNames / SERVICE_LABELS）
+// 字段标签（对齐 Web fieldNames）
 // ---------------------------------------------------------------------------------------------
 
 /** 费用导入字段中文标签，顺序与 Web `fieldNames` 一致。 */
@@ -133,30 +136,6 @@ internal val IMPORT_FIELD_LABELS: Map<String, String> = linkedMapOf(
     "sourceId" to "记录唯一编号",
     "currency" to "币种",
 )
-
-/** 保养台账字段中文标签（Web `SERVICE_LABELS`）。 */
-internal val SERVICE_FIELD_LABELS: Map<String, String> = linkedMapOf(
-    "cycle" to "合并周期（如 1 万公里或 1 年）",
-    "project" to "项目 *",
-    "date" to "日期 *",
-    "time" to "具体时间",
-    "location" to "地点",
-    "odometer" to "公里数",
-    "amount" to "费用 *",
-    "intervalKm" to "周期公里数",
-    "intervalMonths" to "周期月数",
-    "lastDate" to "上次保养日期",
-    "lastKm" to "上次保养公里数",
-    "note" to "备注",
-)
-
-/** 周期方案模式可见字段（顺序对齐 Web）。 */
-internal val SERVICE_SCHEDULE_FIELDS: List<String> =
-    listOf("project", "cycle", "intervalKm", "intervalMonths", "lastDate", "lastKm", "note")
-
-/** 历史记录模式可见字段（顺序对齐 Web）。 */
-internal val SERVICE_HISTORY_FIELDS: List<String> =
-    listOf("project", "date", "location", "odometer", "amount", "note")
 
 // ---------------------------------------------------------------------------------------------
 // 文件读取
@@ -339,26 +318,6 @@ internal fun defaultCategoryOptions(ledger: com.milenote.android.domain.model.Le
 /** 金额格式化（与 Web `money()` 一致）。 */
 internal fun moneyText(amount: Double?): String = Format.money(amount)
 
-/** 数字输入框默认值：整数不带 `.0`，小数去掉尾随 0。 */
-internal fun plainNumber(value: Double?): String {
-    if (value == null || !value.isFinite()) return ""
-    return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
-}
-
-/** 保养基准日期默认值：优先提车日期，否则今天。 */
-internal fun defaultBaseDate(ledger: com.milenote.android.domain.model.Ledger?): String {
-    val companion = ledger?.vehicle?.companionDate
-    return if (Dates.isValid(companion)) companion!! else Dates.iso(Dates.today())
-}
-
-/** 保养基准里程默认值：优先记账起始里程，否则当前里程。 */
-internal fun defaultBaseKm(ledger: com.milenote.android.domain.model.Ledger?): String {
-    val ledgerOrNull = ledger ?: return ""
-    val km = ledgerOrNull.vehicle.startKm
-        ?: com.milenote.android.domain.calc.currentKm(ledgerOrNull)
-    return plainNumber(km)
-}
-
 /** 表头列展示名：空表头回退「第 N 列」。 */
 internal fun headerLabel(headers: List<String>, index: Int): String {
     val header = headers.getOrNull(index)
@@ -367,7 +326,3 @@ internal fun headerLabel(headers: List<String>, index: Int): String {
 
 /** 费用导入字段键顺序（与 Web fieldNames 一致）。 */
 internal val IMPORT_FIELD_ORDER: List<String> = FIELDS.keys.toList()
-
-/** 服务提醒周期文案：`10,000 公里 或 12 个月`。 */
-internal fun cycleText(intervalKm: Double?, intervalMonths: Int?): String =
-    Format.cycleText(intervalKm, intervalMonths)

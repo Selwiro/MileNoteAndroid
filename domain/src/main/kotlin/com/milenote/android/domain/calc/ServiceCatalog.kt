@@ -4,32 +4,6 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 
-/** 保养台账字段别名（Web `SERVICE_FIELDS`）。 */
-val SERVICE_FIELDS: Map<String, List<String>> = linkedMapOf(
-    "cycle" to listOf("保养周期", "周期", "间隔", "周期说明"),
-    "project" to listOf("项目", "保养项目", "维修项目", "项目名称"),
-    "date" to listOf("日期", "保养日期", "时间", "日期时间"),
-    "time" to listOf("时刻", "具体时间", "时间"),
-    "location" to listOf("地点", "保养地点", "门店", "维修店"),
-    "odometer" to listOf("公里数", "总里程", "里程", "保养里程"),
-    "amount" to listOf("费用", "金额", "实付金额", "花费"),
-    "intervalKm" to listOf("周期公里数", "间隔公里数", "间隔公里", "保养周期公里", "周期公里"),
-    "intervalMonths" to listOf("周期月数", "间隔月数", "保养周期月", "间隔月"),
-    "lastDate" to listOf("上次保养日期", "基准日期"),
-    "lastKm" to listOf("上次保养公里数", "基准里程", "上次保养里程"),
-    "note" to listOf("备注", "说明"),
-)
-
-/** 保养台账表头映射（Web `serviceMap`）；时刻列与日期列相同时忽略时刻。 */
-fun serviceMap(headers: List<String>): Map<String, Int?> {
-    val map = LinkedHashMap<String, Int?>()
-    for ((key, names) in SERVICE_FIELDS) {
-        map[key] = names.map { name -> headers.indexOfFirst { it.trim() == name } }.firstOrNull { it >= 0 }
-    }
-    if (map["time"] == map["date"]) map["time"] = null
-    return map
-}
-
 /**
  * 12 项内置保养方案（Web `DEFAULT_SERVICE_PLAN`）。
  * 首保 5000 km / 3 月一次性；其余 11 项按公里或月份先到为准。
@@ -48,34 +22,6 @@ val DEFAULT_SERVICE_PLAN: List<PlanEntry> = listOf(
     PlanEntry("transmission", "变速器油", 80000.0, 48),
     PlanEntry("belt", "皮带", 100000.0, null),
 )
-
-/** 周期文案解析结果（Web `parseCycleText`）。 */
-data class CycleText(val km: Double?, val months: Double?)
-
-private val CYCLE_KM = Regex("(\\d+(?:\\.\\d+)?)(万|千)?(?:公里|千米|km)", RegexOption.IGNORE_CASE)
-private val CYCLE_MONTHS = Regex("(\\d+(?:\\.\\d+)?)(?:个)?(年|月)")
-
-/**
- * 解析「1万公里或1年」「8千公里或9月」这类中文合并周期（Web `parseCycleText`）。
- */
-fun parseCycleText(value: String?): CycleText {
-    val s = value.orEmpty().replace(Regex("[,，\\s]"), "")
-    val kmMatch = CYCLE_KM.find(s)
-    val monthMatch = CYCLE_MONTHS.find(s)
-    val km = kmMatch?.let {
-        val raw = it.groupValues[1].toDoubleOrNull() ?: return@let null
-        raw * when (it.groupValues[2]) {
-            "万" -> 10000.0
-            "千" -> 1000.0
-            else -> 1.0
-        }
-    }
-    val months = monthMatch?.let {
-        val raw = it.groupValues[1].toDoubleOrNull() ?: return@let null
-        raw * if (it.groupValues[2] == "年") 12.0 else 1.0
-    }
-    return CycleText(km, months)
-}
 
 /**
  * 项目文本拆分（Web `splitProjects`）：接受列表或「、，；换行」分隔的字符串，

@@ -9,9 +9,6 @@ import androidx.compose.runtime.setValue
 import com.milenote.android.domain.calc.duplicateOf
 import com.milenote.android.domain.calc.fuelBatchConflict
 import com.milenote.android.domain.calc.mergeFuelBatch
-import com.milenote.android.domain.calc.mergeImported
-import com.milenote.android.domain.calc.serviceMap
-import com.milenote.android.domain.calc.serviceRows
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.file.SpreadsheetData
@@ -19,15 +16,13 @@ import com.milenote.android.domain.import.normalizeImport
 import com.milenote.android.ui.MileNoteViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * 导入向导的状态机与全部业务动作。
  *
- * 只依赖 VM 暴露的 3 个公开方法（`applyImport` / `applyServiceImport` / `restoreBackup`）
+ * 只依赖 VM 暴露的 2 个公开方法（`applyImport` / `restoreBackup`）
  * 与 domain 的纯函数；文件读取、字段映射、预览、油费口径选择都在本类完成。
  */
 @Stable
@@ -105,35 +100,12 @@ internal class ImportWizardState(
 
     private var backupText: String? = null
 
-    // ---------- 保养台账 ----------
-
-    /** `schedule`（周期方案）或 `history`（历史记录）。 */
-    var serviceMode by mutableStateOf("schedule")
-        private set
-
-    var servicePreview by mutableStateOf<List<com.milenote.android.domain.calc.ServiceImportRow>>(emptyList())
-        private set
-
-    var serviceExcluded by mutableStateOf<Set<Int>>(emptySet())
-        private set
-
-    var serviceDuplicates by mutableStateOf<Set<Int>>(emptySet())
-        private set
-
-    var baseDate by mutableStateOf("")
-        private set
-
-    var baseKm by mutableStateOf("")
-        private set
-
     // ---------- 结果 ----------
 
     var result by mutableStateOf<WizardResult?>(null)
         private set
 
     private var previewGeneration = 0
-    private var serviceGeneration = 0
-    private var serviceDebounce: Job? = null
 
     private val ledger get() = vm.state.value.activeCar
     private val records get() = ledger?.records.orEmpty()
@@ -163,16 +135,9 @@ internal class ImportWizardState(
         defaultCategory = ""
         backupPreview = null
         backupText = null
-        servicePreview = emptyList()
-        serviceExcluded = emptySet()
-        serviceDuplicates = emptySet()
-        serviceMode = "schedule"
-        baseDate = ""
-        baseKm = ""
         result = null
         error = null
         previewGeneration++
-        serviceGeneration++
     }
 
     fun goBack(onClose: () -> Unit) {
@@ -274,22 +239,12 @@ internal class ImportWizardState(
             val detected = detectSharedSource(name, data.headers, mimeType)
             source = detected
             picked = PickedFile(name, bytes.size.toLong(), bytes)
-            if (detected == ImportSource.SERVICE) {
-                setupSheet(data, service = true)
-                serviceMode = "schedule"
-                baseDate = defaultBaseDate(ledger)
-                baseKm = defaultBaseKm(ledger)
-                serviceExcluded = emptySet()
-                step = 1
-                scheduleServicePreview(immediate = true)
-            } else {
-                setupSheet(data, service = false)
-                if (detected == ImportSource.QIANJI) applyQianjiHeuristics()
-                excluded = emptySet()
-                fuelBasis = "bear"
-                step = 1
-                scheduleTablePreview()
-            }
+            setupSheet(data)
+            if (detected == ImportSource.QIANJI) applyQianjiHeuristics()
+            excluded = emptySet()
+            fuelBasis = "bear"
+            step = 1
+            scheduleTablePreview()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -321,13 +276,6 @@ internal class ImportWizardState(
         }
         if (trimmedHeaders.any { it == "时间" || it == "类型" || it == "金额" }) {
             return ImportSource.QIANJI
-        }
-        if (trimmedHeaders.contains("项目") &&
-            trimmedHeaders.any {
-                it.contains("周期") || it == "上次保养日期" || it == "上次保养公里数"
-            }
-        ) {
-            return ImportSource.SERVICE
         }
         val lowerName = fileName.lowercase()
         val mime = mimeType.orEmpty().lowercase()
@@ -392,25 +340,11 @@ internal class ImportWizardState(
                     step = 1
                 }
 
-                ImportSource.SERVICE -> {
-                    val data = withContext(Dispatchers.IO) {
-                        readSpreadsheet(bytes, name, allowJsonFallback = false)
-                    }
-                    setupSheet(data, service = true)
-                    serviceMode = "schedule"
-                    baseDate = defaultBaseDate(ledger)
-                    baseKm = defaultBaseKm(ledger)
-                    serviceExcluded = emptySet()
-                    picked = PickedFile(name, bytes.size.toLong(), bytes)
-                    step = 1
-                    scheduleServicePreview(immediate = true)
-                }
-
                 ImportSource.BEAR, ImportSource.QIANJI -> {
                     val data = withContext(Dispatchers.IO) {
                         readSpreadsheet(bytes, name, allowJsonFallback = src == ImportSource.QIANJI)
                     }
-                    setupSheet(data, service = false)
+                    setupSheet(data)
                     if (src == ImportSource.QIANJI) applyQianjiHeuristics()
                     excluded = emptySet()
                     fuelBasis = "bear"
@@ -430,12 +364,12 @@ internal class ImportWizardState(
         }
     }
 
-    private fun setupSheet(data: SpreadsheetData, service: Boolean) {
+    private fun setupSheet(data: SpreadsheetData) {
         sheetData = data
         sheetNames = data.sheetNames.ifEmpty {
             listOf(data.activeSheet).filter { it.isNotBlank() }
         }
-        mapping = if (service) serviceMap(data.headers) else detectMap(data.headers)
+        mapping = detectMap(data.headers)
         defaultCategory = ""
     }
 
@@ -480,13 +414,9 @@ internal class ImportWizardState(
                         allowJsonFallback = src == ImportSource.QIANJI,
                     )
                 }
-                setupSheet(data, service = src == ImportSource.SERVICE)
+                setupSheet(data)
                 if (src == ImportSource.QIANJI) applyQianjiHeuristics()
-                if (src == ImportSource.SERVICE) {
-                    scheduleServicePreview(immediate = true)
-                } else {
-                    scheduleTablePreview()
-                }
+                scheduleTablePreview()
             } catch (e: Exception) {
                 error = e.message ?: "读取工作表失败"
             } finally {
@@ -500,11 +430,7 @@ internal class ImportWizardState(
 
     fun setMapping(field: String, index: Int?) {
         mapping = mapping + (field to index)
-        if (source == ImportSource.SERVICE) {
-            scheduleServicePreview(immediate = true)
-        } else {
-            scheduleTablePreview()
-        }
+        scheduleTablePreview()
     }
 
     fun changeDefaultCategory(value: String) {
@@ -594,97 +520,8 @@ internal class ImportWizardState(
     fun refreshPreviewFromLedger() {
         if (step != 1) return
         when (source) {
-            ImportSource.SERVICE -> scheduleServicePreview(immediate = true)
             ImportSource.BEAR, ImportSource.QIANJI -> scheduleTablePreview()
             else -> Unit
-        }
-    }
-
-    // ---------- 保养台账：模式 / 基准 / 映射 / 预览 ----------
-
-    fun changeServiceMode(mode: String) {
-        if (mode !in setOf("schedule", "history")) return
-        if (serviceMode == mode) return
-        serviceMode = mode
-        serviceExcluded = emptySet()
-        scheduleServicePreview(immediate = true)
-    }
-
-    fun changeBaseDate(value: String) {
-        baseDate = value
-        scheduleServicePreview(immediate = false)
-    }
-
-    fun changeBaseKm(value: String) {
-        baseKm = value
-        scheduleServicePreview(immediate = false)
-    }
-
-    fun setServiceExcluded(index: Int, exclude: Boolean) {
-        serviceExcluded = if (exclude) serviceExcluded + index else serviceExcluded - index
-    }
-
-    private fun scheduleServicePreview(immediate: Boolean) {
-        serviceDebounce?.cancel()
-        if (!immediate) {
-            serviceDebounce = scope.launch {
-                delay(250)
-                runServicePreview()
-            }
-            return
-        }
-        scope.launch { runServicePreview() }
-    }
-
-    private suspend fun runServicePreview() {
-        val data = sheetData ?: return
-        val generation = ++serviceGeneration
-        val currentMapping = mapping
-        val currentMode = serviceMode
-        val currentBaseDate = baseDate
-        val currentBaseKm = baseKm.trim().toDoubleOrNull()
-        val existing = ledger?.reminders.orEmpty()
-        busy = true
-        busyMessage = "正在生成预览…"
-        try {
-            val rows = withContext(Dispatchers.Default) {
-                serviceRows(
-                    rows = data.rows,
-                    map = currentMapping,
-                    mode = currentMode,
-                    baseDate = currentBaseDate,
-                    baseKm = currentBaseKm,
-                )
-            }
-            if (generation != serviceGeneration) return
-            val duplicateRows = if (currentMode == "schedule") {
-                withContext(Dispatchers.Default) {
-                    rows.mapIndexedNotNull { i, row ->
-                        val reminder = row.reminder ?: return@mapIndexedNotNull null
-                        val duplicated = existing.any { old ->
-                            old.title == reminder.title &&
-                                old.dueDate.orEmpty() == reminder.dueDate.orEmpty() &&
-                                old.dueKm == reminder.dueKm
-                        }
-                        if (duplicated) i else null
-                    }.toSet()
-                }
-            } else {
-                emptySet()
-            }
-            if (generation != serviceGeneration) return
-            servicePreview = rows
-            serviceDuplicates = duplicateRows
-            serviceExcluded = emptySet()
-        } catch (e: Exception) {
-            if (generation == serviceGeneration) {
-                error = e.message ?: "预览生成失败"
-            }
-        } finally {
-            if (generation == serviceGeneration) {
-                busy = false
-                busyMessage = null
-            }
         }
     }
 
@@ -735,57 +572,6 @@ internal class ImportWizardState(
                             note = "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",
                         )
                     }
-
-                    ImportSource.SERVICE -> {
-                        if (serviceMode == "schedule") {
-                            val selectedRows = servicePreview.indices
-                                .filter { i ->
-                                    i !in serviceExcluded &&
-                                        servicePreview[i].error.isEmpty() &&
-                                        servicePreview[i].reminder != null
-                                }
-                                .mapNotNull { servicePreview[it].reminder }
-                            if (selectedRows.isEmpty()) {
-                                throw ImportFileException("请选择至少一条有效记录")
-                            }
-                            val existingKeys = currentLedger?.reminders.orEmpty()
-                                .map { Triple(it.title, it.dueDate.orEmpty(), it.dueKm) }
-                                .toMutableSet()
-                            val toAdd = selectedRows.filter { reminder ->
-                                existingKeys.add(
-                                    Triple(reminder.title, reminder.dueDate.orEmpty(), reminder.dueKm),
-                                )
-                            }
-                            val duplicateCount = selectedRows.size - toAdd.size
-                            vm.applyServiceImport(toAdd)
-                            result = WizardResult(
-                                title = "保养提醒已生成",
-                                lines = buildList {
-                                    add("生成 ${toAdd.size} 项提醒")
-                                    if (duplicateCount > 0) add("重复跳过 $duplicateCount 项")
-                                },
-                                note = "可在「维修保养 → 保养计划表」查看；基准日期/里程可在计划表中调整。",
-                            )
-                        } else {
-                            val items = serviceHistoryItems()
-                            if (items.none { it.isValid }) {
-                                throw ImportFileException("请选择至少一条有效记录")
-                            }
-                            val merge = withContext(Dispatchers.Default) {
-                                mergeImported(currentLedger?.records.orEmpty(), items)
-                            }
-                            vm.applyImport(items, null)
-                            result = WizardResult(
-                                title = "保养记录已提交",
-                                lines = listOf(
-                                    "新增 ${merge.added} 条",
-                                    "合并 ${merge.merged} 条",
-                                    "跳过 ${merge.skipped} 条",
-                                ),
-                                note = "保养记录会计入用车成本；保养台账历史导入不会触发钱迹那套待办自动完成。",
-                            )
-                        }
-                    }
                 }
                 step = 2
             } catch (e: Exception) {
@@ -795,16 +581,6 @@ internal class ImportWizardState(
                 busyMessage = null
             }
         }
-    }
-
-    private fun serviceHistoryItems(): List<ImportItem> = servicePreview.mapIndexedNotNull { i, row ->
-        val record = row.record ?: return@mapIndexedNotNull null
-        ImportItem(
-            row = row.row,
-            record = record,
-            error = row.error,
-            exclude = i in serviceExcluded,
-        )
     }
 
     // ---------- 供 UI 计算的统计 ----------
@@ -819,16 +595,10 @@ internal class ImportWizardState(
         i in duplicates && tableItems[i].error.isEmpty() && !tableItems[i].exclude
     }
 
-    fun validServiceCount(): Int = servicePreview.indices.count { i ->
-        i !in serviceExcluded && servicePreview[i].error.isEmpty() &&
-            (if (serviceMode == "schedule") servicePreview[i].reminder != null else servicePreview[i].record != null)
-    }
-
     fun canConfirm(): Boolean {
         if (busy || step != 1) return false
         return when (source) {
             ImportSource.BACKUP -> backupPreview != null
-            ImportSource.SERVICE -> validServiceCount() > 0
             ImportSource.BEAR, ImportSource.QIANJI -> validTableCount() > 0
             null -> false
         }
@@ -836,7 +606,6 @@ internal class ImportWizardState(
 
     fun confirmLabel(): String = when (source) {
         ImportSource.BACKUP -> "确认恢复"
-        ImportSource.SERVICE -> if (serviceMode == "schedule") "确认生成提醒" else "确认导入记录"
         else -> "确认导入"
     }
 }
