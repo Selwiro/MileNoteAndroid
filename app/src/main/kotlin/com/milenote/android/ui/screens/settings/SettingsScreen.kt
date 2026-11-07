@@ -2,7 +2,8 @@
 
 package com.milenote.android.ui.screens.settings
 
-import android.os.Build
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,8 +34,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,11 +44,13 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,6 +84,7 @@ import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
+import com.milenote.android.ui.components.SecondaryTabs
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.components.SectionHeader
 import com.milenote.android.ui.icons.MileNoteIcons
@@ -97,14 +99,16 @@ import kotlinx.coroutines.withContext
 /**
  * 返回上一页的导航约定（兜底）：宿主没有 `OnBackPressedDispatcher` 时，
  * 导航层收到该值应执行 `navController.popBackStack()`。
- *
- * 正常情况下返回箭头直接走 `onBackPressedDispatcher.onBackPressed()`，
- * 与系统返回键、手势返回共用同一条返回栈，不需要导航层额外特判。
  */
 const val SETTINGS_NAV_BACK: String = "back"
 
 /** 设置页内的轻量提示（导出/导入/图片处理的结果；账本类操作由 VM 的全局 Snackbar 播报）。 */
-private data class SettingsMessage(val text: String, val kind: MessageKind)
+private data class SettingsMessage(
+    val text: String,
+    val kind: MessageKind,
+    val actionLabel: String? = null,
+    val onAction: (() -> Unit)? = null,
+)
 
 /** 正在编辑的车辆：`id == null` 表示新增。 */
 private data class VehicleEditTarget(
@@ -113,44 +117,43 @@ private data class VehicleEditTarget(
     val recordCount: Int,
 )
 
-/** 设置内部页面（用内部状态切换，不新增导航路由；系统返回键先回菜单）。 */
+/**
+ * 设置内部页面（用内部状态切换，不新增导航路由；系统返回键先回菜单）。
+ *
+ * 一级按性质分三组：车辆/外观/记账、数据（外部导入 / 备份与还原 / WebDAV 同步）、关于。
+ * 全部子页都从设置首页一层进入，不再有三级页。
+ */
 private enum class SettingsPage(val title: String) {
     ROOT("设置"),
     VEHICLES("我的车辆"),
     APPEARANCE("外观"),
     CATEGORIES("费用分类与项目"),
-    DATA("数据管理"),
-    ABOUT("关于"),
+    IMPORT("外部导入"),
+    BACKUP("备份与还原"),
     WEBDAV("WebDAV 同步"),
-}
-
-/** 子页的上级页：WebDAV 从数据管理进入，返回回到数据管理；其余子页返回设置首页。 */
-private fun SettingsPage.parent(): SettingsPage = when (this) {
-    SettingsPage.WEBDAV -> SettingsPage.DATA
-    else -> SettingsPage.ROOT
+    ABOUT("关于"),
 }
 
 /**
- * 设置（用户要求的子菜单结构，替代原「一页到底」的车辆与设置页）。
+ * 设置。
  *
- * 首页：5 行菜单（40dp 图标色底圆片 + 标题 + 摘要副标题 + chevron）——
- * 我的车辆 / 外观 / 费用分类与项目 / 数据管理 / 关于。
+ * 首页：三张卡片、7 行菜单（36dp 图标色底圆片 + 标题 + 状态摘要 + chevron）——
+ * 车辆/外观/费用分类与项目；外部导入 / 备份与还原 / WebDAV 同步；关于。
  * 点按进入子页；子页共用同一个 TopAppBar（返回箭头回到菜单），系统返回键用
- * [BackHandler] 先回菜单；不新增路由。原有全部功能原样保留在对应子页。
+ * [BackHandler] 先回菜单；不新增路由。返回逻辑只有"子页 → 设置首页"一层。
  *
- * - 我的车辆：横向车辆卡片（缩略图 / 昵称 / 车牌·车型 / 当前里程 / 记录数；选中描边 +「当前」），
- *   点按切换账本，卡片菜单编辑/删除，添加车辆打开全屏编辑对话框（图片/里程/日期/contain-cover）。
+ * - 我的车辆：横向车辆卡片，点卡片切换当前车辆，卡片右上角编辑；添加车辆打开全屏编辑对话框。
  * - 外观：5 套皮肤、深浅色三态。
- * - 费用分类与项目：9 类内置费用分类只读 + 自定义分类增删；项目库按保养/维修/汽车美容/保险
- *   分组展示内置与自定义项目。
- * - 数据管理：导出完整备份（SAF）/ 分享、导出费用 CSV、导入备份、导入账单/保养台账、
- *   演示账本、删除全部数据。
- * - 关于：应用名、版本、包名、数据存放与口径说明。
+ * - 费用分类与项目：费用分类 / 项目库两个页签；分类按当前车辆隔离。
+ * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导。
+ * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
+ * - WebDAV 同步：连接配置、前台自动同步、手动上传/下载。
+ * - 关于：应用名、版本、官网/GitHub、演示账本、本机数据说明。
  *
  * @param vm 全局 ViewModel。
  * @param onNavigate 路由回调；仅在首页返回、且宿主没有 OnBackPressedDispatcher 时回传
  *   [SETTINGS_NAV_BACK]（兜底）。
- * @param onOpenImporter 打开导入向导（账单/保养台账），参数为来源 id（本页传 null）。
+ * @param onOpenImporter 打开导入向导（外部导入），参数为来源 id（bear / qianji）。
  * @param modifier 外部修饰符。
  */
 @Composable
@@ -172,6 +175,11 @@ fun SettingsScreen(
     val activeName = activeCar?.vehicle?.name?.ifBlank { "我的爱车" } ?: "—"
     val appTheme = AppTheme.fromId(garage?.theme)
     val themeId = garage?.theme ?: "blue"
+    val customCategoryCount = activeCar?.customCategories.orEmpty()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .size
 
     var message by remember { mutableStateOf<SettingsMessage?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -179,10 +187,34 @@ fun SettingsScreen(
     var pendingBackup by remember { mutableStateOf<String?>(null) }
     var pendingCsv by remember { mutableStateOf<ByteArray?>(null) }
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.ROOT.name) }
+    var categoryTab by rememberSaveable { mutableIntStateOf(0) }
     val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: SettingsPage.ROOT
 
-    fun notify(text: String, kind: MessageKind) {
-        message = SettingsMessage(text, kind)
+    fun notify(
+        text: String,
+        kind: MessageKind,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null,
+    ) {
+        message = SettingsMessage(text, kind, actionLabel, onAction)
+    }
+
+    fun shareBackup(text: String) {
+        scope.launch {
+            busy = true
+            try {
+                FileExporter.shareText(
+                    context = context,
+                    fileName = LedgerExports.backupFileName(),
+                    mimeType = "application/json",
+                    bytes = text.toByteArray(Charsets.UTF_8),
+                )
+            } catch (t: Throwable) {
+                notify("分享失败：${t.message ?: "无法生成备份"}", MessageKind.ERROR)
+            } finally {
+                busy = false
+            }
+        }
     }
 
     val createBackup = rememberLauncherForActivityResult(
@@ -192,7 +224,14 @@ fun SettingsScreen(
         pendingBackup = null
         if (uri != null && text != null) {
             runCatching { FileExporter.writeTo(context, uri, text.toByteArray(Charsets.UTF_8)) }
-                .onSuccess { notify("完整备份已导出", MessageKind.SUCCESS) }
+                .onSuccess {
+                    notify(
+                        text = "完整备份已导出",
+                        kind = MessageKind.SUCCESS,
+                        actionLabel = "分享",
+                        onAction = { shareBackup(text) },
+                    )
+                }
                 .onFailure { notify("导出失败：${it.message ?: "无法写入所选文件"}", MessageKind.ERROR) }
         }
     }
@@ -247,25 +286,6 @@ fun SettingsScreen(
         }
     }
 
-    fun shareBackupFile() {
-        scope.launch {
-            busy = true
-            try {
-                val text = vm.exportBackup()
-                FileExporter.shareText(
-                    context = context,
-                    fileName = LedgerExports.backupFileName(),
-                    mimeType = "application/json",
-                    bytes = text.toByteArray(Charsets.UTF_8),
-                )
-            } catch (t: Throwable) {
-                notify("分享失败：${t.message ?: "无法生成备份"}", MessageKind.ERROR)
-            } finally {
-                busy = false
-            }
-        }
-    }
-
     fun exportCsvFile() {
         val ledger = activeCar
         if (ledger == null) {
@@ -277,7 +297,7 @@ fun SettingsScreen(
     }
 
     fun openVehicleEditor(id: String?) {
-        // saveVehicle 写当前车辆，编辑前先切到目标车，避免把数据写到别的账本。
+        // 编辑非当前车辆时先切到目标车，避免 saveVehicle 把数据写到别的账本；新增不切车。
         if (id != null) vm.selectVehicle(id)
         val ledger: Ledger? = id?.let { target -> cars.firstOrNull { it.id == target } }
         editing = VehicleEditTarget(
@@ -289,7 +309,7 @@ fun SettingsScreen(
 
     // 子页时系统返回 / 手势返回先回设置菜单，不退出页面路由。
     BackHandler(enabled = page != SettingsPage.ROOT) {
-        pageName = page.parent().name
+        pageName = SettingsPage.ROOT.name
     }
 
     Scaffold(
@@ -308,7 +328,7 @@ fun SettingsScreen(
                                     onNavigate(SETTINGS_NAV_BACK)
                                 }
                             } else {
-                                pageName = page.parent().name
+                                pageName = SettingsPage.ROOT.name
                             }
                         },
                     ) {
@@ -341,233 +361,257 @@ fun SettingsScreen(
 
         // 应用 Scaffold 的 topBar padding，否则列表首项会被顶栏遮住、也无法滚出完整内容。
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-        // key(page)：切换子页时重置滚动位置，不沿用上一页的 LazyColumn 偏移。
-        key(page) {
-            when (page) {
-                SettingsPage.ROOT -> SettingsPageList(narrow = true) {
-                    if (state.loadError != null || state.demo || message != null) {
-                        item("messages") {
-                            SettingsMessageArea(
-                                loadError = state.loadError,
-                                demo = state.demo,
-                                message = message,
-                                onExitDemo = { vm.exitDemo() },
-                                onDismissMessage = { message = null },
-                            )
+            // key(page)：切换子页时重置滚动位置，不沿用上一页的 LazyColumn 偏移。
+            key(page) {
+                when (page) {
+                    SettingsPage.ROOT -> SettingsPageList(narrow = true) {
+                        if (state.loadError != null || state.demo || message != null) {
+                            item("messages") {
+                                SettingsMessageArea(
+                                    loadError = state.loadError,
+                                    demo = state.demo,
+                                    message = message,
+                                    onExitDemo = { vm.exitDemo() },
+                                    onDismissMessage = { message = null },
+                                )
+                            }
                         }
-                    }
 
-                    item("menu") {
-                        SectionCard(
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
-                        ) {
-                            SettingsMenuRow(
-                                icon = MileNoteIcons.Car,
-                                title = "我的车辆",
-                                subtitle = if (cars.isEmpty()) {
-                                    "还没有车辆，点按添加"
-                                } else {
-                                    "${cars.size} 辆 · 当前：$activeName"
-                                },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                onClick = { pageName = SettingsPage.VEHICLES.name },
-                            )
-                            SectionDivider()
-                            SettingsMenuRow(
-                                icon = MileNoteIcons.Sparkle,
-                                title = "外观",
-                                subtitle = appearanceSummary(appTheme, settings),
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                onClick = { pageName = SettingsPage.APPEARANCE.name },
-                            )
-                            SectionDivider()
-                            SettingsMenuRow(
-                                icon = MileNoteIcons.Wallet,
-                                title = "费用分类与项目",
-                                subtitle = "${Categories.ALL.size} 类费用 · 保养/维修/美容/保险项目",
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                                onClick = { pageName = SettingsPage.CATEGORIES.name },
-                            )
-                            SectionDivider()
-                            SettingsMenuRow(
-                                icon = MileNoteIcons.Download,
-                                title = "数据管理",
-                                subtitle = "备份、导入、CSV、演示、删除",
-                                containerColor = LocalMileNoteSemanticColors.current.info.container,
-                                contentColor = LocalMileNoteSemanticColors.current.info.content,
-                                onClick = { pageName = SettingsPage.DATA.name },
-                            )
-                            SectionDivider()
-                            SettingsMenuRow(
-                                icon = MileNoteIcons.Info,
-                                title = "关于",
-                                subtitle = "里程志 ${BuildConfig.VERSION_NAME}",
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                onClick = { pageName = SettingsPage.ABOUT.name },
-                            )
-                        }
-                    }
-                }
-
-                SettingsPage.VEHICLES -> SettingsPageList {
-                    item("vehicles-header") {
-                        SectionHeader(
-                            title = "车辆列表",
-                            subtitle = "共 ${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录 · 点按卡片进入编辑",
-                            actionLabel = "添加车辆",
-                            actionIcon = MileNoteIcons.Add,
-                            onAction = { openVehicleEditor(null) },
-                        )
-                    }
-
-                    item("vehicles") {
-                        if (cars.isEmpty()) {
-                            EmptyState(
-                                title = "还没有车辆",
-                                description = "添加第一辆车，开始记录每一公里的花费。",
-                                icon = MileNoteIcons.Car,
-                                actionLabel = "添加车辆",
-                                onAction = { openVehicleEditor(null) },
-                            )
-                        } else {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+                        item("menu-main") {
+                            SectionCard(
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                             ) {
-                                items(cars, key = { it.id }) { car ->
-                                    VehicleCard(
-                                        ledger = car,
-                                        selected = car.id == activeId,
-                                        onClick = { openVehicleEditor(car.id) },
-                                    )
-                                }
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Car,
+                                    title = "我的车辆",
+                                    subtitle = if (cars.isEmpty()) {
+                                        "还没有车辆，点按添加"
+                                    } else {
+                                        "${cars.size} 辆 · 当前：$activeName"
+                                    },
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    onClick = { pageName = SettingsPage.VEHICLES.name },
+                                )
+                                SectionDivider()
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Sparkle,
+                                    title = "外观",
+                                    subtitle = appearanceSummary(appTheme, settings),
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    onClick = { pageName = SettingsPage.APPEARANCE.name },
+                                )
+                                SectionDivider()
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Wallet,
+                                    title = "费用分类与项目",
+                                    subtitle = "${Categories.ALL.size} 类 · 自定义 $customCategoryCount 项 · 按车辆",
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    onClick = { pageName = SettingsPage.CATEGORIES.name },
+                                )
+                            }
+                        }
+
+                        item("menu-data") {
+                            SectionCard(
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                            ) {
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Import,
+                                    title = "外部导入",
+                                    subtitle = "小熊油耗 / 钱迹记账 / 其他 App",
+                                    containerColor = LocalMileNoteSemanticColors.current.info.container,
+                                    contentColor = LocalMileNoteSemanticColors.current.info.content,
+                                    onClick = { pageName = SettingsPage.IMPORT.name },
+                                )
+                                SectionDivider()
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Export,
+                                    title = "备份与还原",
+                                    subtitle = "${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录",
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onClick = { pageName = SettingsPage.BACKUP.name },
+                                )
+                                SectionDivider()
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Download,
+                                    title = "WebDAV 同步",
+                                    subtitle = webDavStatusSummary(state.webDav),
+                                    containerColor = LocalMileNoteSemanticColors.current.info.container,
+                                    contentColor = LocalMileNoteSemanticColors.current.info.content,
+                                    onClick = { pageName = SettingsPage.WEBDAV.name },
+                                )
+                            }
+                        }
+
+                        item("menu-about") {
+                            SectionCard(
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                            ) {
+                                SettingsMenuRow(
+                                    icon = MileNoteIcons.Info,
+                                    title = "关于",
+                                    subtitle = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onClick = { pageName = SettingsPage.ABOUT.name },
+                                )
                             }
                         }
                     }
 
-                    item("vehicles-hint") {
-                        Text(
-                            text = "点按车辆卡片进入编辑；可在编辑页设置昵称、里程、提车日期与图片，也可删除车辆。" +
-                                "删除车辆会一并移除该车的费用、提醒与保养记录。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                SettingsPage.APPEARANCE -> SettingsPageList {
-                    item("appearance") {
-                        AppearanceSection(
-                            settings = settings,
-                            appTheme = appTheme,
-                            onThemeChange = { theme -> vm.setTheme(theme.name.lowercase()) },
-                            onDarkModeChange = { mode -> vm.setDarkMode(mode) },
-                        )
-                    }
-                }
-
-                SettingsPage.CATEGORIES -> SettingsPageList {
-                    item("categories") {
-                        ExpenseCategoriesPage(
-                            ledger = activeCar,
-                            themeId = themeId,
-                            vehicleName = activeName,
-                            onAddCategory = { name -> vm.addCustomCategory(name) },
-                            onRemoveCategory = { name ->
-                                vm.confirm(
-                                    PendingConfirm(
-                                        title = "删除自定义分类？",
-                                        message = "「$name」将从记账的可选分类中移除；已有记录的分类与金额不受影响。",
-                                        confirmLabel = "删除",
-                                        destructive = true,
-                                    ) { vm.removeCustomCategory(name) },
+                    SettingsPage.VEHICLES -> SettingsPageList {
+                        if (message != null) {
+                            item("messages") {
+                                SettingsMessageArea(
+                                    loadError = null,
+                                    demo = false,
+                                    message = message,
+                                    onExitDemo = {},
+                                    onDismissMessage = { message = null },
                                 )
-                            },
-                            onAddProject = { category, name -> vm.addProject(category, name) },
-                            onRemoveProject = { category, name -> vm.removeProject(category, name) },
-                        )
-                    }
-                }
+                            }
+                        }
 
-                SettingsPage.DATA -> SettingsPageList {
-                    if (state.loadError != null || state.demo || message != null) {
-                        item("messages") {
-                            SettingsMessageArea(
-                                loadError = state.loadError,
-                                demo = state.demo,
-                                message = message,
-                                onExitDemo = { vm.exitDemo() },
-                                onDismissMessage = { message = null },
+                        item("vehicles-header") {
+                            SectionHeader(
+                                title = "车辆列表",
+                                subtitle = "共 ${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录 · 点按卡片切换当前车辆",
+                                actionLabel = "添加车辆",
+                                actionIcon = MileNoteIcons.Add,
+                                onAction = { openVehicleEditor(null) },
+                            )
+                        }
+
+                        item("vehicles") {
+                            if (cars.isEmpty()) {
+                                EmptyState(
+                                    title = "还没有车辆",
+                                    description = "添加第一辆车，开始记录每一公里的花费。",
+                                    icon = MileNoteIcons.Car,
+                                    actionLabel = "添加车辆",
+                                    onAction = { openVehicleEditor(null) },
+                                )
+                            } else {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+                                ) {
+                                    items(cars, key = { it.id }) { car ->
+                                        VehicleCard(
+                                            ledger = car,
+                                            selected = car.id == activeId,
+                                            onSelect = {
+                                                if (car.id != activeId) {
+                                                    vm.selectVehicle(car.id)
+                                                    notify(
+                                                        "已切换到 ${car.vehicle.name.ifBlank { "我的爱车" }}",
+                                                        MessageKind.INFO,
+                                                    )
+                                                }
+                                            },
+                                            onEdit = { openVehicleEditor(car.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item("vehicles-hint") {
+                            Text(
+                                text = "点按卡片切换当前车辆；卡片右上角可编辑昵称、里程、提车日期与图片，" +
+                                    "也可删除车辆。删除车辆会一并移除该车的费用、提醒与保养记录。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
 
-                    item("webdav-entry") {
-                        SectionCard {
-                            SettingsMenuRow(
-                                icon = MileNoteIcons.Download,
-                                title = "WebDAV 同步",
-                                subtitle = webDavStatusSummary(state.webDav),
-                                containerColor = LocalMileNoteSemanticColors.current.info.container,
-                                contentColor = LocalMileNoteSemanticColors.current.info.content,
-                                onClick = { pageName = SettingsPage.WEBDAV.name },
+                    SettingsPage.APPEARANCE -> SettingsPageList {
+                        item("appearance") {
+                            AppearanceSection(
+                                settings = settings,
+                                appTheme = appTheme,
+                                onThemeChange = { theme -> vm.setTheme(theme.name.lowercase()) },
+                                onDarkModeChange = { mode -> vm.setDarkMode(mode) },
                             )
                         }
                     }
 
-                    item("data") {
-                        DataSection(
-                            carsCount = cars.size,
-                            recordsCount = cars.sumOf { it.records.size },
-                            activeName = activeName,
-                            demo = state.demo,
-                            busy = busy,
-                            onExportBackup = { exportBackupFile() },
-                            onShareBackup = { shareBackupFile() },
-                            onExportCsv = { exportCsvFile() },
-                            onImportBackup = {
-                                openBackup.launch(
-                                    arrayOf("application/json", "application/octet-stream", "text/plain"),
-                                )
-                            },
-                            onOpenImporter = { onOpenImporter(null) },
-                            onToggleDemo = {
-                                if (state.demo) vm.exitDemo() else vm.enterDemo()
-                            },
-                            onDeleteAll = { vm.deleteAllData() },
-                        )
-                    }
-                }
+                    SettingsPage.CATEGORIES -> CategoryTabsPage(
+                        tab = categoryTab,
+                        onTabChange = { categoryTab = it },
+                        ledger = activeCar,
+                        themeId = themeId,
+                        vehicleName = activeName,
+                        onAddCategory = { name -> vm.addCustomCategory(name) },
+                        onRemoveCategory = { name ->
+                            vm.confirm(
+                                PendingConfirm(
+                                    title = "删除自定义分类？",
+                                    message = "「$name」将从记账的可选分类中移除；已有记录的分类与金额不受影响。",
+                                    confirmLabel = "删除",
+                                    destructive = true,
+                                ) { vm.removeCustomCategory(name) },
+                            )
+                        },
+                        onAddProject = { category, name -> vm.addProject(category, name) },
+                        onRemoveProject = { category, name -> vm.removeProject(category, name) },
+                    )
 
-                SettingsPage.ABOUT -> SettingsPageList {
-                    item("about") {
-                        AboutSection(recordCount = cars.sumOf { it.records.size })
-                    }
-                }
+                    SettingsPage.IMPORT -> ExternalImportPage(
+                        onOpenImporter = { source -> onOpenImporter(source) },
+                        onGoBackup = { pageName = SettingsPage.BACKUP.name },
+                    )
 
-                SettingsPage.WEBDAV -> SettingsPageList {
-                    item("webdav") {
-                        WebDavPage(
-                            state = state.webDav,
-                            onSaveConfig = { url, username, password, allowHttp ->
-                                vm.saveWebDavConfig(url, username, password, allowHttp)
-                            },
-                            onClearConfig = { vm.clearWebDavConfig() },
-                            onSyncNow = { vm.webDavSyncNow() },
-                            onUpload = { vm.webDavUpload() },
-                            onDownloadReplace = { vm.webDavDownload(WebDavDownloadMode.REPLACE) },
-                            onResolveConflict = { choice -> vm.resolveWebDavConflict(choice) },
-                            onDismissConflict = { vm.dismissWebDavConflict() },
-                            onDismissMessage = { vm.dismissWebDavMessage() },
-                            onAutoSyncChange = { vm.setWebDavAutoSync(it) },
-                        )
+                    SettingsPage.BACKUP -> BackupRestorePage(
+                        carsCount = cars.size,
+                        recordsCount = cars.sumOf { it.records.size },
+                        demo = state.demo,
+                        loadError = state.loadError,
+                        busy = busy,
+                        message = message,
+                        onExportBackup = { exportBackupFile() },
+                        onExportCsv = { exportCsvFile() },
+                        onImportBackup = {
+                            openBackup.launch(
+                                arrayOf("application/json", "application/octet-stream", "text/plain"),
+                            )
+                        },
+                        onDeleteAll = { vm.deleteAllData() },
+                        onExitDemo = { vm.exitDemo() },
+                        onDismissMessage = { message = null },
+                    )
+
+                    SettingsPage.WEBDAV -> SettingsPageList {
+                        item("webdav") {
+                            WebDavPage(
+                                state = state.webDav,
+                                onSaveConfig = { url, username, password, allowHttp ->
+                                    vm.saveWebDavConfig(url, username, password, allowHttp)
+                                },
+                                onClearConfig = { vm.clearWebDavConfig() },
+                                onSyncNow = { vm.webDavSyncNow() },
+                                onUpload = { vm.webDavUpload() },
+                                onDownloadReplace = { vm.webDavDownload(WebDavDownloadMode.REPLACE) },
+                                onResolveConflict = { choice -> vm.resolveWebDavConflict(choice) },
+                                onDismissConflict = { vm.dismissWebDavConflict() },
+                                onDismissMessage = { vm.dismissWebDavMessage() },
+                                onAutoSyncChange = { vm.setWebDavAutoSync(it) },
+                            )
+                        }
                     }
+
+                    SettingsPage.ABOUT -> AboutPage(
+                        demo = state.demo,
+                        onToggleDemo = {
+                            if (state.demo) vm.exitDemo() else vm.enterDemo()
+                        },
+                    )
                 }
             }
-        }
         }
     }
 
@@ -616,7 +660,7 @@ private fun SettingsPageList(
     }
 }
 
-/** 设置首页菜单行：40dp 图标色底圆片 + 标题 + 摘要 + chevron。 */
+/** 设置菜单行：36dp 图标色底圆片 + 标题 + 摘要 + 可选 chevron；无 onClick 时作为只读说明行。 */
 @Composable
 private fun SettingsMenuRow(
     icon: ImageVector,
@@ -624,13 +668,15 @@ private fun SettingsMenuRow(
     subtitle: String,
     containerColor: Color,
     contentColor: Color,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
+    showChevron: Boolean = onClick != null,
+    subtitleMaxLines: Int = 1,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
-            .clickable(role = Role.Button, onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -660,16 +706,18 @@ private fun SettingsMenuRow(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
+                maxLines = subtitleMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Icon(
-            imageVector = MileNoteIcons.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
+        if (showChevron) {
+            Icon(
+                imageVector = MileNoteIcons.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
@@ -696,6 +744,8 @@ private fun SettingsMessageArea(
             MessageBar(
                 message = current.text,
                 kind = current.kind,
+                actionLabel = current.actionLabel,
+                onAction = current.onAction,
                 onDismiss = onDismissMessage,
             )
         }
@@ -716,12 +766,13 @@ private fun appearanceSummary(appTheme: AppTheme, settings: AppSettings): String
 // 车辆卡片
 // ---------------------------------------------------------------------------------------------
 
-/** 车辆卡片：缩略图 + 昵称 + 车牌/车型 + 当前里程 + 记录数；选中态描边 + 主色容器。 */
+/** 车辆卡片：缩略图 + 昵称 + 车牌/车型 + 当前里程 + 记录数；点卡片切车，右上角编辑。 */
 @Composable
 private fun VehicleCard(
     ledger: Ledger,
     selected: Boolean,
-    onClick: () -> Unit,
+    onSelect: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val vehicle = ledger.vehicle
@@ -731,7 +782,7 @@ private fun VehicleCard(
         .ifBlank { "未填写车牌 / 车型" }
 
     Surface(
-        onClick = onClick,
+        onClick = onSelect,
         shape = MaterialTheme.shapes.large,
         color = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
         contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
@@ -770,6 +821,13 @@ private fun VehicleCard(
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        imageVector = MileNoteIcons.MoreVert,
+                        contentDescription = "编辑 ${vehicle.name.ifBlank { "车辆" }}",
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -830,10 +888,13 @@ private fun AppearanceSection(
     onDarkModeChange: (DarkMode) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    SectionCard(
-        title = "外观",
-        subtitle = "只改变配色与显示方式，不影响账本数据",
-    ) {
+    SectionCard {
+        Text(
+            text = "只改变配色与显示方式，不影响账本记录。",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
         Text("界面皮肤", style = MaterialTheme.typography.titleSmall)
         Spacer(modifier = Modifier.size(8.dp))
         ThemeSwatchRow(selected = appTheme, onSelect = onThemeChange)
@@ -851,7 +912,7 @@ private fun AppearanceSection(
         SectionDivider()
 
         Text(
-            text = "当前皮肤：${appTheme.label} · ${if (settings.darkMode == DarkMode.SYSTEM) "深色跟随系统" else if (settings.darkMode == DarkMode.DARK) "深色" else "浅色"}",
+            text = "皮肤随账本备份；深浅色只存本机，不随备份恢复。",
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -941,113 +1002,371 @@ private fun <T> SegmentedChoiceRow(
 }
 
 // ---------------------------------------------------------------------------------------------
-// 账本与数据
+// 费用分类与项目：页签外壳
+// ---------------------------------------------------------------------------------------------
+
+/** 费用分类 / 项目库两个固定页签；作用域提示与页签不随内容滚动。 */
+@Composable
+private fun CategoryTabsPage(
+    tab: Int,
+    onTabChange: (Int) -> Unit,
+    ledger: Ledger?,
+    themeId: String,
+    vehicleName: String,
+    onAddCategory: (String) -> Unit,
+    onRemoveCategory: (String) -> Unit,
+    onAddProject: (category: String, name: String) -> Unit,
+    onRemoveProject: (category: String, name: String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = "当前车辆：${vehicleName.ifBlank { "我的爱车" }}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(
+                start = MileNoteDimens.PageHorizontal,
+                end = MileNoteDimens.PageHorizontal,
+                top = 6.dp,
+            ),
+        )
+        SecondaryTabs(
+            labels = listOf("费用分类", "项目库"),
+            selected = tab,
+            onSelect = onTabChange,
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            ExpenseCategoriesPage(
+                tab = tab,
+                ledger = ledger,
+                themeId = themeId,
+                onAddCategory = onAddCategory,
+                onRemoveCategory = onRemoveCategory,
+                onAddProject = onAddProject,
+                onRemoveProject = onRemoveProject,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 外部导入
+// ---------------------------------------------------------------------------------------------
+
+/** 外部导入首页：其他 App 的来源列表；点来源直接进向导（来源预选）。 */
+@Composable
+private fun ExternalImportPage(
+    onOpenImporter: (String) -> Unit,
+    onGoBackup: () -> Unit,
+) {
+    SettingsPageList {
+        item("intro") {
+            SectionCard(
+                title = "从其他 App 导入",
+                subtitle = "只新增记录，不覆盖现有数据",
+            ) {
+                Text(
+                    text = "支持小熊油耗、钱迹记账导出的文件；导入前建议先做一次完整备份。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                TextButton(onClick = onGoBackup) {
+                    Text("先去备份")
+                }
+            }
+        }
+
+        item("sources") {
+            SectionCard(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+            ) {
+                SettingsMenuRow(
+                    icon = MileNoteIcons.CategoryFuel,
+                    title = "小熊油耗",
+                    subtitle = "XLS / XLSX · 加油记录转油费，按满箱法统计",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = { onOpenImporter("bear") },
+                    subtitleMaxLines = 2,
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Wallet,
+                    title = "钱迹记账",
+                    subtitle = "TXT / JSON / CSV · 支出记录转费用，可自动完成保养待办",
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    onClick = { onOpenImporter("qianji") },
+                    subtitleMaxLines = 2,
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Share,
+                    title = "从其他 App 分享",
+                    subtitle = "在钱迹等 App 里选「分享到里程志」，会自动识别并预览",
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = null,
+                    showChevron = false,
+                )
+            }
+        }
+
+        item("note") {
+            Text(
+                text = "导入的记录会标记来源；重复记录按现有合并规则处理（合并或跳过）；" +
+                    "表格文件上限 10 MB，只在本机解析，不会上传。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 备份与还原
+// ---------------------------------------------------------------------------------------------
+
+/** 备份与还原：导出（JSON / CSV）、还原（JSON）、危险区。 */
+@Composable
+private fun BackupRestorePage(
+    carsCount: Int,
+    recordsCount: Int,
+    demo: Boolean,
+    loadError: String?,
+    busy: Boolean,
+    message: SettingsMessage?,
+    onExportBackup: () -> Unit,
+    onExportCsv: () -> Unit,
+    onImportBackup: () -> Unit,
+    onDeleteAll: () -> Unit,
+    onExitDemo: () -> Unit,
+    onDismissMessage: () -> Unit,
+) {
+    SettingsPageList {
+        if (loadError != null || demo || message != null) {
+            item("messages") {
+                SettingsMessageArea(
+                    loadError = loadError,
+                    demo = demo,
+                    message = message,
+                    onExitDemo = onExitDemo,
+                    onDismissMessage = onDismissMessage,
+                )
+            }
+        }
+
+        item("status") {
+            SectionCard(title = "账本") {
+                Text(
+                    text = "$carsCount 辆车 · $recordsCount 条记录",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "数据只保存在本机；JSON 备份包含全部车辆、图片与提醒，可跨设备还原。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item("export") {
+            SectionCard(title = "导出") {
+                SettingsActionRow(
+                    icon = MileNoteIcons.Export,
+                    title = "导出完整备份（JSON）",
+                    subtitle = "全部车辆、图片、费用与保养提醒；可跨设备还原",
+                    enabled = !busy,
+                    onClick = onExportBackup,
+                    trailing = {
+                        if (busy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    },
+                )
+                SectionDivider()
+                SettingsActionRow(
+                    icon = MileNoteIcons.Download,
+                    title = "导出费用 CSV",
+                    subtitle = "当前车辆全部记录 · UTF-8，可用 Excel 打开；仅查看，不能还原",
+                    enabled = !busy,
+                    onClick = onExportCsv,
+                )
+            }
+        }
+
+        item("restore") {
+            SectionCard(title = "还原") {
+                SettingsActionRow(
+                    icon = MileNoteIcons.Import,
+                    title = "从 JSON 备份还原",
+                    subtitle = "只合并新增记录，不覆盖现有数据；单个文件 ≤ 30 MB",
+                    enabled = !busy,
+                    onClick = onImportBackup,
+                )
+            }
+        }
+
+        item("danger") {
+            SectionCard(title = "危险区") {
+                SettingsActionRow(
+                    icon = MileNoteIcons.Delete,
+                    title = "删除全部数据",
+                    subtitle = "清空所有车辆与记录，需输入「删除」确认；建议先导出备份",
+                    danger = true,
+                    onClick = onDeleteAll,
+                )
+            }
+        }
+
+        item("note") {
+            Text(
+                text = "JSON 是备份，可以还原；CSV 是报表，只用于查看和对账，不能还原。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 关于
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-private fun DataSection(
-    carsCount: Int,
-    recordsCount: Int,
-    activeName: String,
+private fun AboutPage(
     demo: Boolean,
-    busy: Boolean,
-    onExportBackup: () -> Unit,
-    onShareBackup: () -> Unit,
-    onExportCsv: () -> Unit,
-    onImportBackup: () -> Unit,
-    onOpenImporter: () -> Unit,
     onToggleDemo: () -> Unit,
-    onDeleteAll: () -> Unit,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    SectionCard(
-        title = "账本与数据",
-        subtitle = "数据保存在本机 · 备份为版本 2 JSON，可导出后跨设备恢复",
-    ) {
-        Text(
-            text = "共 $carsCount 辆车 · $recordsCount 条记录 · 当前车辆：$activeName",
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(8.dp))
+    val context = LocalContext.current
+    fun openLink(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
 
-        SettingsActionRow(
-            icon = MileNoteIcons.Export,
-            title = "导出完整备份",
-            subtitle = "全部车辆、图片、费用与保养提醒（JSON）",
-            enabled = !busy,
-            onClick = onExportBackup,
-            trailing = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (busy) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    IconButton(onClick = onShareBackup, enabled = !busy) {
+    SettingsPageList {
+        item("app") {
+            SectionCard {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Icon(
-                            imageVector = MileNoteIcons.Share,
-                            contentDescription = "分享完整备份",
-                            modifier = Modifier.size(20.dp),
-                            tint = scheme.onSurfaceVariant,
+                            imageVector = MileNoteIcons.Car,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("里程志", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text = "MileNote · 汽车助手",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-            },
-        )
-        SectionDivider()
+                Spacer(modifier = Modifier.size(12.dp))
+                AboutRow(
+                    label = "版本",
+                    value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                )
+            }
+        }
 
-        SettingsActionRow(
-            icon = MileNoteIcons.Download,
-            title = "导出费用 CSV",
-            subtitle = "当前车辆全部记录 · UTF-8（Excel 可直接打开）",
-            enabled = !busy,
-            onClick = onExportCsv,
-        )
-        SectionDivider()
+        item("links") {
+            SectionCard(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+            ) {
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Forward,
+                    title = "官网",
+                    subtitle = "selwiro.github.io/MileNoteAndroid",
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = { openLink("https://selwiro.github.io/MileNoteAndroid/") },
+                    showChevron = false,
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Forward,
+                    title = "GitHub 仓库",
+                    subtitle = "github.com/Selwiro/MileNoteAndroid",
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = { openLink("https://github.com/Selwiro/MileNoteAndroid") },
+                    showChevron = false,
+                )
+            }
+        }
 
-        SettingsActionRow(
-            icon = MileNoteIcons.Import,
-            title = "导入备份",
-            subtitle = "从 JSON 备份恢复；只合并新增记录，不覆盖现有数据",
-            enabled = !busy,
-            onClick = onImportBackup,
-        )
-        SectionDivider()
+        item("demo") {
+            SectionCard {
+                SettingsActionRow(
+                    icon = MileNoteIcons.Sparkle,
+                    title = if (demo) "退出演示账本" else "体验演示账本",
+                    subtitle = if (demo) {
+                        "当前为内置样例数据，修改不会保存；返回你的真实车库"
+                    } else {
+                        "用内置样例体验多车、换肤与导入（不写入真实账本）"
+                    },
+                    onClick = onToggleDemo,
+                )
+            }
+        }
 
-        SettingsActionRow(
-            icon = MileNoteIcons.Records,
-            title = "导入账单 / 保养台账",
-            subtitle = "小熊油耗、钱迹记账、Excel / CSV 保养手册",
-            onClick = onOpenImporter,
-        )
-        SectionDivider()
+        item("note") {
+            SectionCard(title = "本机数据说明") {
+                Text(
+                    text = "账本只保存在本机应用存储中；导入导出的文件由你自行选择存放位置，不会上传服务器。" +
+                        "里程、油耗与成本口径与 Web 版一致（满箱法、区间归属、油费来源冲突处理）。" +
+                        "界面基于 Material 3 Expressive，图标为里程志自绘线描集。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
-        SettingsActionRow(
-            icon = MileNoteIcons.Sparkle,
-            title = if (demo) "退出演示账本" else "演示账本",
-            subtitle = if (demo) {
-                "当前为内置样例数据，修改不会保存；返回你的真实车库"
-            } else {
-                "用内置样例体验多车、换肤与导入（不写入真实账本）"
-            },
-            onClick = onToggleDemo,
+@Composable
+private fun AboutRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(88.dp),
         )
-        SectionDivider()
-
-        SettingsActionRow(
-            icon = MileNoteIcons.Delete,
-            title = "删除全部数据",
-            subtitle = "清空所有车辆与记录，需输入「删除」确认；建议先导出备份",
-            danger = true,
-            onClick = onDeleteAll,
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-/** 数据区的一行动作：图标 + 标题 + 说明 + 尾部（默认箭头）。 */
+// ---------------------------------------------------------------------------------------------
+// 通用行与分隔线
+// ---------------------------------------------------------------------------------------------
+
+/** 数据区的一行动作：图标 + 标题 + 说明；动作行不带 chevron（进入子页才用 chevron）。 */
 @Composable
 private fun SettingsActionRow(
     icon: ImageVector,
@@ -1109,16 +1428,7 @@ private fun SettingsActionRow(
                 )
             }
         }
-        if (trailing != null) {
-            trailing()
-        } else {
-            Icon(
-                imageVector = MileNoteIcons.ChevronRight,
-                contentDescription = null,
-                tint = scheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        trailing?.invoke()
     }
 }
 
@@ -1130,85 +1440,4 @@ private fun SectionDivider() {
         thickness = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant,
     )
-}
-
-// ---------------------------------------------------------------------------------------------
-// 关于
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-private fun AboutSection(recordCount: Int) {
-    val scheme = MaterialTheme.colorScheme
-    SectionCard(title = "关于") {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(scheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = MileNoteIcons.Car,
-                    contentDescription = null,
-                    tint = scheme.onPrimaryContainer,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("里程志", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    text = "MileNote · 汽车助手",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(modifier = Modifier.size(12.dp))
-        AboutRow(label = "版本", value = BuildConfig.VERSION_NAME)
-        AboutRow(label = "包名", value = BuildConfig.APPLICATION_ID)
-        AboutRow(label = "本机记录", value = "$recordCount 条费用记录")
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp)
-                .clip(MaterialTheme.shapes.medium)
-                .background(scheme.surfaceContainerHigh)
-                .padding(12.dp),
-        ) {
-            Text(
-                text = "账本只保存在本机应用存储中；导入导出的文件由你自行选择存放位置，不会上传服务器。" +
-                    "里程、油耗与成本口径与 Web 版一致（满箱法、区间归属、油费来源冲突处理）。" +
-                    "界面基于 Material 3 Expressive，图标为里程志自绘线描集。",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun AboutRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(88.dp),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }

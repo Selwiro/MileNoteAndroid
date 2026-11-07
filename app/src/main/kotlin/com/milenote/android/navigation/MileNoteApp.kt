@@ -59,11 +59,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavType
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.format.Format
 import com.milenote.android.ui.MileNoteViewModel
@@ -114,7 +116,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
 
     // 从系统分享进入时自动打开导入向导（ImportWizard 会消费 sharedImport 并直接预览）。
     LaunchedEffect(state.sharedImport) {
-        if (state.sharedImport != null && currentRoute != Routes.IMPORTER) {
+        if (state.sharedImport != null && currentRoute != Routes.IMPORTER_PATTERN) {
             navController.navigate(Routes.IMPORTER)
         }
     }
@@ -223,13 +225,22 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     SettingsScreen(
                         vm = vm,
                         onNavigate = { navController.navigate(it) },
-                        onOpenImporter = { source -> navController.navigate(Routes.IMPORTER) },
+                        onOpenImporter = { source -> navController.navigate(Routes.importerRoute(source)) },
                     )
                 }
-                composable(Routes.IMPORTER) {
+                composable(
+                    route = Routes.IMPORTER_PATTERN,
+                    arguments = listOf(
+                        navArgument("source") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) { entry ->
                     com.milenote.android.ui.screens.importer.ImportWizardScreen(
                         vm = vm,
-                        initialSource = null,
+                        initialSource = entry.arguments?.getString("source"),
                         onClose = { navController.popBackStack() },
                     )
                 }

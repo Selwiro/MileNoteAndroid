@@ -6,13 +6,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -69,34 +72,24 @@ private const val PROJECT_LIBRARY_NOTE =
     "项目用于记账时快速多选；删除项目不会修改已有记录，历史记录里的项目文字保持原样。"
 
 /**
- * 费用分类与项目（设置 →「费用分类与项目」子页）。
+ * 费用分类与项目（设置 → 该子页的页签内容）。
  *
- * 1. **费用分类**：9 类内置分类只读展示（分类色点 + 类别图标 + 名称 +「内置」小标）；
- *    自定义分类可删除（调用方负责 `vm.confirm` 二次确认）与新增。
- * 2. **项目库**：按 保养 / 维修 / 汽车美容 / 保险 四组展示内置项目（只读）与自定义项目
- *    （可删除），每组可新增当前车辆的该项目。
+ * 由调用方在页面顶部固定「当前车辆」提示与 [tab] 页签；本组件只渲染当前页签的可滚动内容：
+ * - `tab == 0`：费用分类（内置 9 类只读 + 自定义分类增删）；
+ * - `tab == 1`：项目库（保养/维修/汽车美容/保险四组，内置只读、自定义增删）。
  *
- * 分类与项目都按车辆隔离（存于当前 [Ledger]），页面顶部显示当前车辆名以便理解作用范围。
- *
- * @param ledger 当前车辆账本（自定义分类 / 项目库来源）；为 null 时只显示内置项。
- * @param themeId 当前皮肤 id（用于取 Web 口径的分类色 `Categories.color`）。
- * @param vehicleName 当前车辆昵称（作用范围提示）。
- * @param onAddCategory 新增自定义费用分类。
- * @param onRemoveCategory 删除自定义费用分类（调用方已做二次确认）。
- * @param onAddProject 分类下新增自定义项目。
- * @param onRemoveProject 分类下删除自定义项目。
+ * 分类与项目都按车辆隔离（存于当前 [Ledger]）。
  */
 @Composable
 internal fun ExpenseCategoriesPage(
+    tab: Int,
     ledger: Ledger?,
     themeId: String,
-    vehicleName: String,
     onAddCategory: (String) -> Unit,
     onRemoveCategory: (String) -> Unit,
     onAddProject: (category: String, name: String) -> Unit,
     onRemoveProject: (category: String, name: String) -> Unit,
 ) {
-    val scheme = MaterialTheme.colorScheme
     val customCategories = remember(ledger?.customCategories) {
         ledger?.customCategories.orEmpty()
             .map { it.trim() }
@@ -108,88 +101,146 @@ internal fun ExpenseCategoriesPage(
     // 当前打开的「新增分类 / 新增项目」弹层；null 表示关闭。
     var addTarget by remember { mutableStateOf<AddNameTarget?>(null) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(MileNoteDimens.SectionGap)) {
-        SectionCard(
-            title = "费用分类",
-            subtitle = "内置 ${Categories.ALL.size} 类固定不变；自定义分类只影响记账时的可选项",
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = MileNoteDimens.PageHorizontal,
+                end = MileNoteDimens.PageHorizontal,
+                top = MileNoteDimens.CardGap,
+                bottom = MileNoteDimens.PageBottom,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MileNoteDimens.SectionGap),
         ) {
-            Text(
-                text = "当前车辆：${vehicleName.ifBlank { "我的爱车" }}",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+            item(key = "tab-$tab") {
+                if (tab == 1) {
+                    ProjectsCard(
+                        projectsByCategory = projectsByCategory,
+                        onRequestAdd = { addTarget = it },
+                        onAddProject = onAddProject,
+                        onRemoveProject = onRemoveProject,
+                    )
+                } else {
+                    CategoriesCard(
+                        themeId = themeId,
+                        customCategories = customCategories,
+                        onRequestAdd = { addTarget = it },
+                        onRemoveCategory = onRemoveCategory,
+                        onAddCategory = onAddCategory,
+                    )
+                }
+            }
+        }
+
+        addTarget?.let { target ->
+            AddNameDialog(
+                target = target,
+                onDismiss = { addTarget = null },
             )
-            Spacer(modifier = Modifier.size(8.dp))
+        }
+    }
+}
 
-            Categories.ALL.forEachIndexed { index, name ->
-                if (index > 0) CategoryDivider()
-                BuiltinCategoryRow(
-                    name = name,
-                    color = parseCategoryColor(Categories.color(themeId, name), scheme.primary),
-                    icon = MileNoteIcons.Category.getOrNull(index),
-                )
-            }
+/** 费用分类页签：9 类内置分类（只读）+ 自定义分类（可删）+ 新增入口。 */
+@Composable
+private fun CategoriesCard(
+    themeId: String,
+    customCategories: List<String>,
+    onRequestAdd: (AddNameTarget) -> Unit,
+    onRemoveCategory: (String) -> Unit,
+    onAddCategory: (String) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    SectionCard {
+        Text(
+            text = "内置 ${Categories.ALL.size} 类固定不变；自定义分类只影响记账时的可选项。",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Categories.ALL.forEachIndexed { index, name ->
+            if (index > 0) CategoryDivider()
+            BuiltinCategoryRow(
+                name = name,
+                color = parseCategoryColor(Categories.color(themeId, name), scheme.primary),
+                icon = MileNoteIcons.Category.getOrNull(index),
+            )
+        }
 
-            customCategories.forEach { name ->
-                CategoryDivider()
-                CustomCategoryRow(
-                    name = name,
-                    color = parseCategoryColor(Categories.color(themeId, name), scheme.primary),
-                    onRemove = { onRemoveCategory(name) },
-                )
-            }
+        customCategories.forEach { name ->
+            CategoryDivider()
+            CustomCategoryRow(
+                name = name,
+                color = parseCategoryColor(Categories.color(themeId, name), scheme.primary),
+                onRemove = { onRemoveCategory(name) },
+            )
+        }
 
-            Spacer(modifier = Modifier.size(12.dp))
-            FilledTonalButton(
-                onClick = {
-                    addTarget = AddNameTarget(
+        Spacer(modifier = Modifier.size(12.dp))
+        FilledTonalButton(
+            onClick = {
+                onRequestAdd(
+                    AddNameTarget(
                         title = "新增费用分类",
                         label = "分类名称",
                         placeholder = "例如：充电费、洗车卡",
                         existing = (Categories.ALL + customCategories).toSet(),
-                        onAdd = { value ->
-                            onAddCategory(value)
-                            addTarget = null
-                        },
-                    )
-                },
-                shape = MileNoteShapeTokens.full,
-                modifier = Modifier.heightIn(min = MileNoteDimens.ButtonMinHeight),
-            ) {
-                Icon(
-                    imageVector = MileNoteIcons.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
+                        onAdd = { value -> onAddCategory(value) },
+                    ),
                 )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text("新增费用分类")
-            }
-            Spacer(modifier = Modifier.size(8.dp))
-            Text(
-                text = "内置分类不可删除；自定义分类删除后，已有记录的分类与金额不受影响。",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-            )
-        }
-
-        SectionCard(
-            title = "项目库",
-            subtitle = "记账时按分类快速多选；当前车辆「${vehicleName.ifBlank { "我的爱车" }}」",
+            },
+            shape = MileNoteShapeTokens.full,
+            modifier = Modifier.heightIn(min = MileNoteDimens.ButtonMinHeight),
         ) {
-            ProjectCategories.forEachIndexed { index, category ->
-                if (index > 0) CategoryDivider()
-                ProjectGroupBlock(
-                    category = category,
-                    builtin = builtinProjects(category),
-                    custom = projectsByCategory[category].orEmpty()
+            Icon(
+                imageVector = MileNoteIcons.Add,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            Text("新增费用分类")
+        }
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = "内置分类不可删除；自定义分类删除后，已有记录的分类与金额不受影响。",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 项目库页签：四组项目，内置只读 + 自定义删除 + 分组新增。 */
+@Composable
+private fun ProjectsCard(
+    projectsByCategory: Map<String, List<String>>,
+    onRequestAdd: (AddNameTarget) -> Unit,
+    onAddProject: (category: String, name: String) -> Unit,
+    onRemoveProject: (category: String, name: String) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    SectionCard {
+        Text(
+            text = "记账时按分类快速多选，新增只影响当前车辆。",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        ProjectCategories.forEachIndexed { index, category ->
+            if (index > 0) CategoryDivider()
+            ProjectGroupBlock(
+                category = category,
+                builtin = builtinProjects(category),
+                custom = projectsByCategory[category].orEmpty()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() && it !in builtinProjects(category) }
+                    .distinct(),
+                onAdd = {
+                    val existing = (builtinProjects(category) + projectsByCategory[category].orEmpty())
                         .map { it.trim() }
-                        .filter { it.isNotEmpty() && it !in builtinProjects(category) }
-                        .distinct(),
-                    onAdd = {
-                        val existing = (builtinProjects(category) + projectsByCategory[category].orEmpty())
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .toSet()
-                        addTarget = AddNameTarget(
+                        .filter { it.isNotEmpty() }
+                        .toSet()
+                    onRequestAdd(
+                        AddNameTarget(
                             title = "新增${category}项目",
                             label = "项目名称",
                             placeholder = when (category) {
@@ -199,28 +250,18 @@ internal fun ExpenseCategoriesPage(
                                 else -> "例如：正时皮带检查"
                             },
                             existing = existing,
-                            onAdd = { value ->
-                                onAddProject(category, value)
-                                addTarget = null
-                            },
-                        )
-                    },
-                    onRemove = { name -> onRemoveProject(category, name) },
-                )
-            }
-            Spacer(modifier = Modifier.size(8.dp))
-            Text(
-                text = PROJECT_LIBRARY_NOTE,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+                            onAdd = { value -> onAddProject(category, value) },
+                        ),
+                    )
+                },
+                onRemove = { name -> onRemoveProject(category, name) },
             )
         }
-    }
-
-    addTarget?.let { target ->
-        AddNameDialog(
-            target = target,
-            onDismiss = { addTarget = null },
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = PROJECT_LIBRARY_NOTE,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
         )
     }
 }
@@ -524,7 +565,10 @@ private fun AddNameDialog(
                     when {
                         trimmed.isEmpty() -> error = "请填写名称"
                         trimmed in target.existing -> error = "已存在同名项"
-                        else -> target.onAdd(trimmed)
+                        else -> {
+                            target.onAdd(trimmed)
+                            onDismiss()
+                        }
                     }
                 },
                 shape = MileNoteShapeTokens.full,
