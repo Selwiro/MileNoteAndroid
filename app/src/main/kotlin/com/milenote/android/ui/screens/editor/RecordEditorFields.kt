@@ -349,7 +349,7 @@ private fun CompactFuelGradeDropdown(
             onClick = { expanded = true },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp),
+                .height(48.dp),
             shape = MileNoteShapes.medium,
             contentPadding = PaddingValues(horizontal = 8.dp),
         ) {
