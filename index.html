@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>里程志 MileNote · 本地优先的多车用车账本（Android）</title>
-  <meta name="description" content="里程志 MileNote 是本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养提醒、小票识别与完整数据导出。无需账号，账本只存在你的手机里。Android 原生 App，Material 3 Expressive。">
+  <meta name="description" content="里程志 MileNote 是本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养方案、小票识别与完整数据导出。无需账号，账本只存在你的手机里。Android 原生 App，Material 3 Expressive。">
   <meta name="keywords" content="里程志,MileNote,用车账本,汽车账本,油耗记录,满箱法,保养提醒,私家车记账,Android,本地优先">
   <meta name="author" content="MileNote">
   <meta name="robots" content="index,follow">
@@ -13,16 +13,18 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="里程志 MileNote">
   <meta property="og:title" content="里程志 MileNote · 一辆车，一本账">
-  <meta property="og:description" content="本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养提醒。无需账号，数据只存在本机。">
+  <meta property="og:description" content="本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养方案。无需账号，数据只存在本机。">
   <meta property="og:url" content="https://selwiro.github.io/MileNoteAndroid/">
   <meta property="og:image" content="https://selwiro.github.io/MileNoteAndroid/assets/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="里程志 MileNote：一辆车，一本账。Android 本地优先用车账本">
   <meta property="og:locale" content="zh_CN">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="里程志 MileNote · 一辆车，一本账">
-  <meta name="twitter:description" content="本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养提醒。无需账号，数据只存在本机。">
+  <meta name="twitter:description" content="本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养方案。无需账号，数据只存在本机。">
   <meta name="twitter:image" content="https://selwiro.github.io/MileNoteAndroid/assets/og.png">
+  <meta name="twitter:image:alt" content="里程志 MileNote：一辆车，一本账。Android 本地优先用车账本">
 
   <meta name="theme-color" content="#F7FAFB" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0E1316" media="(prefers-color-scheme: dark)">
@@ -63,8 +65,8 @@
     "softwareVersion": "0.27.0",
     "inLanguage": "zh-CN",
     "url": "https://selwiro.github.io/MileNoteAndroid/",
-    "downloadUrl": "https://github.com/Selwiro/MileNoteAndroid/releases/latest",
-    "description": "本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养提醒、小票识别与完整数据导出；无需账号，账本只存在本机。",
+    "downloadUrl": "https://github.com/Selwiro/MileNoteAndroid/releases/download/v0.27.0/milenote-0.27.0-android.apk",
+    "description": "本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养方案、小票识别与完整数据导出；无需账号，账本只存在本机。",
     "screenshot": "https://selwiro.github.io/MileNoteAndroid/assets/screens/dashboard.webp"
   }
   </script>
@@ -129,7 +131,7 @@
         <div class="hero-copy">
           <p class="hero-badge reveal"><span class="pulse-dot"></span>Android 原生 · Material 3 Expressive</p>
           <h1 id="hero-title" class="reveal" data-delay="1">一辆车，<br><span class="hl">一本账</span>。</h1>
-          <p class="lede reveal" data-delay="2">把油费、保养和每一公里，记成一本看得懂的账。九类费用、满箱法油耗、12 项保养提醒——账本默认只存在你的手机里。</p>
+          <p class="lede reveal" data-delay="2">把油费、保养和每一公里，记成一本看得懂的账。九类费用、满箱法油耗、12 项保养方案——账本默认只存在你的手机里。</p>
           <div class="hero-actions reveal" data-delay="2">
             <a class="btn btn-primary btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases/download/v0.27.0/milenote-0.27.0-android.apk">
               <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
@@ -156,7 +158,7 @@
           </div>
           <div class="float-card float-a">
             <span class="float-label">平均油耗</span>
-            <strong>6.25 <small>L/100km</small></strong>
+            <strong>6.25 <small>升/百公里</small></strong>
           </div>
           <div class="float-card float-b">
             <span class="float-label">每公里</span>
@@ -255,7 +257,7 @@
           <div class="tour-head">
             <p class="eyebrow reveal"><b>03</b><span>界面巡览</span></p>
             <h2 id="tour-title" class="reveal" data-delay="1">从记一笔，<br>到看懂每一公里。</h2>
-            <p class="sec-lede reveal" data-delay="2">截图来自 Android 0.27.0 的内置演示账本，数据为合成示例。点左侧条目切换，点账单可看大图。</p>
+            <p class="sec-lede reveal" data-delay="2">截图来自 Android 0.27.0 的内置演示账本，数据为合成示例。点左侧条目切换，点手机截图可看大图。</p>
           </div>
 
           <div class="tour-stage reveal" data-delay="1">
@@ -272,32 +274,32 @@
                 </span>
               </span>
             </button>
-            <p class="stage-caption" aria-live="polite">记一笔：分类、金额、日期、里程与加油字段一屏填完</p>
+            <p class="stage-caption" aria-live="polite">记一笔（记录加油）：分类图标网格置顶，金额、日期、里程与加油字段一屏填完，金额栏可直接拍照识别小票</p>
             <p class="stage-hint">点按截图查看大图 · 大图内可用 ← → 切换</p>
           </div>
 
           <div class="tour-tabs" role="group" aria-label="界面列表">
-            <button class="tour-tab is-active" type="button" data-key="editor" data-caption="记一笔：分类图标网格置顶，金额、日期、里程与加油字段一屏填完，金额栏可直接拍照识别小票" aria-pressed="true">
+            <button class="tour-tab is-active" type="button" data-key="editor" data-caption="记一笔（记录加油）：分类图标网格置顶，金额、日期、里程与加油字段一屏填完，金额栏可直接拍照识别小票" aria-pressed="true">
               <span class="tab-no">01</span>
               <span class="tab-body"><strong>记一笔</strong><span class="tab-sub">分类 · 金额 · 里程 · 加油</span></span>
             </button>
-            <button class="tour-tab" type="button" data-key="records" data-caption="费用明细：按月分组，显示共 N 条记录与筛选合计，搜索 + 时间/分类筛选，支持导出 CSV" aria-pressed="false">
+            <button class="tour-tab" type="button" data-key="records" data-caption="费用统计 · 明细：按月分组，显示共 N 条记录与筛选合计，搜索 + 时间/分类筛选，支持导出 CSV" aria-pressed="false">
               <span class="tab-no">02</span>
               <span class="tab-body"><strong>费用明细</strong><span class="tab-sub">按月分组 · 搜索与筛选</span></span>
             </button>
-            <button class="tour-tab" type="button" data-key="analytics" data-caption="费用统计：按月堆叠柱状图看支出趋势，环图看费用构成，9 个分类占比一目了然" aria-pressed="false">
+            <button class="tour-tab" type="button" data-key="analytics" data-caption="费用统计 · 统计：按月堆叠柱状图看支出趋势，环图看费用构成，九类费用占比一目了然" aria-pressed="false">
               <span class="tab-no">03</span>
               <span class="tab-body"><strong>费用统计</strong><span class="tab-sub">趋势柱状图 · 费用构成</span></span>
             </button>
-            <button class="tour-tab" type="button" data-key="fuel" data-caption="油耗分析：满箱法综合油耗、平均油费、油耗走势与今日油价（含下次调价日期）" aria-pressed="false">
+            <button class="tour-tab" type="button" data-key="fuel" data-caption="油耗分析：满箱法平均油耗、平均油费、油耗走势与今日油价（含下次调价日期）" aria-pressed="false">
               <span class="tab-no">04</span>
-              <span class="tab-body"><strong>油耗分析</strong><span class="tab-sub">综合油耗 · 走势 · 油价</span></span>
+              <span class="tab-body"><strong>油耗分析</strong><span class="tab-sub">平均油耗 · 走势 · 油价</span></span>
             </button>
             <button class="tour-tab" type="button" data-key="maintenance" data-caption="维修保养：12 项方案表格化，日期在上、里程在下，按到期临近度排序，点行可完成并记录" aria-pressed="false">
               <span class="tab-no">05</span>
               <span class="tab-body"><strong>维修保养</strong><span class="tab-sub">12 项方案 · 先到为准</span></span>
             </button>
-            <button class="tour-tab" type="button" data-key="settings" data-caption="设置与外观：五套皮肤 × 跟随系统/浅色/深色，当前皮肤实时预览" aria-pressed="false">
+            <button class="tour-tab" type="button" data-key="settings" data-caption="设置 · 外观：五套皮肤 × 跟随系统/浅色/深色，当前皮肤实时预览" aria-pressed="false">
               <span class="tab-no">06</span>
               <span class="tab-body"><strong>设置与外观</strong><span class="tab-sub">5 套皮肤 · 浅色 / 深色</span></span>
             </button>
@@ -378,7 +380,7 @@
           <article class="cap reveal" data-delay="1">
             <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17.5 9a3.5 3.5 0 0 1-.5 9H7Z"/><path d="M12 12v5m0 0 2-2m-2 2-2-2"/></svg></span>
             <h3>备份与导出</h3>
-            <p>完整 JSON 备份与还原、当前车辆 CSV 导出；可选 WebDAV（坚果云 / Nextcloud / 群晖），密码加密保存，只在前台手动同步。</p>
+            <p>完整 JSON 备份与还原、当前车辆 CSV 导出；可选 WebDAV（坚果云 / Nextcloud / 群晖），密码加密保存；同步只在前台进行，可手动上传 / 下载，也可开启前台自动同步。</p>
           </article>
           <article class="cap reveal" data-delay="2">
             <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M10.5 18.5h3"/><path d="M4 8.5v7M20 8.5v7"/></svg></span>
@@ -414,7 +416,7 @@
             </article>
             <article class="privacy-item reveal" data-delay="3">
               <h3><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17.5 9a3.5 3.5 0 0 1-.5 9H7Z"/><path d="m9.5 13 1.8 1.8L15 11"/></svg>WebDAV 可选</h3>
-              <p>同步到你自己提供的 WebDAV；连接密码用 Android Keystore + AES-256-GCM 加密保存。同步仅在前台进行，退出即结束。</p>
+              <p>同步到你自己提供的 WebDAV；连接密码用 Android Keystore + AES-256-GCM 加密保存。同步只在前台进行，可手动上传 / 下载或开启前台自动同步，退出即结束。</p>
             </article>
           </div>
 
@@ -427,7 +429,7 @@
             <span class="flow-arrow" aria-hidden="true"></span>
             <div class="flow-node is-key">
               <strong>手机私有目录</strong>
-              <small>ledger.json · 原子写入</small>
+              <small>garage.json · 原子写入</small>
             </div>
             <span class="flow-arrow" aria-hidden="true"><em>可选</em></span>
             <div class="flow-node">
@@ -519,11 +521,11 @@
           </details>
           <details class="reveal" data-delay="2">
             <summary>为什么没有系统通知提醒？</summary>
-            <p>这是有意的取舍：不做后台常驻与通知权限，保养到期只在 App 内「待办事项」提示；需要时可以导出 .ics 日历文件到系统日历。</p>
+            <p>这是有意的取舍：不做后台常驻与通知权限，保养到期只在 App 内「爱车待办」与保养计划里提示；需要时可以导出 .ics 日历文件到系统日历。</p>
           </details>
             <details class="reveal">
               <summary>数据会不会丢？</summary>
-              <p>账本采用原子写入，卸载应用前会提示导出备份；更换设备、清理数据前请先导出 JSON。已配置 WebDAV 的还可以从远端恢复。</p>
+              <p>账本采用原子写入；但卸载应用会清空应用私有目录，卸载、换机或清理数据前请务必先导出完整 JSON 备份。已配置 WebDAV 的还可以从远端恢复。</p>
             </details>
           </div>
 
