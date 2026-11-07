@@ -38,6 +38,7 @@ import com.milenote.android.domain.model.blankLedger
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.calc.completeImportedServices
+import com.milenote.android.domain.calc.duplicateOf
 import com.milenote.android.domain.calc.mergeFuelBatch
 import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.import.ImportItem
@@ -571,25 +572,44 @@ class MileNoteViewModel(
      * 合并账单导入结果；[fuelBasis] 非空时按整批油费口径处理（bear/qianji/both）。
      * 钱迹新增的保养记录会自动完成匹配的待办（与 Web 一致）。
      */
-    fun applyImport(items: List<ImportItem>, fuelBasis: String? = null) {
+    fun applyImport(
+        items: List<ImportItem>,
+        fuelBasis: String? = null,
+        overwriteDuplicates: Boolean = false,
+    ) {
         viewModelScope.launch {
             try {
                 var added = 0
                 var merged = 0
                 var skipped = 0
+                var overwritten = 0
                 var completedServices = 0
                 repository.update(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
-                        val result = if (fuelBasis != null) {
-                            mergeFuelBatch(ledger.records, items, fuelBasis)
+                        // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据作为新记录写回。
+                        val baseRecords = if (overwriteDuplicates) {
+                            val kept = ledger.records.toMutableList()
+                            items.filter { it.isValid }.forEach { item ->
+                                val old = duplicateOf(kept, item.record)
+                                if (old != null) {
+                                    kept.removeAll { it.id == old.id }
+                                    overwritten++
+                                }
+                            }
+                            kept.toList()
                         } else {
-                            mergeImported(ledger.records, items)
+                            ledger.records
+                        }
+                        val result = if (fuelBasis != null) {
+                            mergeFuelBatch(baseRecords, items, fuelBasis)
+                        } else {
+                            mergeImported(baseRecords, items)
                         }
                         added = result.added
                         merged = result.merged
                         skipped = result.skipped
                         val newIds = result.records
-                            .filter { r -> ledger.records.none { it.id == r.id } }
+                            .filter { r -> baseRecords.none { it.id == r.id } }
                             .map { it.id }
                         val serviceResult = completeImportedServices(
                             ledger.copy(records = result.records),
@@ -603,8 +623,9 @@ class MileNoteViewModel(
                     }
                 }
                 val extra = if (completedServices > 0) " · 自动完成 $completedServices 项保养" else ""
+                val overwriteText = if (overwritten > 0) " · 覆盖 $overwritten" else ""
                 _state.value = _state.value.copy(
-                    message = "导入完成：新增 $added · 合并 $merged · 跳过 $skipped$extra",
+                    message = "导入完成：新增 $added · 合并 $merged · 跳过 $skipped$overwriteText$extra",
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(message = "导入失败：${e.message}")

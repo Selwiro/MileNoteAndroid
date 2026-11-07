@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.calc.fillFuelAmounts
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.SERVICE_CATEGORIES
@@ -71,6 +72,9 @@ internal class RecordEditorState(
     var projects by mutableStateOf(splitProjects(original?.projects))
     var newProjects by mutableStateOf("")
     var draftCategories by mutableStateOf<List<String>>(emptyList())
+
+    /** 上一次由自动计算填出来的油费字段（用户手改后移除）。 */
+    private val autoFuelFields = mutableSetOf<String>()
 
     // ---- 弹层 / 校验状态 ----
     var showErrors by mutableStateOf(false)
@@ -215,6 +219,7 @@ internal class RecordEditorState(
                 filled += "总里程"
             }
         }
+        if (isFuel) autoFillFuel()
         ocrWarnings = receipt.warnings
         ocrNotice = if (filled.isEmpty()) {
             "未识别到可回填字段，请手动填写。"
@@ -223,10 +228,49 @@ internal class RecordEditorState(
         }
     }
 
+    /** 用户手动改了某个油费字段：取消它的自动填充标记并重算空白项。 */
+    fun onFuelFieldChanged(field: String) {
+        if (!isFuel) return
+        autoFuelFields.remove(field)
+        autoFillFuel()
+    }
+
+    /**
+     * 油费字段联动：加油量 × 油价 = 应付金额，应付金额 - 优惠金额 = 实付金额。
+     * 只补空字段或上一次自动填出来的字段，不覆盖用户手写内容。
+     */
+    private fun autoFillFuel() {
+        if (!isFuel) return
+        // 自动填过的字段先置空再重算，避免输入变化后沿用旧的派生值。
+        val seed = Record(
+            category = "油费",
+            amount = Numbers.parse(amount) ?: 0.0,
+            liters = Numbers.parse(liters),
+            unitPrice = Numbers.parse(unitPrice).takeUnless { "unitPrice" in autoFuelFields },
+            payable = Numbers.parse(payable).takeUnless { "payable" in autoFuelFields },
+            discount = Numbers.parse(discount).takeUnless { "discount" in autoFuelFields },
+        )
+        val filled = fillFuelAmounts(seed)
+        applyAuto("liters", liters, filled.liters) { liters = it }
+        applyAuto("unitPrice", unitPrice, filled.unitPrice) { unitPrice = it }
+        applyAuto("payable", payable, filled.payable) { payable = it }
+        applyAuto("discount", discount, filled.discount) { discount = it }
+    }
+
+    private fun applyAuto(field: String, current: String, next: Double?, set: (String) -> Unit) {
+        if (next == null) return
+        val text = Numbers.jsString(next)
+        if (text == current) return
+        if (current.isBlank() || field in autoFuelFields) {
+            set(text)
+            autoFuelFields.add(field)
+        }
+    }
+
     /** 构造待保存的 [Record]（不修改原记录）。 */
     fun buildRecord(): Record {
         val base = original ?: Record(id = recordId, kind = if (isManual) "manual" else "expense")
-        return base.copy(
+        val record = base.copy(
             id = original?.id ?: recordId,
             date = date,
             category = effectiveCategory,
@@ -253,6 +297,7 @@ internal class RecordEditorState(
             kind = if (isManual) "manual" else "expense",
             time = null,
         )
+        return fillFuelAmounts(record)
     }
 
     /**

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -275,6 +276,7 @@ private fun WizardStepBar(currentStep: Int) {
 
 @Composable
 private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
+    var showDuplicatePrompt by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -306,7 +308,15 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                             Text("上一步")
                         }
                         Button(
-                            onClick = { wizard.confirm() },
+                            onClick = {
+                                if (wizard.source != ImportSource.BACKUP &&
+                                    wizard.duplicateTableCount() > 0
+                                ) {
+                                    showDuplicatePrompt = true
+                                } else {
+                                    wizard.confirm()
+                                }
+                            },
                             modifier = Modifier
                                 .weight(2f)
                                 .heightIn(min = MileNoteDimens.ButtonMinHeight),
@@ -327,6 +337,39 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showDuplicatePrompt) {
+        AlertDialog(
+            onDismissRequest = { showDuplicatePrompt = false },
+            title = { Text("发现重复记录") },
+            text = {
+                Text(
+                    "有 ${wizard.duplicateTableCount()} 条记录与现有账本重复：忽略会跳过这些行，" +
+                        "覆盖会用导入数据替换原记录。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDuplicatePrompt = false
+                        wizard.confirm(overwriteDuplicates = true)
+                    },
+                ) {
+                    Text("覆盖原记录")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDuplicatePrompt = false
+                        wizard.confirm(overwriteDuplicates = false)
+                    },
+                ) {
+                    Text("忽略重复")
+                }
+            },
+        )
     }
 }
 
@@ -702,7 +745,7 @@ private fun TableStatsCard(wizard: ImportWizardState) {
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "勾选要导入的行；带错误的行不可导入。「有效」包含重复行，重复行由合并判重自动跳过，" +
+            text = "勾选要导入的行；带错误的行不可导入。「有效」包含重复行，确认时可选择忽略或覆盖；" +
                 "确认后的结果以「导入完成」提示为准；仅显示前 $PREVIEW_ROW_LIMIT 行。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -727,7 +770,7 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
     val checked = canSelect && !item.exclude
     val note = when {
         hasError -> item.error
-        duplicate -> "与现有账本重复，将自动跳过"
+        duplicate -> "与现有账本重复，确认时选择忽略或覆盖"
         !item.record.note.isNullOrBlank() -> item.record.note.orEmpty()
         else -> "可导入"
     }

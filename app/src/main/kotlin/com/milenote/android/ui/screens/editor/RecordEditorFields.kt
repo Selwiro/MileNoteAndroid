@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -25,6 +27,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,7 +71,10 @@ internal fun AmountField(
     val error = form.amountError()
     OutlinedTextField(
         value = form.amount,
-        onValueChange = { form.amount = it },
+        onValueChange = {
+            form.amount = it
+            form.onFuelFieldChanged("amount")
+        },
         modifier = modifier.fillMaxWidth(),
         textStyle = MaterialTheme.typography.moneyLarge,
         label = {
@@ -249,63 +255,17 @@ internal fun FuelFields(
     form: RecordEditorState,
     modifier: Modifier = Modifier,
 ) {
-    var gradeMenu by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            FormField(
-                value = fuelGradeLabel(form.fuelGrade),
-                onValueChange = {},
-                label = "燃油标号",
-                readOnly = true,
-                trailing = {
-                    Icon(
-                        imageVector = MileNoteIcons.ChevronDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                },
-            )
-            Spacer(
-                modifier = Modifier
-                    .matchParentSize()
-                    .clickable(
-                        onClickLabel = "选择燃油标号",
-                        role = Role.Button,
-                    ) { gradeMenu = true },
-            )
-            DropdownMenu(
-                expanded = gradeMenu,
-                onDismissRequest = { gradeMenu = false },
-            ) {
-                FuelGradeOptions.forEach { grade ->
-                    DropdownMenuItem(
-                        text = { Text(fuelGradeLabel(grade)) },
-                        onClick = {
-                            form.fuelGrade = grade
-                            gradeMenu = false
-                        },
-                        trailingIcon = if (form.fuelGrade == grade) {
-                            {
-                                Icon(
-                                    imageVector = MileNoteIcons.Check,
-                                    contentDescription = "已选中",
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                    )
-                }
-            }
-        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FormField(
                 value = form.liters,
-                onValueChange = { form.liters = it },
+                onValueChange = {
+                    form.liters = it
+                    form.onFuelFieldChanged("liters")
+                },
                 label = "加油量",
                 suffix = "升",
                 keyboardType = KeyboardType.Decimal,
@@ -313,7 +273,10 @@ internal fun FuelFields(
             )
             FormField(
                 value = form.unitPrice,
-                onValueChange = { form.unitPrice = it },
+                onValueChange = {
+                    form.unitPrice = it
+                    form.onFuelFieldChanged("unitPrice")
+                },
                 label = "油价",
                 suffix = "元/升",
                 keyboardType = KeyboardType.Decimal,
@@ -323,7 +286,10 @@ internal fun FuelFields(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FormField(
                 value = form.payable,
-                onValueChange = { form.payable = it },
+                onValueChange = {
+                    form.payable = it
+                    form.onFuelFieldChanged("payable")
+                },
                 label = "应付金额",
                 suffix = "元",
                 keyboardType = KeyboardType.Decimal,
@@ -331,26 +297,92 @@ internal fun FuelFields(
             )
             FormField(
                 value = form.discount,
-                onValueChange = { form.discount = it },
+                onValueChange = {
+                    form.discount = it
+                    form.onFuelFieldChanged("discount")
+                },
                 label = "优惠金额",
                 suffix = "元",
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FuelGradeDropdown(
+                form = form,
+                modifier = Modifier.width(96.dp),
+            )
             CheckRow(
-                label = "本次已加满",
+                label = "已加满",
                 checked = form.full,
                 onCheckedChange = { form.full = it },
                 modifier = Modifier.weight(1f),
             )
             CheckRow(
-                label = "此前有漏记",
+                label = "有漏记",
                 checked = form.missed,
                 onCheckedChange = { form.missed = it },
                 modifier = Modifier.weight(1f),
             )
+        }
+    }
+}
+
+/** 紧凑燃油标号下拉（不占整行，塞进「加满 / 漏记」这一行）。 */
+@Composable
+private fun FuelGradeDropdown(
+    form: RecordEditorState,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            shape = MileNoteShapes.medium,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+        ) {
+            Text(
+                text = fuelGradeLabel(form.fuelGrade),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = MileNoteIcons.ChevronDown,
+                contentDescription = "燃油标号",
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            FuelGradeOptions.forEach { grade ->
+                DropdownMenuItem(
+                    text = { Text(fuelGradeLabel(grade)) },
+                    onClick = {
+                        form.fuelGrade = grade
+                        expanded = false
+                    },
+                    trailingIcon = if (form.fuelGrade == grade) {
+                        {
+                            Icon(
+                                imageVector = MileNoteIcons.Check,
+                                contentDescription = "已选中",
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
         }
     }
 }

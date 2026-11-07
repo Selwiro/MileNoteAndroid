@@ -480,11 +480,18 @@ private fun ReminderCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(text = reminder.title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = Format.reminderDeadline(reminder, state),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
+                    // 日期行 / 里程行各自单行省略：不换行，超宽时在卡片右侧截断。
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Format.reminderDeadline(reminder, state).split('\n').forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
                 StatusPill(
                     text = reminderLevelLabel(state.level),
@@ -966,70 +973,69 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CategoryBadge(categoryName = record.category)
+        // 左侧三行保持紧凑；文字过多时单行省略，不换行。
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
-            // 第一行：日期（左）与金额（右）顶部对齐；金额不参与挤压，日期过长时截断。
-            Row(verticalAlignment = Alignment.Top) {
-                Text(
-                    text = buildString {
-                        append(fullDateLabel(record.date))
-                        record.odometer?.let {
-                            append(" · ")
-                            append(Format.km(it))
-                        }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                MoneyText(
-                    amount = Format.money(record.amount),
-                    size = MoneySize.SMALL,
-                    unit = "元",
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            // 项目：主信息，字号更大、颜色更深。
+            Text(
+                text = buildString {
+                    append(fullDateLabel(record.date))
+                    record.odometer?.let {
+                        append(" · ")
+                        append(Format.km(it))
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = projects ?: record.category,
                 style = MaterialTheme.typography.titleMedium,
                 color = scheme.onSurface,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // 第三行：地点（空显示「-」）与编辑按钮垂直居中；铅笔缩小到 32dp 避免撑高行。
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = location,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+            Text(
+                text = location,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // 右列：金额严格与日期顶部平齐；铅笔贴住地点行下沿。
+        Column(
+            modifier = Modifier.fillMaxHeight(),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            MoneyText(
+                amount = Format.money(record.amount),
+                size = MoneySize.MEDIUM,
+                unit = "元",
+            )
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .clickable(onClickLabel = "编辑") { onClick() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MileNoteIcons.Edit,
+                    contentDescription = "编辑",
+                    modifier = Modifier.size(16.dp),
+                    tint = scheme.primary,
                 )
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .clickable(onClickLabel = "编辑") { onClick() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = MileNoteIcons.Edit,
-                        contentDescription = "编辑",
-                        modifier = Modifier.size(16.dp),
-                        tint = scheme.primary,
-                    )
-                }
             }
         }
     }

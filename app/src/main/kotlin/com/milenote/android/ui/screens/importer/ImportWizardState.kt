@@ -527,7 +527,7 @@ internal class ImportWizardState(
 
     // ---------- 确认 ----------
 
-    fun confirm() {
+    fun confirm(overwriteDuplicates: Boolean = false) {
         if (busy) return
         val src = source ?: return
         val currentLedger = ledger
@@ -561,14 +561,18 @@ internal class ImportWizardState(
                         val merge = withContext(Dispatchers.Default) {
                             mergeFuelBatch(currentLedger?.records.orEmpty(), items, fuelBasis)
                         }
-                        vm.applyImport(items, fuelBasis)
+                        vm.applyImport(items, fuelBasis, overwriteDuplicates)
                         result = WizardResult(
-                            title = "导入已提交",
-                            lines = listOf(
-                                "新增 ${merge.added} 条",
-                                "合并 ${merge.merged} 条",
-                                "跳过 ${merge.skipped} 条",
-                            ),
+                            title = if (overwriteDuplicates) "导入已提交（覆盖重复）" else "导入已提交",
+                            lines = if (overwriteDuplicates) {
+                                listOf("重复记录已按覆盖方式替换原记录")
+                            } else {
+                                listOf(
+                                    "新增 ${merge.added} 条",
+                                    "合并 ${merge.merged} 条",
+                                    "跳过 ${merge.skipped} 条",
+                                )
+                            },
                             note = "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",
                         )
                     }
