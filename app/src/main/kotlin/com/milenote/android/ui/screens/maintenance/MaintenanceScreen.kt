@@ -362,7 +362,6 @@ private fun ServiceHistoryFlatList(
         records.forEachIndexed { index, record ->
             ServiceHistoryCard(
                 record = record,
-                isLast = index == records.lastIndex,
                 onClick = { onEdit(record) },
             )
             if (index != records.lastIndex) FlatDivider()
@@ -959,15 +958,14 @@ private fun progressSummary(progress: ServiceProgress): String {
 }
 
 @Composable
-private fun ServiceHistoryCard(record: Record, isLast: Boolean, onClick: () -> Unit) {
+private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val projects = record.projects?.takeIf { it.isNotBlank() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = if (isLast) 0.dp else 2.dp)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
             CategoryBadge(categoryName = record.category)
