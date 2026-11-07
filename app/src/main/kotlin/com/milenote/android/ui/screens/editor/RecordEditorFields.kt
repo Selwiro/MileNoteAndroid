@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -310,110 +311,83 @@ internal fun FuelFields(
                 modifier = Modifier.weight(1f),
             )
         }
-        // 三个控件等宽：燃油标号（下拉）+ 已加满 + 有漏记，避免一挤一松。
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(modifier = Modifier.weight(1f)) {
-                var expanded by remember { mutableStateOf(false) }
-                FuelPill(
-                    label = fuelGradeLabel(form.fuelGrade),
-                    selected = false,
-                    onClick = { expanded = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    trailing = {
-                        Icon(
-                            imageVector = MileNoteIcons.ChevronDown,
-                            contentDescription = "燃油标号",
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
-                )
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false },
-                ) {
-                    FuelGradeOptions.forEach { grade ->
-                        DropdownMenuItem(
-                            text = { Text(fuelGradeLabel(grade)) },
-                            onClick = {
-                                form.fuelGrade = grade
-                                expanded = false
-                            },
-                            trailingIcon = if (form.fuelGrade == grade) {
-                                {
-                                    Icon(
-                                        imageVector = MileNoteIcons.Check,
-                                        contentDescription = "已选中",
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                }
-            }
-            FuelPill(
-                label = "已加满",
-                selected = form.full,
-                onClick = { form.full = !form.full },
-                modifier = Modifier.weight(1f),
+        // 方案 3：两个勾选按自然宽度靠左，燃油标号紧凑下拉靠右。
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CheckRow(
+                label = "本次加满",
+                checked = form.full,
+                onCheckedChange = { form.full = it },
+                fillWidth = false,
             )
-            FuelPill(
-                label = "有漏记",
-                selected = form.missed,
-                onClick = { form.missed = !form.missed },
-                modifier = Modifier.weight(1f),
+            CheckRow(
+                label = "此前漏记",
+                checked = form.missed,
+                onCheckedChange = { form.missed = it },
+                fillWidth = false,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            CompactFuelGradeDropdown(
+                form = form,
+                modifier = Modifier.width(78.dp),
             )
         }
     }
 }
 
-/** 油费行里的等宽胶囊控件（下拉 / 勾选共用同一版式）。 */
+/** 紧凑燃油标号下拉（方案 3：靠右，不占整行）。 */
 @Composable
-private fun FuelPill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun CompactFuelGradeDropdown(
+    form: RecordEditorState,
     modifier: Modifier = Modifier,
-    trailing: (@Composable () -> Unit)? = null,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick,
-        modifier = modifier.height(44.dp),
-        shape = MileNoteShapes.medium,
-        color = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
-        contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) scheme.primary else scheme.outlineVariant,
-        ),
-    ) {
-        Row(
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        OutlinedButton(
+            onClick = { expanded = true },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+                .height(40.dp),
+            shape = MileNoteShapes.medium,
+            contentPadding = PaddingValues(horizontal = 8.dp),
         ) {
-            if (selected) {
-                Icon(
-                    imageVector = MileNoteIcons.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-            }
             Text(
-                text = label,
+                text = form.fuelGrade,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
-            if (trailing != null) {
-                Spacer(modifier = Modifier.width(2.dp))
-                trailing()
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = MileNoteIcons.ChevronDown,
+                contentDescription = "燃油标号",
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            FuelGradeOptions.forEach { grade ->
+                DropdownMenuItem(
+                    text = { Text(fuelGradeLabel(grade)) },
+                    onClick = {
+                        form.fuelGrade = grade
+                        expanded = false
+                    },
+                    trailingIcon = if (form.fuelGrade == grade) {
+                        {
+                            Icon(
+                                imageVector = MileNoteIcons.Check,
+                                contentDescription = "已选中",
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
             }
         }
     }
@@ -589,10 +563,11 @@ internal fun CheckRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    fillWidth: Boolean = true,
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
+            .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
             .toggleable(
                 value = checked,
                 role = Role.Checkbox,
