@@ -312,7 +312,9 @@ internal fun FuelFields(
             )
         }
         // 方案 3：两个勾选按自然宽度靠左，燃油标号紧凑下拉靠右。
+        // 上下各加 8dp，和「优惠金额」及「备注」拉开呼吸感，同时保持上下对称。
         Row(
+            modifier = Modifier.padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
