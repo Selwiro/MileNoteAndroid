@@ -965,8 +965,8 @@ private fun ServiceHistoryCard(record: Record, isLast: Boolean, onClick: () -> U
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = if (isLast) 2.dp else 10.dp)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(bottom = if (isLast) 0.dp else 2.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
