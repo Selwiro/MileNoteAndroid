@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -69,6 +70,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.BuildConfig
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
+import com.milenote.android.data.update.UpdateCheckResult
+import com.milenote.android.data.update.UpdateChecker
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.currentKm
 import com.milenote.android.domain.format.Format
@@ -108,6 +111,13 @@ private data class SettingsMessage(
     val kind: MessageKind,
     val actionLabel: String? = null,
     val onAction: (() -> Unit)? = null,
+)
+
+/** 检查更新的结果弹层。 */
+private data class UpdateDialogState(
+    val title: String,
+    val message: String,
+    val link: String?,
 )
 
 /** 正在编辑的车辆：`id == null` 表示新增。 */
@@ -1226,8 +1236,46 @@ private fun AboutPage(
     onToggleDemo: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var updateDialog by remember { mutableStateOf<UpdateDialogState?>(null) }
+
     fun openLink(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    fun checkForUpdates() {
+        if (checkingUpdate) return
+        checkingUpdate = true
+        scope.launch {
+            val result = UpdateChecker.check(BuildConfig.VERSION_NAME)
+            checkingUpdate = false
+            updateDialog = when (result) {
+                is UpdateCheckResult.Available -> UpdateDialogState(
+                    title = "发现新版本 ${result.info.version}",
+                    message = buildString {
+                        if (result.info.notes.isNotBlank()) {
+                            append(result.info.notes.trim())
+                            append("\n\n")
+                        }
+                        append("是否前往 GitHub 下载最新 APK？")
+                    },
+                    link = result.info.apkUrl ?: result.info.pageUrl,
+                )
+
+                UpdateCheckResult.UpToDate -> UpdateDialogState(
+                    title = "已是最新版本",
+                    message = "当前版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) 已是最新。",
+                    link = null,
+                )
+
+                is UpdateCheckResult.Failed -> UpdateDialogState(
+                    title = "检查更新失败",
+                    message = result.message,
+                    link = null,
+                )
+            }
+        }
     }
 
     SettingsPageList {
@@ -1264,6 +1312,26 @@ private fun AboutPage(
                 AboutRow(
                     label = "版本",
                     value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                SettingsActionRow(
+                    icon = MileNoteIcons.Download,
+                    title = "检查更新",
+                    subtitle = if (checkingUpdate) {
+                        "正在检查 GitHub…"
+                    } else {
+                        "当前 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+                    },
+                    enabled = !checkingUpdate,
+                    onClick = { checkForUpdates() },
+                    trailing = {
+                        if (checkingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    },
                 )
             }
         }
@@ -1318,6 +1386,39 @@ private fun AboutPage(
                 )
             }
         }
+    }
+
+    updateDialog?.let { dialog ->
+        AlertDialog(
+            onDismissRequest = { updateDialog = null },
+            title = { Text(dialog.title) },
+            text = { Text(dialog.message) },
+            confirmButton = {
+                if (dialog.link != null) {
+                    TextButton(
+                        onClick = {
+                            openLink(dialog.link)
+                            updateDialog = null
+                        },
+                    ) {
+                        Text("去下载")
+                    }
+                } else {
+                    TextButton(onClick = { updateDialog = null }) {
+                        Text("关闭")
+                    }
+                }
+            },
+            dismissButton = if (dialog.link != null) {
+                {
+                    TextButton(onClick = { updateDialog = null }) {
+                        Text("稍后")
+                    }
+                }
+            } else {
+                null
+            },
+        )
     }
 }
 
