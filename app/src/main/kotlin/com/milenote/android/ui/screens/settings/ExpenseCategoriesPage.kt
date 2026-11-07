@@ -107,7 +107,7 @@ internal fun ExpenseCategoriesPage(
             contentPadding = PaddingValues(
                 start = MileNoteDimens.PageHorizontal,
                 end = MileNoteDimens.PageHorizontal,
-                top = MileNoteDimens.CardGap,
+                top = 6.dp,
                 bottom = MileNoteDimens.PageBottom,
             ),
             verticalArrangement = Arrangement.spacedBy(MileNoteDimens.SectionGap),

@@ -479,7 +479,7 @@ fun SettingsScreen(
                         item("vehicles-header") {
                             SectionHeader(
                                 title = "车辆列表",
-                                subtitle = "共 ${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录 · 点按卡片切换当前车辆",
+                                subtitle = "共 ${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录 · 点按卡片进入编辑",
                                 actionLabel = "添加车辆",
                                 actionIcon = MileNoteIcons.Add,
                                 onAction = { openVehicleEditor(null) },
@@ -503,16 +503,7 @@ fun SettingsScreen(
                                         VehicleCard(
                                             ledger = car,
                                             selected = car.id == activeId,
-                                            onSelect = {
-                                                if (car.id != activeId) {
-                                                    vm.selectVehicle(car.id)
-                                                    notify(
-                                                        "已切换到 ${car.vehicle.name.ifBlank { "我的爱车" }}",
-                                                        MessageKind.INFO,
-                                                    )
-                                                }
-                                            },
-                                            onEdit = { openVehicleEditor(car.id) },
+                                            onClick = { openVehicleEditor(car.id) },
                                         )
                                     }
                                 }
@@ -521,8 +512,8 @@ fun SettingsScreen(
 
                         item("vehicles-hint") {
                             Text(
-                                text = "点按卡片切换当前车辆；卡片右上角可编辑昵称、里程、提车日期与图片，" +
-                                    "也可删除车辆。删除车辆会一并移除该车的费用、提醒与保养记录。",
+                                text = "点按车辆卡片进入编辑；可修改昵称、里程、提车日期与图片，也可删除车辆。" +
+                                    "删除车辆会一并移除该车的费用、提醒与保养记录。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -651,7 +642,7 @@ private fun SettingsPageList(
             contentPadding = PaddingValues(
                 start = horizontal,
                 end = horizontal,
-                top = 8.dp,
+                top = MileNoteDimens.CardGap,
                 bottom = MileNoteDimens.PageBottom,
             ),
             verticalArrangement = Arrangement.spacedBy(MileNoteDimens.SectionGap),
@@ -771,8 +762,7 @@ private fun appearanceSummary(appTheme: AppTheme, settings: AppSettings): String
 private fun VehicleCard(
     ledger: Ledger,
     selected: Boolean,
-    onSelect: () -> Unit,
-    onEdit: () -> Unit,
+    onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val vehicle = ledger.vehicle
@@ -782,7 +772,7 @@ private fun VehicleCard(
         .ifBlank { "未填写车牌 / 车型" }
 
     Surface(
-        onClick = onSelect,
+        onClick = onClick,
         shape = MaterialTheme.shapes.large,
         color = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
         contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
@@ -821,13 +811,6 @@ private fun VehicleCard(
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = onEdit) {
-                    Icon(
-                        imageVector = MileNoteIcons.MoreVert,
-                        contentDescription = "编辑 ${vehicle.name.ifBlank { "车辆" }}",
-                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -1026,7 +1009,8 @@ private fun CategoryTabsPage(
             modifier = Modifier.padding(
                 start = MileNoteDimens.PageHorizontal,
                 end = MileNoteDimens.PageHorizontal,
-                top = 6.dp,
+                top = MileNoteDimens.CardGap,
+                bottom = 6.dp,
             ),
         )
         SecondaryTabs(
@@ -1285,9 +1269,7 @@ private fun AboutPage(
         }
 
         item("links") {
-            SectionCard(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
-            ) {
+            SectionCard {
                 SettingsMenuRow(
                     icon = MileNoteIcons.Forward,
                     title = "官网",

@@ -479,7 +479,7 @@ private fun MonthHeader(month: String, records: List<Record>, ledger: Ledger) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -558,7 +558,7 @@ private fun RecordRowCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = MileNoteDimens.RowMinHeightTwoLine)
-                .padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {

@@ -164,7 +164,7 @@ private fun DashboardContent(
         contentPadding = PaddingValues(
             start = MileNoteDimens.PageHorizontal,
             end = MileNoteDimens.PageHorizontal,
-            top = 8.dp,
+            top = MileNoteDimens.CardGap,
             bottom = MileNoteDimens.PageBottom,
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),

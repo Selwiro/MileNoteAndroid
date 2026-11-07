@@ -242,7 +242,7 @@ internal fun VehicleEditorDialog(
                         start = MileNoteDimens.PageHorizontal,
                         end = MileNoteDimens.PageHorizontal,
                         top = 16.dp,
-                        bottom = 32.dp,
+                        bottom = MileNoteDimens.PageBottom,
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
