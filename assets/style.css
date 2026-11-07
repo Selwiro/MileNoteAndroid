@@ -26,7 +26,7 @@
   --brand-soft: #dceaf3;
   --brand-soft-2: #edf4f8;
   --grad: linear-gradient(118deg, #20394a 0%, #446378 52%, #7e9eaf 100%);
-  --grad-text: linear-gradient(118deg, #20394a 0%, #446378 52%, #7e9eaf 100%);
+  --grad-text: linear-gradient(118deg, #1d3546 0%, #3a5b70 52%, #5f8499 100%);
   --gold: #8f6239;
 
   --btn-bg: #223c4c;
@@ -79,6 +79,19 @@
   --shadow-phone: 0 50px 100px -46px rgba(0, 0, 0, 0.9), 0 14px 36px -20px rgba(0, 0, 0, 0.6);
   --shadow-pop: 0 22px 48px -26px rgba(0, 0, 0, 0.75);
   color-scheme: dark;
+}
+
+/* ---------- 工具类 ---------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---------- reset ---------- */
@@ -991,7 +1004,7 @@ h1, h2, h3, h4, p { margin: 0; }
   border: 1px solid rgba(255, 255, 255, 0.13);
 }
 .flow-node strong { display: block; font-size: 14.5px; font-weight: 680; color: #ffffff; }
-.flow-node small { display: block; font-size: 12px; color: rgba(226, 238, 244, 0.55); margin-top: 2px; }
+.flow-node small { display: block; font-size: 12px; color: rgba(226, 238, 244, 0.68); margin-top: 2px; }
 .flow-node.is-key {
   border-color: rgba(156, 192, 212, 0.5);
   background: rgba(126, 158, 175, 0.16);
@@ -1022,7 +1035,7 @@ h1, h2, h3, h4, p { margin: 0; }
   white-space: nowrap;
   font-style: normal;
   font-size: 11px;
-  color: rgba(226, 238, 244, 0.45);
+  color: rgba(226, 238, 244, 0.62);
 }
 .flow-dead {
   display: flex;
@@ -1033,10 +1046,10 @@ h1, h2, h3, h4, p { margin: 0; }
   padding: 12px 16px;
   border: 1px dashed rgba(255, 255, 255, 0.22);
   border-radius: 12px;
-  color: rgba(226, 238, 244, 0.42);
+  color: rgba(226, 238, 244, 0.6);
 }
 .flow-dead span { font-size: 13.5px; text-decoration: line-through; }
-.flow-dead small { font-size: 11.5px; }
+.flow-dead small { font-size: 11.5px; color: rgba(226, 238, 244, 0.58); }
 
 .privacy-note {
   margin-top: clamp(28px, 4vw, 40px);
@@ -1125,9 +1138,9 @@ h1, h2, h3, h4, p { margin: 0; }
   width: 100%;
   padding: 6px 24px;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(10px);
+  background: rgba(9, 23, 32, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(12px);
 }
 .spec-list div {
   display: flex;
@@ -1135,17 +1148,17 @@ h1, h2, h3, h4, p { margin: 0; }
   justify-content: space-between;
   gap: 18px;
   padding: 13px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
 }
 .spec-list div:last-child { border-bottom: 0; }
-.spec-list dt { font-size: 13px; color: rgba(235, 244, 249, 0.72); white-space: nowrap; }
+.spec-list dt { font-size: 13px; color: rgba(235, 244, 249, 0.88); white-space: nowrap; }
 .spec-list dd { font-size: 14px; font-weight: 650; text-align: right; }
 .tag {
   display: inline-block;
   margin-left: 4px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.06em;
@@ -1239,15 +1252,15 @@ h1, h2, h3, h4, p { margin: 0; }
 .footer-brand { display: flex; align-items: center; gap: 14px; }
 .footer-brand img { width: 44px; height: 44px; border-radius: 12px; }
 .footer-brand strong { font-size: 17px; font-weight: 750; }
-.footer-brand p { font-size: 13.5px; color: rgba(230, 238, 243, 0.58); margin-top: 3px; }
+.footer-brand p { font-size: 13.5px; color: rgba(230, 238, 243, 0.66); margin-top: 3px; }
 .footer-cols { display: flex; gap: clamp(36px, 6vw, 72px); }
 .footer-cols div { display: flex; flex-direction: column; gap: 9px; }
-.footer-cols h4 {
+.footer-cols h3 {
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(230, 238, 243, 0.45);
+  color: rgba(230, 238, 243, 0.62);
   margin-bottom: 4px;
 }
 .footer-cols a { font-size: 14px; color: rgba(230, 238, 243, 0.76); transition: color 0.2s ease; }
@@ -1261,7 +1274,7 @@ h1, h2, h3, h4, p { margin: 0; }
   padding-top: 22px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 12.5px;
-  color: rgba(230, 238, 243, 0.48);
+  color: rgba(230, 238, 243, 0.62);
 }
 
 /* ---------- lightbox ---------- */

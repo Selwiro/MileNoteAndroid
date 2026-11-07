@@ -18,7 +18,7 @@
     root.dataset.theme = theme;
     document.querySelectorAll('.theme-toggle').forEach(function (btn) {
       btn.setAttribute('aria-pressed', String(theme === 'dark'));
-      btn.setAttribute('aria-label', theme === 'dark' ? '切换到浅色模式' : '切换到深色模式');
+      btn.setAttribute('aria-label', '深色模式');
     });
     paintThemeMeta(theme);
     if (persist) {
@@ -69,6 +69,11 @@
       });
       menu.addEventListener('click', function (event) {
         if (event.target.closest('a')) setOpen(false);
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape' || menu.hidden) return;
+        setOpen(false);
+        toggle.focus();
       });
       window.addEventListener('resize', function () {
         if (window.innerWidth > 900 && !menu.hidden) setOpen(false);
