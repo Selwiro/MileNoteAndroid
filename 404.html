@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>页面走丢了 · 里程志 MileNote</title>
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#F7FAFB" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E1316" media="(prefers-color-scheme: dark)">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('milenote-theme');
+        var theme = stored === 'dark' || stored === 'light'
+          ? stored
+          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+      } catch (e) { document.documentElement.dataset.theme = 'light'; }
+    })();
+  </script>
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="assets/style.css">
