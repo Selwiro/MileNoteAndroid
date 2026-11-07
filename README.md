@@ -64,7 +64,7 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 ## 测试
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 186 项领域 + 31 项 app 测试
+./gradlew :domain:test :app:testDebugUnitTest  # 191 项领域 + 31 项 app 测试
 ./gradlew :app:assembleDebug                   # 构建 + 编译检查
 ```
 
@@ -77,7 +77,7 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 | `.../ui/screens/` | 总览 / 记录 / 记一笔 / 油耗 / 保养 / 车辆与设置 / 导入向导 / OCR |
 | `.../data/garage/` | 账本 JSON 快照（原子写入）、演示模式、备份恢复 |
 | `.../platform/` | OCR 识别、CSV/ICS/备份导出、SAF/分享 |
-| `domain/src/main/kotlin/.../domain/` | Web 同源的算法/备份/导入/OCR 解析（186 tests） |
+| `domain/src/main/kotlin/.../domain/` | Web 同源的算法/备份/导入/OCR 解析（191 tests） |
 | `keystore/` | 自签发布密钥与口令文件（**不入库**，需单独备份） |
 
 ## 说明
