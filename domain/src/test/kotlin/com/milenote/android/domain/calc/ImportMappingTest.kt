@@ -56,6 +56,27 @@ class ImportMappingTest {
     }
 
     @Test
+    fun `bear payable discount and unit price fill missing amounts`() {
+        val headers = listOf("日期时间", "加油量", "油价", "应付金额", "优惠金额", "实付金额")
+        val items = normalizeImport(
+            listOf(
+                listOf("2026-01-01", 40, 7.5, 300, 20, null),
+                listOf("2026-01-02", 40, null, null, null, 300),
+            ),
+            detectMap(headers),
+            "bear",
+        )
+        val first = items[0].record
+        assertEquals(280.0, first.amount, 1e-9)
+        assertEquals(7.5, first.unitPrice!!, 1e-9)
+        assertEquals(300.0, first.payable!!, 1e-9)
+        val second = items[1].record
+        assertEquals(7.5, second.unitPrice!!, 1e-9)
+        assertEquals(300.0, second.payable!!, 1e-9)
+        assertEquals(0.0, second.discount!!, 1e-9)
+    }
+
+    @Test
     fun `bear rate without liters becomes manual record`() {
         val headers = listOf("日期", "油耗", "金额")
         val items = normalizeImport(

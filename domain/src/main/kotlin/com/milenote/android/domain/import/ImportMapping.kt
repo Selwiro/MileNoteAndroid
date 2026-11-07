@@ -2,6 +2,7 @@ package com.milenote.android.domain.import
 
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.calc.fillFuelAmounts
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.validateRecord
@@ -39,6 +40,9 @@ val FIELDS: Map<String, List<String>> = linkedMapOf(
     "date" to listOf("日期时间", "日期", "时间", "date", "交易时间"),
     "category" to listOf("分类", "类别", "category", "一级分类"),
     "amount" to listOf("实付金额", "金额", "money", "支出金额", "机显金额"),
+    "payable" to listOf("应付金额", "应付", "原价", "应收金额"),
+    "discount" to listOf("优惠金额", "优惠", "折扣", "减免"),
+    "unitPrice" to listOf("油价", "单价", "油单价", "元/升", "价格"),
     "odometer" to listOf("总里程", "里程", "公里数", "odometer"),
     "liters" to listOf("加油量", "油量", "升数", "liters"),
     "full" to listOf("加满", "是否加满", "full"),
@@ -115,6 +119,9 @@ fun importRows(
         amount = amount ?: 0.0,
         odometer = Numbers.parse(rawCell(row, map, "odometer")),
         liters = Numbers.parse(rawCell(row, map, "liters")),
+        unitPrice = Numbers.parse(rawCell(row, map, "unitPrice")),
+        payable = Numbers.parse(rawCell(row, map, "payable")),
+        discount = Numbers.parse(rawCell(row, map, "discount")),
         rate = Numbers.parse(rawCell(row, map, "rate")),
         distance = Numbers.parse(rawCell(row, map, "distance")),
         full = FULL_TRUE.matches(textCell(row, map, "full").trim()),
@@ -125,6 +132,8 @@ fun importRows(
     if ((record.rate ?: 0.0) > 0 && (record.liters ?: 0.0) == 0.0) {
         record = record.copy(kind = "manual")
     }
+    // 小熊/钱迹新导出可能只有部分金额字段，空白项按「量×价=应付，应付-优惠=实付」补齐。
+    record = fillFuelAmounts(record)
     val error = if (TYPE_SKIP.containsMatchIn(type)) {
         "非支出记录，已跳过"
     } else {
