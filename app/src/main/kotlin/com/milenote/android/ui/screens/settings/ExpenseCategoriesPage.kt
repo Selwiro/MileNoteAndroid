@@ -610,7 +610,7 @@ private fun CategoryDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(vertical = 2.dp),
         thickness = 1.dp,
-        color = MaterialTheme.colorScheme.outlineVariant,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
     )
 }
 

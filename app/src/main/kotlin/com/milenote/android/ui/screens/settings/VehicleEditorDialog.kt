@@ -236,7 +236,7 @@ internal fun VehicleEditorDialog(
                         Text(tr("保存", "Save"), style = MaterialTheme.typography.labelLarge)
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),

@@ -165,7 +165,7 @@ private enum class SettingsPage {
             APPEARANCE -> tr("外观", "Appearance")
             UNITS -> tr("单位", "Units")
             CATEGORIES -> tr("费用分类与项目", "Categories & items")
-            IMPORT -> tr("外部导入", "Import from other apps")
+            IMPORT -> tr("外部导入", "Import")
             BACKUP -> tr("备份与还原", "Backup & restore")
             WEBDAV -> tr("WebDAV 同步", "WebDAV sync")
             ABOUT -> tr("关于", "About")
@@ -530,7 +530,7 @@ fun SettingsScreen(
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Import,
-                                    title = tr("外部导入", "Import from other apps"),
+                                    title = tr("外部导入", "Import"),
                                     onClick = { pageName = SettingsPage.IMPORT.name },
                                 )
                                 SectionDivider()
@@ -613,18 +613,6 @@ fun SettingsScreen(
                             }
                         }
 
-                        item("vehicles-hint") {
-                            Text(
-                                text = tr(
-                                    "点按车辆卡片进入编辑；可修改昵称、里程、提车日期与图片，也可删除车辆。" +
-                                        "删除车辆会一并移除该车的费用、提醒与保养记录。",
-                                    "Tap a vehicle card to edit its name, mileage, delivery date and image, or to delete it. " +
-                                        "Deleting a vehicle also removes its expenses, reminders and service records.",
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
                     }
 
                     SettingsPage.UNITS -> SettingsPageList {
@@ -796,7 +784,7 @@ private fun SettingsMenuRow(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .padding(vertical = 8.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -1008,51 +996,25 @@ private fun AppearanceSection(
     language: AppLanguage,
     onLanguageChange: (AppLanguage) -> Unit,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    SectionCard {
-        Text(
-            text = tr("只改变配色与显示方式，不影响账本记录。", "Only changes colors and display; ledger records are not affected."),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        Text(tr("界面皮肤", "Theme"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(8.dp))
-        ThemeSwatchRow(selected = appTheme, onSelect = onThemeChange)
-
-        SectionDivider()
-
-        Text(tr("深浅色", "Light / dark"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(8.dp))
-        SegmentedChoiceRow(
-            options = darkModeOptions(),
-            selected = settings.darkMode,
-            onSelect = onDarkModeChange,
-        )
-
-        SectionDivider()
-
-        // 语言：切换后立即生效（tr 读的是 Compose 快照状态，组合会自动重组）。
-        Text(tr("语言", "Language"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(8.dp))
-        SegmentedChoiceRow(
-            options = languageOptions(),
-            selected = language,
-            onSelect = onLanguageChange,
-        )
-
-        SectionDivider()
-
-        SectionDivider()
-
-        Text(
-            text = tr(
-                "皮肤随账本备份；深浅色只存本机，不随备份恢复。",
-                "Theme is kept in the ledger backup; light/dark mode stays on this device and is not restored from backups.",
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(MileNoteDimens.SectionGap)) {
+        SectionCard(title = tr("界面皮肤", "Theme")) {
+            ThemeSwatchRow(selected = appTheme, onSelect = onThemeChange)
+        }
+        SectionCard(title = tr("深浅色", "Light / dark")) {
+            SegmentedChoiceRow(
+                options = darkModeOptions(),
+                selected = settings.darkMode,
+                onSelect = onDarkModeChange,
+            )
+        }
+        SectionCard(title = tr("语言", "Language")) {
+            // 切换后立即生效（tr 读的是 Compose 快照状态，组合会自动重组）。
+            SegmentedChoiceRow(
+                options = languageOptions(),
+                selected = language,
+                onSelect = onLanguageChange,
+            )
+        }
     }
 }
 
@@ -1253,33 +1215,13 @@ private fun CategoryTabsPage(
 // 外部导入
 // ---------------------------------------------------------------------------------------------
 
-/** 外部导入首页：其他 App 的来源列表；点来源直接进向导（来源预选）。 */
+/** 外部导入首页：来源列表；点来源直接进向导（来源预选）。 */
 @Composable
 private fun ExternalImportPage(
     onOpenImporter: (String) -> Unit,
     onGoBackup: () -> Unit,
 ) {
     SettingsPageList {
-        item("intro") {
-            SectionCard(
-                title = tr("从其他 App 导入", "Import from other apps"),
-                subtitle = tr("只新增记录，不覆盖现有数据", "Only adds records; existing data is kept"),
-            ) {
-                Text(
-                    text = tr(
-                        "支持小熊油耗、钱迹记账导出的文件；导入前建议先做一次完整备份。",
-                        "Supports files exported from Bear and Qianji. Export a full backup before importing.",
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                TextButton(onClick = onGoBackup) {
-                    Text(tr("先去备份", "Back up first"))
-                }
-            }
-        }
-
         item("sources") {
             SectionCard(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
@@ -1297,14 +1239,7 @@ private fun ExternalImportPage(
                     subtitle = tr("TXT / JSON / CSV · 导入支出记录", "TXT / JSON / CSV · Import expense records"),
                     onClick = { onOpenImporter("qianji") },
                 )
-                SectionDivider()
-                SettingsMenuRow(
-                    icon = MileNoteIcons.Share,
-                    title = tr("从其他 App 分享", "Share from other apps"),
-                    subtitle = tr("在钱迹等 App 选「分享到里程志」", "Choose “Share to MileNote” in Qianji"),
-                    onClick = null,
-                    showChevron = false,
-                )
+
             }
         }
 
@@ -1412,7 +1347,7 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.FileText,
                     title = tr("导出费用 CSV", "Export expense CSV"),
-                    subtitle = tr("当前车辆记录，可用 Excel 打开", "Current vehicle's records; opens in Excel"),
+                    subtitle = tr("报表仅用于查看和对账", "Report for viewing and reconciling only"),
                     enabled = !busy,
                     onClick = onExportCsv,
                 )
@@ -1449,16 +1384,6 @@ private fun BackupRestorePage(
             }
         }
 
-        item("note") {
-            Text(
-                text = tr(
-                    "JSON 是备份，可以还原；CSV 是报表，只用于查看和对账，不能还原。",
-                    "JSON is a backup and can be restored; CSV is a report for viewing and reconciling only, and cannot be restored.",
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
@@ -1542,17 +1467,12 @@ private fun AboutPage(
                         )
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(tr("里程志", "MileNote"), style = MaterialTheme.typography.titleLarge)
-                            Text(
-                                text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Text(tr("里程志", "MileNote"), style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.size(10.dp))
@@ -1684,7 +1604,7 @@ private fun SettingsActionRow(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1730,6 +1650,6 @@ private fun SectionDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(vertical = 1.dp),
         thickness = 1.dp,
-        color = MaterialTheme.colorScheme.outlineVariant,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
     )
 }

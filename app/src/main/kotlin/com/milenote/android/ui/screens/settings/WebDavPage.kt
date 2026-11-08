@@ -266,7 +266,7 @@ internal fun WebDavPage(
             // 明文 HTTP 只在调试构建放行（release 的 network-security-config 禁止明文）。
             if (BuildConfig.DEBUG) {
                 Spacer(modifier = Modifier.size(8.dp))
-                HorizontalDivider(color = scheme.outlineVariant)
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.45f))
                 Spacer(modifier = Modifier.size(8.dp))
 
                 Row(
@@ -363,7 +363,7 @@ internal fun WebDavPage(
                     WebDavInfoRow(tr("自动同步结果", "Auto sync result"), state.lastAutoSyncResult ?: "—")
                 }
                 Spacer(modifier = Modifier.size(8.dp))
-                HorizontalDivider(color = scheme.outlineVariant)
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.45f))
                 Spacer(modifier = Modifier.size(8.dp))
                 if (state.busy) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
