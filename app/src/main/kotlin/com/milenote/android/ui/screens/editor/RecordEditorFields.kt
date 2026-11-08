@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.icons.MileNoteIcons
@@ -61,7 +62,7 @@ import com.milenote.android.ui.theme.moneyLarge
  */
 
 /**
- * 金额输入：大号 tabular 数字、`¥` 前缀、错误就地显示在下方。
+ * 金额输入：大号 tabular 数字、货币符号前缀、错误就地显示在下方。
  *
  * 打开页面时不自动聚焦（避免一进入就弹输入法）；用户点击输入框才弹键盘。
  *
@@ -86,15 +87,15 @@ internal fun AmountField(
         label = {
             Text(
                 text = if (form.isManual) {
-                    tr("费用金额 · 元（可选）", "Amount · CNY (optional)")
+                    tr("费用金额 · %s（可选）", "Amount · %s (optional)", Units.money)
                 } else {
-                    tr("实付金额 · 元", "Amount paid · CNY")
+                    tr("实付金额 · %s", "Amount paid · %s", Units.money)
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
         },
         prefix = {
-            Text(text = "¥", style = MaterialTheme.typography.labelLarge)
+            Text(text = Units.currencySymbol, style = MaterialTheme.typography.labelLarge)
         },
         isError = error != null,
         supportingText = error?.let {
@@ -252,7 +253,7 @@ internal fun OdometerField(
         value = form.odometer,
         onValueChange = { form.odometer = it },
         label = tr("总里程（选填）", "Odometer (optional)"),
-        suffix = tr("公里", "km"),
+        suffix = Units.distanceUnit,
         keyboardType = KeyboardType.Decimal,
         leadingIcon = MileNoteIcons.Road,
         modifier = modifier,
@@ -277,7 +278,7 @@ internal fun FuelFields(
                     form.onFuelFieldChanged("liters")
                 },
                 label = tr("加油量", "Fuel amount"),
-                suffix = tr("升", "L"),
+                suffix = Units.volumeUnit,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -288,7 +289,7 @@ internal fun FuelFields(
                     form.onFuelFieldChanged("unitPrice")
                 },
                 label = tr("油价", "Unit price"),
-                suffix = tr("元/升", "CNY/L"),
+                suffix = Units.pricePerVolume,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -301,7 +302,7 @@ internal fun FuelFields(
                     form.onFuelFieldChanged("payable")
                 },
                 label = tr("应付金额", "Amount due"),
-                suffix = tr("元", "CNY"),
+                suffix = Units.money,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -312,7 +313,7 @@ internal fun FuelFields(
                     form.onFuelFieldChanged("discount")
                 },
                 label = tr("优惠金额", "Discount"),
-                suffix = tr("元", "CNY"),
+                suffix = Units.money,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -414,8 +415,8 @@ internal fun ManualFuelFields(
         FormField(
             value = form.rate,
             onValueChange = { form.rate = it },
-            label = tr("百公里油耗 *", "L/100km *"),
-            suffix = tr("升/百公里", "L/100km"),
+            label = tr("油耗 *", "Fuel economy *"),
+            suffix = Units.consumption,
             keyboardType = KeyboardType.Decimal,
             leadingIcon = MileNoteIcons.Fuel,
         )
@@ -423,7 +424,7 @@ internal fun ManualFuelFields(
             value = form.distance,
             onValueChange = { form.distance = it },
             label = tr("本次行驶里程（用于平均油耗）", "Distance this time (for fuel economy)"),
-            suffix = tr("公里", "km"),
+            suffix = Units.distanceUnit,
             keyboardType = KeyboardType.Decimal,
         )
         Text(

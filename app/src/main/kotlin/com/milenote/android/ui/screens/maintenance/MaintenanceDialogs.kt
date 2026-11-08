@@ -62,6 +62,7 @@ import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.CategoryChip
 import com.milenote.android.ui.components.FormField
@@ -146,9 +147,9 @@ internal fun CompleteServiceDialog(
                         value = odometer,
                         onValueChange = { odometer = it },
                         label = tr("总里程", "Odometer"),
-                        suffix = tr("公里", "km"),
+                        suffix = Units.distanceUnit,
                         keyboardType = KeyboardType.Decimal,
-                        supportingText = tr("当前 %s", "Current %s", Format.km(currentKm)),
+                        supportingText = tr("当前 %s", "Current %s", distanceText(currentKm)),
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -187,8 +188,8 @@ internal fun CompleteServiceDialog(
                 FormField(
                     value = amount,
                     onValueChange = { amount = it },
-                    label = tr("费用（元，免费填 0）", "Cost (CNY, enter 0 if free)"),
-                    suffix = tr("元", "CNY"),
+                    label = tr("费用（%s，免费填 0）", "Cost (%s, enter 0 if free)", Units.money),
+                    suffix = Units.money,
                     keyboardType = KeyboardType.Decimal,
                 )
                 FormField(
@@ -224,7 +225,7 @@ internal fun CompleteServiceDialog(
                             tr("里程必须是有效非负数", "Mileage must be a valid non-negative number")
                         reminder.intervalKm != null && odometerValue == null ->
                             tr(
-                                "该提醒按公里数循环，请填写总里程",
+                                "该提醒按里程循环，请填写总里程",
                                 "This reminder repeats by mileage — enter the odometer",
                             )
                         projects.isEmpty() -> tr("请填写维修保养项目", "Enter at least one service item")
@@ -313,7 +314,7 @@ internal fun ReminderEditorDialog(
                         value = dueKm,
                         onValueChange = { dueKm = it },
                         label = tr("到期里程", "Due mileage"),
-                        suffix = tr("公里", "km"),
+                        suffix = Units.distanceUnit,
                         keyboardType = KeyboardType.Decimal,
                         modifier = Modifier.weight(1f),
                     )
@@ -462,7 +463,7 @@ internal fun DefaultServicePlanDialog(
                     value = baseKm,
                     onValueChange = { baseKm = it },
                     label = tr("基准总里程", "Base odometer"),
-                    suffix = tr("公里", "km"),
+                    suffix = Units.distanceUnit,
                     keyboardType = KeyboardType.Decimal,
                     supportingText = tr("默认记账起始里程", "Defaults to starting mileage"),
                 )
@@ -590,7 +591,7 @@ private fun buildPlanEntries(rows: List<PlanDraftRow>): PlanBuildResult {
             return PlanBuildResult(
                 null,
                 tr(
-                    "%s：公里数须为正数",
+                    "%s：里程须为正数",
                     "%s: mileage must be a positive number",
                     DataLabels.serviceItem(title),
                 ),
@@ -613,7 +614,7 @@ private fun buildPlanEntries(rows: List<PlanDraftRow>): PlanBuildResult {
             return PlanBuildResult(
                 null,
                 tr(
-                    "%s：自定义项目至少填写公里数或时长",
+                    "%s：自定义项目至少填写里程或时长",
                     "%s: custom items need at least a mileage or duration",
                     DataLabels.serviceItem(title),
                 ),
@@ -728,7 +729,7 @@ internal fun ServicePlanEditorDialog(
                             value = baseKm,
                             onValueChange = { baseKm = it },
                             label = tr("基准总里程", "Base odometer"),
-                            suffix = tr("公里", "km"),
+                            suffix = Units.distanceUnit,
                             keyboardType = KeyboardType.Decimal,
                             modifier = Modifier.weight(1f),
                         )
@@ -879,7 +880,7 @@ internal fun ServicePlanEditorDialog(
     }
 }
 
-/** 编辑计划表格：项目 / 周期公里 / 周期月数 三列对齐。 */
+/** 编辑计划表格：项目 / 周期里程 / 周期月数 三列对齐。 */
 @Composable
 private fun PlanEditorTable(
     rows: List<PlanDraftRow>,
@@ -902,7 +903,7 @@ private fun PlanEditorTable(
                 color = scheme.onSurfaceVariant,
             )
             Text(
-                text = tr("周期公里", "Interval km"),
+                text = tr("周期%s", "Interval %s", Units.distanceUnit),
                 modifier = Modifier.width(96.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,

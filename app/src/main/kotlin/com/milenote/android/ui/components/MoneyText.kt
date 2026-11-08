@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.I18n
+import com.milenote.android.i18n.Units
 import com.milenote.android.ui.theme.MileNoteTheme
 import com.milenote.android.ui.theme.moneyLarge
 import com.milenote.android.ui.theme.moneyMedium
@@ -24,7 +26,7 @@ import com.milenote.android.ui.theme.moneySmall
 enum class MoneySize { LARGE, MEDIUM, SMALL }
 
 /**
- * 金额排版：`¥`（label 级、`onSurfaceVariant`）+ 数字（tabular figures）+ 单位（labelMedium，不与数字同字号）。
+ * 金额排版：货币符号（`¥` / `$`，跟随设置 → 外观 → 单位）+ 数字（tabular figures）+ 单位（labelMedium，不与数字同字号）。
  *
  * 组件**不做业务格式化**：`amount` 传入已格式化的数字字符串（如 `1,234.56`），
  * 由 domain 层格式化保证与 Web `money()` 口径一致。
@@ -79,12 +81,12 @@ fun MoneyText(
         modifier = modifier,
         verticalAlignment = Alignment.Bottom,
     ) {
-        // 英文界面单位已是 CNY 系列（如 "266.00 CNY"），不再重复显示 ¥ 符号。
+        // 英文界面单位已是 CNY / USD 代码（如 "266.00 CNY"），不再重复显示货币符号。
         val showSymbol = showCurrencySymbol &&
-            !(com.milenote.android.i18n.I18n.english && unit?.startsWith("CNY") == true)
+            !(I18n.english && (unit == "CNY" || unit == "USD"))
         if (showSymbol) {
             Text(
-                text = "¥",
+                text = Units.currencySymbol,
                 style = symbolStyle,
                 color = symbolColor,
                 modifier = Modifier.padding(end = 2.dp, bottom = 2.dp),

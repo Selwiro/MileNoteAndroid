@@ -17,6 +17,9 @@ class SettingsRepository(private val context: Context) {
         val darkMode = stringPreferencesKey("dark_mode")
         val webDavAutoSync = booleanPreferencesKey("webdav_auto_sync")
         val language = stringPreferencesKey("language")
+        val currency = stringPreferencesKey("currency")
+        val distanceUnit = stringPreferencesKey("distance_unit")
+        val volumeUnit = stringPreferencesKey("volume_unit")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -27,6 +30,14 @@ class SettingsRepository(private val context: Context) {
             language = prefs[Keys.language]
                 ?.let { name -> com.milenote.android.i18n.AppLanguage.entries.firstOrNull { it.name == name } }
                 ?: com.milenote.android.i18n.AppLanguage.SYSTEM,
+            currency = prefs[Keys.currency]
+                ?.let { name -> com.milenote.android.i18n.CurrencyUnit.entries.firstOrNull { it.name == name } },
+            distanceUnit = prefs[Keys.distanceUnit]
+                ?.let { name -> com.milenote.android.i18n.DistanceUnit.entries.firstOrNull { it.name == name } }
+                ?: com.milenote.android.i18n.DistanceUnit.KM,
+            volumeUnit = prefs[Keys.volumeUnit]
+                ?.let { name -> com.milenote.android.i18n.VolumeUnit.entries.firstOrNull { it.name == name } }
+                ?: com.milenote.android.i18n.VolumeUnit.LITER,
         )
     }
 
@@ -36,6 +47,17 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLanguage(language: com.milenote.android.i18n.AppLanguage) =
         edit { it[Keys.language] = language.name }
+
+    /** 货币单位；null 表示跟随界面语言（中文元 / 英文美元）。 */
+    suspend fun setCurrency(currency: com.milenote.android.i18n.CurrencyUnit?) = edit { prefs ->
+        if (currency == null) prefs.remove(Keys.currency) else prefs[Keys.currency] = currency.name
+    }
+
+    suspend fun setDistanceUnit(unit: com.milenote.android.i18n.DistanceUnit) =
+        edit { it[Keys.distanceUnit] = unit.name }
+
+    suspend fun setVolumeUnit(unit: com.milenote.android.i18n.VolumeUnit) =
+        edit { it[Keys.volumeUnit] = unit.name }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsDataStore.edit { prefs -> block(prefs) }

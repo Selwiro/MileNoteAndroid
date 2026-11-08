@@ -5,6 +5,7 @@ import com.milenote.android.domain.calc.ReminderLevel
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.StatusKind
 import java.time.LocalDate
@@ -76,11 +77,14 @@ internal fun inferServiceCategory(reminder: Reminder): String {
 internal fun reminderNote(reminder: Reminder): String? =
     reminder.note?.trim()?.takeIf { it.isNotEmpty() && it !in GENERATED_REMINDER_NOTES }
 
+/** 里程显示：`42,000 公里` / `26,098 mi`（里程单位随设置 → 外观 → 单位）。 */
+internal fun distanceText(value: Double?): String = Format.km(value, Units.distanceUnit)
+
 /** 到期日期 + 到期里程文案（Web 计划表「下次日期 / 里程」列）。 */
 internal fun reminderDueText(reminder: Reminder): String {
     val parts = buildList {
         reminder.dueDate?.takeIf { it.isNotEmpty() }?.let { add(it) }
-        reminder.dueKm?.let { add(Format.km(it)) }
+        reminder.dueKm?.let { add(distanceText(it)) }
     }
     return if (parts.isEmpty()) {
         tr("待补充日期 / 里程", "Date / mileage to be filled in")
@@ -88,7 +92,6 @@ internal fun reminderDueText(reminder: Reminder): String {
         parts.joinToString(tr(" 或 ", " or "))
     }
 }
-
 
 /** 输入框数值解析：容忍千分位、货币符号与全角逗号（Web `number`）。 */
 internal fun parseDecimal(text: String): Double? {

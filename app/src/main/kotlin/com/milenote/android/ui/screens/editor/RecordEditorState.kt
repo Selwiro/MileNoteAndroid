@@ -16,6 +16,7 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.ocr.FuelReceipt
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.EditorTarget
 
@@ -30,7 +31,7 @@ internal val FuelGradeOptions: List<String> = listOf("92#", "95#", "98#", "0#")
  *
  * 文案与校验规则对齐 Web `recordDialog` 与审计文档 §5.3：
  * 金额 > 0（服务类 / 手填油耗例外）、服务类必须有项目、首保需含「机油机滤」、
- * 按公里循环的提醒必须填总里程、备注 ≤ 1000。
+ * 按里程循环的提醒必须填总里程、备注 ≤ 1000。
  */
 internal class RecordEditorState(
     /** 当前账本快照（用于分类选项、保养项目候选、提醒关联）。 */
@@ -319,7 +320,11 @@ internal class RecordEditorState(
         }
         if (isService && projects.isEmpty()) return tr("请填写维修保养项目", "Add at least one service item")
         if (reminder != null && (reminder.intervalKm ?: 0.0) > 0.0 && Numbers.parse(odometer) == null) {
-            return tr("该提醒按公里数循环，请填写总里程", "This reminder repeats by mileage — enter the odometer")
+            return tr(
+                "该提醒按%s数循环，请填写总里程",
+                "This reminder repeats by mileage (%s) — enter the odometer",
+                Units.distanceUnit,
+            )
         }
         return validateRecord(buildRecord(), customCategories).ifBlank { null }
     }

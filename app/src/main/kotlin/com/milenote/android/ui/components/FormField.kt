@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.Units
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapes
 import com.milenote.android.ui.theme.MileNoteTheme
@@ -32,7 +33,7 @@ import com.milenote.android.ui.theme.MileNoteTheme
  *     value = liters,
  *     onValueChange = { liters = it },
  *     label = "加油量",
- *     suffix = "升",
+ *     suffix = Units.volumeUnit,
  *     keyboardType = KeyboardType.Decimal,
  *     trailing = { IconButton(...) { Icon(MileNoteIcons.Camera, "拍照识别") } },
  * )
@@ -44,7 +45,7 @@ import com.milenote.android.ui.theme.MileNoteTheme
  * @param placeholder 占位文字。
  * @param supportingText 支持文字（正常说明；[isError] 时作为错误提示）。
  * @param isError 是否错误态。
- * @param suffix 单位后缀（如 L / km / 元），显示在输入区右侧。
+ * @param suffix 单位后缀（如 `Units.volumeUnit` / `Units.distanceUnit` / `Units.money`），显示在输入区右侧。
  * @param keyboardType 键盘类型。
  * @param singleLine 是否单行。
  * @param minLines 多行时的最小行数。
@@ -133,14 +134,14 @@ private fun FormFieldPreview() {
                 value = "266.00",
                 onValueChange = {},
                 label = "金额",
-                suffix = "元",
+                suffix = Units.money,
                 keyboardType = KeyboardType.Decimal,
             )
             FormField(
                 value = "",
                 onValueChange = {},
                 label = "加油量",
-                suffix = "升",
+                suffix = Units.volumeUnit,
                 keyboardType = KeyboardType.Decimal,
                 supportingText = "两次加满后即可计算油耗",
             )

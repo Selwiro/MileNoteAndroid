@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.R
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.I18n
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
@@ -256,6 +258,8 @@ fun FuelScreen(
             verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
         ) {
         if (selectedTab == 0) {
+        // 英文界面不显示「今日油价」：数据源是中文油价站点，对英文用户没有意义。
+        if (!I18n.english) {
         item(key = "fuel-price") {
             FuelPriceCard(
                 info = priceInfo,
@@ -274,6 +278,7 @@ fun FuelScreen(
                     }
                 },
             )
+        }
         }
         // ---- 油耗概览（卡内 2×2 指标 + 右上角时间筛选） ----
         item(key = "overview") {
@@ -479,7 +484,14 @@ fun FuelScreen(
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            text = tr("筛选合计 %s 升 · ¥ %s", "Filtered total %s L · ¥ %s", Format.fmt(detailLiters), Format.money(detailAmount)),
+                            text = tr(
+                                "筛选合计 %s %s · %s %s",
+                                "Filtered total %s %s · %s %s",
+                                Format.fmt(detailLiters),
+                                Units.volumeUnit,
+                                Units.currencySymbol,
+                                Format.money(detailAmount),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -728,13 +740,13 @@ private fun FuelMetrics(
             StatCell(
                 label = tr("平均油耗", "Fuel economy"),
                 value = fuelRate?.let { Format.money(it) } ?: "—",
-                unit = if (fuelRate != null) tr("升/百公里", "L/100km") else null,
+                unit = if (fuelRate != null) Units.consumption else null,
                 modifier = Modifier.weight(1f),
             )
             StatCell(
                 label = tr("油费支出", "Fuel expense"),
                 value = Format.money(fuelCost),
-                unit = tr("元", "CNY"),
+                unit = Units.money,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -743,15 +755,15 @@ private fun FuelMetrics(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             StatCell(
-                label = tr("平均油费", "Cost per km"),
+                label = tr("每%s平均油费", "Cost per %s", Units.distanceUnit),
                 value = perKmFuel?.let { Format.money(it) } ?: "—",
-                unit = if (perKmFuel != null) tr("元/公里", "CNY/km") else null,
+                unit = if (perKmFuel != null) Units.costPerDistance else null,
                 modifier = Modifier.weight(1f),
             )
             StatCell(
                 label = tr("行驶里程", "Distance"),
                 value = Format.fmt(distance),
-                unit = tr("公里", "km"),
+                unit = Units.distanceUnit,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -1031,27 +1043,29 @@ private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
                     color = scheme.onSurface,
                 )
                 Text(
-                    text = tr(" 升/百公里", " L/100km"),
+                    text = " ${Units.consumption}",
                     style = MaterialTheme.typography.labelMedium,
                     color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 3.dp),
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = record.odometer?.let { tr("%s 公里", "%s km", Format.fmt(it)) } ?: tr("— 公里", "— km"),
+                    text = record.odometer?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.distanceUnit) }
+                        ?: tr("— %s", "— %s", Units.distanceUnit),
                     style = MaterialTheme.typography.titleMedium,
                     color = scheme.onSurface,
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = record.liters?.let { tr("+%s 升", "+%s L", Format.fmt(it)) } ?: tr("— 升", "— L"),
+                    text = record.liters?.let { tr("+%s %s", "+%s %s", Format.fmt(it), Units.volumeUnit) }
+                        ?: tr("— %s", "— %s", Units.volumeUnit),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "¥ ${Format.money(record.amount)}",
+                    text = "${Units.currencySymbol} ${Format.money(record.amount)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
@@ -1132,18 +1146,27 @@ private fun FuelRecordDetailDialog(
                         record.source
                     },
                 )
-                DetailRow(tr("实付金额", "Amount paid"), "¥ ${Format.money(record.amount)}")
-                DetailRow(tr("加油量", "Fuel amount"), record.liters?.let { tr("%s升", "%s L", Format.fmt(it)) } ?: "—")
+                DetailRow(tr("实付金额", "Amount paid"), "${Units.currencySymbol} ${Format.money(record.amount)}")
+                DetailRow(
+                    tr("加油量", "Fuel amount"),
+                    record.liters?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.volumeUnit) } ?: "—",
+                )
                 record.fuelGrade?.takeIf { it.isNotBlank() }?.let { grade ->
                     DetailRow(tr("燃油标号", "Fuel grade"), if (grade == "0#") tr("0# 柴油", "0# diesel") else grade)
                 }
-                DetailRow(tr("总里程", "Odometer"), record.odometer?.let { tr("%s公里", "%s km", Format.fmt(it)) } ?: "—")
+                DetailRow(
+                    tr("总里程", "Odometer"),
+                    record.odometer?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.distanceUnit) } ?: "—",
+                )
                 DetailRow(tr("加满状态", "Full tank"), buildString {
                     append(if (record.full) tr("已加满", "Filled up") else tr("未加满", "Not filled up"))
                     append(" · ")
                     append(if (record.missed) tr("有漏记", "Missed entry") else tr("无漏记", "No missed entry"))
                 })
-                DetailRow(tr("百公里油耗", "Fuel economy"), rate?.let { tr("%s升/百公里", "%s L/100km", Format.money(it)) } ?: "—")
+                DetailRow(
+                    tr("油耗", "Fuel economy"),
+                    rate?.let { tr("%s %s", "%s %s", Format.money(it), Units.consumption) } ?: "—",
+                )
                 val (statusLabel, _) = fuelStatus(record)
                 DetailRow(tr("状态", "Status"), statusLabel)
                 DetailRow(tr("备注", "Note"), record.note.ifBlank { "—" })

@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.Units
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapes
@@ -34,9 +35,9 @@ import com.milenote.android.ui.theme.MileNoteTheme
  * ```kotlin
  * ListRowCard(
  *     title = "油费 · 加满",
- *     subtitle = "11-02 · 中石化 · 12,345 公里",
+ *     subtitle = "11-02 · 中石化 · 12,345 ${Units.distanceUnit}",
  *     leading = { CategoryBadge("油费") },
- *     trailing = { MoneyText("266.00", unit = "元") },
+ *     trailing = { MoneyText("266.00", unit = Units.money) },
  *     onClick = { ... },
  * )
  * ```
@@ -129,7 +130,7 @@ private fun ListRowCardPreview() {
     MileNoteTheme {
         ListRowCard(
             title = "油费 · 加满",
-            subtitle = "11-02 · 中石化 · 12,345 公里",
+            subtitle = "11-02 · 中石化 · 12,345 ${Units.distanceUnit}",
             leading = {
                 Surface(
                     shape = androidx.compose.foundation.shape.CircleShape,
@@ -144,7 +145,7 @@ private fun ListRowCardPreview() {
                     )
                 }
             },
-            trailing = { MoneyText(amount = "266.00", unit = "元") },
+            trailing = { MoneyText(amount = "266.00", unit = Units.money) },
             onClick = {},
             modifier = Modifier.padding(16.dp),
         )

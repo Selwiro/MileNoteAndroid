@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.R
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
@@ -444,7 +445,7 @@ private fun Period.filterLabel(): String = when (this) {
     Period.YEAR -> tr("今年", "This year")
 }
 
-/** 结果汇总：「共 N 条 · ¥X」。 */
+/** 结果汇总：「共 N 条 · 合计金额」。 */
 @Composable
 private fun RecordsSummaryRow(count: Int, total: Double) {
     Row(
@@ -459,7 +460,7 @@ private fun RecordsSummaryRow(count: Int, total: Double) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = tr("筛选合计 ¥ %s", "Filtered total ¥ %s", Format.money(total)),
+            text = tr("筛选合计 %s %s", "Filtered total %s %s", Units.currencySymbol, Format.money(total)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -505,7 +506,7 @@ private fun MonthHeader(month: String, records: List<Record>, ledger: Ledger) {
                     )
                 }
                 Text(
-                    text = "¥ ${Format.money(total)}",
+                    text = "${Units.currencySymbol} ${Format.money(total)}",
                     style = MaterialTheme.typography.moneySmall,
                     color = scheme.onSurface,
                     maxLines = 1,
@@ -612,7 +613,7 @@ private fun RecordRowCard(
                     MoneyText(
                         amount = Format.money(record.amount),
                         size = MoneySize.SMALL,
-                        unit = tr("元", "CNY"),
+                        unit = Units.money,
                         color = if (cost > 0.0) scheme.onSurface else scheme.onSurfaceVariant,
                     )
                 } else {
@@ -624,7 +625,7 @@ private fun RecordRowCard(
                 }
                 record.odometer?.let { odometer ->
                     Text(
-                        text = Format.km(odometer),
+                        text = Format.km(odometer, Units.distanceUnit),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,

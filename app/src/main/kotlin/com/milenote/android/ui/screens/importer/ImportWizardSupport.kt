@@ -14,6 +14,7 @@ import com.milenote.android.domain.import.file.SpreadsheetFiles
 import com.milenote.android.domain.import.file.SpreadsheetLimits
 import com.milenote.android.domain.import.file.SpreadsheetReadException
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -138,10 +139,10 @@ internal fun importFieldLabels(): Map<String, String> = linkedMapOf(
     "amount" to tr("实付金额 *", "Amount paid *"),
     "payable" to tr("应付金额", "Amount due"),
     "discount" to tr("优惠金额", "Discount"),
-    "unitPrice" to tr("油价（元/升）", "Fuel price (CNY/L)"),
+    "unitPrice" to tr("油价（%s）", "Fuel price (%s)", Units.pricePerVolume),
     "fuelGrade" to tr("燃油标号", "Fuel grade"),
-    "odometer" to tr("总里程（公里）", "Odometer (km)"),
-    "liters" to tr("加油量（升）", "Fuel amount (L)"),
+    "odometer" to tr("总里程（%s）", "Odometer (%s)", Units.distanceUnit),
+    "liters" to tr("加油量（%s）", "Fuel amount (%s)", Units.volumeUnit),
     "full" to tr("是否加满", "Full tank"),
     "missed" to tr("是否漏记", "Missed entry"),
     "rate" to tr("原始 / 手填油耗", "Original / manual fuel economy"),

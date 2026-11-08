@@ -6,7 +6,7 @@
 
 ## 现状
 
-- **0.33.3（versionCode 78，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
+- **0.34.0（versionCode 79，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
   minSdk 26 / targetSdk 37。界面中英双语（设置 → 外观 → 语言）。
 - Kotlin 2.4.21 + Jetpack Compose（BOM 2026.09.00、material3 1.5.0-beta02）+ Material 3 Expressive；
   AGP 9.5.0 / Gradle 9.6.0。**版本矩阵是实测跑通的，不要随手升级。**
@@ -20,7 +20,7 @@
 
 - 账本必须保持 **`version:2` 单文件 JSON**（图片 base64 dataURL 内嵌），**与 Web 版备份双向可导入**。
   改结构先谈兼容；破坏性结构升级归 2.0.0。
-- **不新增权限**（现有：相机、网络、粗略定位、网络状态）；不加回系统通知、应用锁、WorkManager
+- **不新增权限**（现有：相机、网络、粗略定位，共 3 项）；不加回系统通知、应用锁、WorkManager
   后台任务、动态取色。
 - WebDAV **只在前台同步**（打开时一次 + 本地修改后防抖），退出应用即结束；不要引入后台周期同步。
 - 非代码产物（APK、截图、构建日志）**不进仓库**；构建日志写 `/tmp/*.log` 再 grep 关键行。
@@ -35,7 +35,7 @@
 （`ANDROID_HOME` 或 `local.properties`）。任何人 clone 后 `./gradlew assembleDebug` 即可出 APK。
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测，必须全绿
+./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（195 + 38），必须全绿
 ./gradlew :app:assembleDebug                   # 编译检查，产物在 app/build/outputs/apk/debug/
 ./build.sh debug                               # 编译 + 归档到 dist/
 ./build.sh release                             # R8 +（有密钥时）签名，归档到 dist/ 并生成 .sha256

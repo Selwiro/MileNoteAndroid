@@ -81,6 +81,10 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankVehicle
 import com.milenote.android.i18n.AppLanguage
+import com.milenote.android.i18n.CurrencyUnit
+import com.milenote.android.i18n.DistanceUnit
+import com.milenote.android.i18n.Units
+import com.milenote.android.i18n.VolumeUnit
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.FileExporter
@@ -614,7 +618,7 @@ fun SettingsScreen(
                             if (cars.isEmpty()) {
                                 EmptyState(
                                     title = tr("还没有车辆", "No vehicles yet"),
-                                    description = tr("添加第一辆车，开始记录每一公里的花费。", "Add your first car and start tracking the cost of every kilometer."),
+                                    description = tr("添加第一辆车，开始记录每一%s的花费。", "Add your first car and start tracking the cost of every %s.", Units.distanceUnit),
                                     icon = MileNoteIcons.Car,
                                     actionLabel = tr("添加车辆", "Add vehicle"),
                                     onAction = { openVehicleEditor(null) },
@@ -657,6 +661,9 @@ fun SettingsScreen(
                                 onDarkModeChange = { mode -> vm.setDarkMode(mode) },
                                 language = settings.language,
                                 onLanguageChange = { language -> vm.setLanguage(language) },
+                                onCurrencyChange = { unit -> vm.setCurrency(unit) },
+                                onDistanceUnitChange = { unit -> vm.setDistanceUnit(unit) },
+                                onVolumeUnitChange = { unit -> vm.setVolumeUnit(unit) },
                             )
                         }
                     }
@@ -957,7 +964,7 @@ private fun VehicleCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = tr("%s 公里", "%s km", Format.fmt(currentKm(ledger))),
+                    text = tr("%s %s", "%s %s", Format.fmt(currentKm(ledger)), Units.distanceUnit),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                 )
@@ -1007,6 +1014,25 @@ private fun languageOptions(): List<Pair<AppLanguage, String>> = listOf(
     AppLanguage.EN to "English",
 )
 
+/** 货币选择项：跟随语言（默认）/ 元 / 美元。只影响显示符号。 */
+private fun currencyOptions(): List<Pair<CurrencyUnit?, String>> = listOf(
+    null to tr("跟随语言", "Auto"),
+    CurrencyUnit.CNY to tr("元", "CNY"),
+    CurrencyUnit.USD to tr("美元", "USD"),
+)
+
+/** 里程选择项：公里 / 英里。只影响显示标签。 */
+private fun distanceUnitOptions(): List<Pair<DistanceUnit, String>> = listOf(
+    DistanceUnit.KM to tr("公里", "km"),
+    DistanceUnit.MILE to tr("英里", "mi"),
+)
+
+/** 油量选择项：升 / 加仑。只影响显示标签。 */
+private fun volumeUnitOptions(): List<Pair<VolumeUnit, String>> = listOf(
+    VolumeUnit.LITER to tr("升", "L"),
+    VolumeUnit.GALLON to tr("加仑", "gal"),
+)
+
 @Composable
 private fun AppearanceSection(
     settings: AppSettings,
@@ -1015,6 +1041,9 @@ private fun AppearanceSection(
     onDarkModeChange: (DarkMode) -> Unit,
     language: AppLanguage,
     onLanguageChange: (AppLanguage) -> Unit,
+    onCurrencyChange: (CurrencyUnit?) -> Unit,
+    onDistanceUnitChange: (DistanceUnit) -> Unit,
+    onVolumeUnitChange: (VolumeUnit) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard {
@@ -1047,6 +1076,56 @@ private fun AppearanceSection(
             options = languageOptions(),
             selected = language,
             onSelect = onLanguageChange,
+        )
+
+        SectionDivider()
+
+        // 单位：只改变显示标签/符号，不换算已录入的数值（账本与备份口径不变）。
+        Text(tr("单位", "Units"), style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(4.dp))
+        Text(
+            text = tr("货币", "Currency"),
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        SegmentedChoiceRow(
+            options = currencyOptions(),
+            selected = settings.currency,
+            onSelect = onCurrencyChange,
+        )
+        Spacer(modifier = Modifier.size(10.dp))
+        Text(
+            text = tr("里程", "Distance"),
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        SegmentedChoiceRow(
+            options = distanceUnitOptions(),
+            selected = settings.distanceUnit,
+            onSelect = onDistanceUnitChange,
+        )
+        Spacer(modifier = Modifier.size(10.dp))
+        Text(
+            text = tr("油量", "Volume"),
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        SegmentedChoiceRow(
+            options = volumeUnitOptions(),
+            selected = settings.volumeUnit,
+            onSelect = onVolumeUnitChange,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = tr(
+                "单位只改变显示标签，不会换算已录入的数值，也不影响账本备份；货币默认跟随界面语言（中文元 / 英文美元）。",
+                "Units only change display labels — recorded values are not converted and backups are unaffected. Currency follows the interface language by default (CNY for Chinese, USD for English).",
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
         )
 
         SectionDivider()

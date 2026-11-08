@@ -73,6 +73,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.domain.ocr.FuelReceiptParser
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.ocr.MlKitLatinOcrRecognizer
 import com.milenote.android.platform.ocr.MlKitOcrRecognizer
@@ -659,13 +660,13 @@ private fun ResultOverlay(
                     HorizontalDivider()
                     ReceiptField(
                         tr("加油量", "Fuel amount"),
-                        parsed?.liters?.let { tr("%s 升", "%s L", number(it)) }
+                        parsed?.liters?.let { tr("%s %s", "%s %s", number(it), Units.volumeUnit) }
                             ?: tr("未识别", "Not detected"),
                     )
                     HorizontalDivider()
                     ReceiptField(
                         tr("油价", "Unit price"),
-                        parsed?.unitPrice?.let { tr("%s 元/升", "%s CNY/L", money(it)) }
+                        parsed?.unitPrice?.let { tr("%s %s", "%s %s", money(it), Units.pricePerVolume) }
                             ?: tr("未识别", "Not detected"),
                     )
                     HorizontalDivider()
@@ -687,7 +688,7 @@ private fun ResultOverlay(
                     HorizontalDivider()
                     ReceiptField(
                         tr("总里程", "Odometer"),
-                        parsed?.odometer?.let { tr("%s 公里", "%s km", number(it)) }
+                        parsed?.odometer?.let { tr("%s %s", "%s %s", number(it), Units.distanceUnit) }
                             ?: tr("未识别", "Not detected"),
                     )
                 }
@@ -986,7 +987,8 @@ private fun buildEnhancedVariants(base: Bitmap): List<Bitmap> {
 
 private data class CropSpec(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
-private fun money(value: Double): String = String.format(Locale.CHINA, "¥%.2f", value)
+private fun money(value: Double): String =
+    String.format(Locale.CHINA, "%s%.2f", Units.currencySymbol, value)
 
 private fun number(value: Double): String =
     if (value % 1.0 == 0.0) {

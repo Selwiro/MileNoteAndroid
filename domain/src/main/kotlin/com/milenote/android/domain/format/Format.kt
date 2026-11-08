@@ -41,9 +41,13 @@ object Format {
      * 保养周期文案（Web 计划表 `cycle`）：
      * `10,000 公里 或 12 个月`；12 的整数倍显示 `N 年`；无周期显示「单次事项」。
      */
-    fun cycleText(intervalKm: Double?, intervalMonths: Int?): String {
+    fun cycleText(
+        intervalKm: Double?,
+        intervalMonths: Int?,
+        distanceUnit: String = tr("公里", "km"),
+    ): String {
         val parts = mutableListOf<String>()
-        if (intervalKm != null && intervalKm != 0.0) parts.add(tr("%s 公里", "%s km", fmt(intervalKm)))
+        if (intervalKm != null && intervalKm != 0.0) parts.add(tr("%s %s", "%s %s", fmt(intervalKm), distanceUnit))
         if (intervalMonths != null && intervalMonths != 0) {
             parts.add(
                 if (intervalMonths % 12 == 0) {
@@ -63,7 +67,11 @@ object Format {
      * 提醒到期文案（Web 提醒卡副标题）：日期剩余天数 + 里程剩余公里，
      * 两行用换行分隔。
      */
-    fun reminderDeadline(reminder: Reminder, state: ReminderState): String {
+    fun reminderDeadline(
+        reminder: Reminder,
+        state: ReminderState,
+        distanceUnit: String = tr("公里", "km"),
+    ): String {
         val parts = mutableListOf<String>()
         val dueDate = reminder.dueDate
         if (!dueDate.isNullOrEmpty()) {
@@ -83,17 +91,32 @@ object Format {
             val left = state.left
             parts.add(
                 when {
-                    left == null -> tr("%s 公里", "%s km", fmt(dueKm))
-                    left >= 0 -> tr("%s 公里 · 还可行驶 %s 公里", "%s km · %s km left", fmt(dueKm), fmt(left))
-                    else -> tr("%s 公里 · 已超出 %s 公里", "%s km · over by %s km", fmt(dueKm), fmt(-left))
+                    left == null -> tr("%s %s", "%s %s", fmt(dueKm), distanceUnit)
+                    left >= 0 -> tr(
+                        "%s %s · 还可行驶 %s %s",
+                        "%s %s · %s %s left",
+                        fmt(dueKm),
+                        distanceUnit,
+                        fmt(left),
+                        distanceUnit,
+                    )
+                    else -> tr(
+                        "%s %s · 已超出 %s %s",
+                        "%s %s · over by %s %s",
+                        fmt(dueKm),
+                        distanceUnit,
+                        fmt(-left),
+                        distanceUnit,
+                    )
                 },
             )
         }
         return parts.joinToString("\n")
     }
 
-    /** 里程行：`42,000 公里`。 */
-    fun km(value: Double?): String = tr("%s 公里", "%s km", fmt(value))
+    /** 里程行：`42,000 公里`（单位由调用方传入，默认公里/km）。 */
+    fun km(value: Double?, distanceUnit: String = tr("公里", "km")): String =
+        tr("%s %s", "%s %s", fmt(value), distanceUnit)
 
     private fun scale(value: Double?, digits: Int): BigDecimal {
         val v = value ?: 0.0

@@ -68,6 +68,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.components.MessageBar
@@ -341,7 +342,7 @@ internal fun VehicleEditorDialog(
                             value = currentKmText,
                             onValueChange = { currentKmText = it },
                             label = tr("当前总里程", "Current mileage"),
-                            suffix = tr("公里", "km"),
+                            suffix = Units.distanceUnit,
                             keyboardType = KeyboardType.Decimal,
                             supportingText = tr(
                                 "保存后作为当前里程；记录中的更大里程仍会被采用",
@@ -354,11 +355,12 @@ internal fun VehicleEditorDialog(
                             value = startKmText,
                             onValueChange = { startKmText = it },
                             label = tr("记账起始里程（选填）", "Start mileage (optional)"),
-                            suffix = tr("公里", "km"),
+                            suffix = Units.distanceUnit,
                             keyboardType = KeyboardType.Decimal,
                             supportingText = tr(
-                                "对应记账起点，用于平均每公里成本；留空时取最早记录里程",
-                                "Ledger starting point for average cost per km; empty uses the earliest record mileage",
+                                "对应记账起点，用于平均每%s成本；留空时取最早记录里程",
+                                "Ledger starting point for average cost per %s; empty uses the earliest record mileage",
+                                Units.distanceUnit,
                             ),
                         )
                     }

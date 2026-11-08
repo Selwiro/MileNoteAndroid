@@ -21,7 +21,9 @@ import com.milenote.android.data.share.SharedImport
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.i18n.AppLanguage
+import com.milenote.android.i18n.CurrencyUnit
 import com.milenote.android.i18n.I18n
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.AppShortcut
 import com.milenote.android.navigation.MileNoteApp
@@ -69,6 +71,12 @@ class MainActivity : ComponentActivity() {
                 AppLanguage.EN -> true
             }
             LaunchedEffect(english) { I18n.applyEnglish(english) }
+
+            // 单位显示口径：货币默认跟随界面语言（中文元 / 英文美元），里程/油量默认公里/升。
+            val effectiveCurrency = settings.currency ?: if (english) CurrencyUnit.USD else CurrencyUnit.CNY
+            LaunchedEffect(effectiveCurrency, settings.distanceUnit, settings.volumeUnit) {
+                Units.apply(effectiveCurrency, settings.distanceUnit, settings.volumeUnit)
+            }
 
             // 系统分享进来的导入内容：交给 VM，MileNoteApp 会自动跳到导入向导。
             val pendingShare by container.pendingShare.collectAsStateWithLifecycle(null)

@@ -18,6 +18,7 @@ import com.milenote.android.data.webdav.WebDavFetchResult
 import com.milenote.android.data.webdav.WebDavRemoteMeta
 import com.milenote.android.data.webdav.WebDavRepository
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.calc.Categories
@@ -318,7 +319,7 @@ class MileNoteViewModel(
         confirm(
             PendingConfirm(
                 title = tr("删除这条记录？", "Delete this record?"),
-                message = "${Dates.displayDots(record.date)} · ${DataLabels.category(record.category)} · ¥${Format.money(record.amount)}",
+                message = "${Dates.displayDots(record.date)} · ${DataLabels.category(record.category)} · ${Units.currencySymbol}${Format.money(record.amount)}",
                 confirmLabel = tr("删除", "Delete"),
                 destructive = true,
             ) {
@@ -508,6 +509,21 @@ class MileNoteViewModel(
     /** 切换界面语言（跟随系统 / 中文 / English）。 */
     fun setLanguage(language: com.milenote.android.i18n.AppLanguage) {
         viewModelScope.launch { settingsRepository.setLanguage(language) }
+    }
+
+    /** 货币显示单位；null 表示跟随界面语言（中文元 / 英文美元）。 */
+    fun setCurrency(currency: com.milenote.android.i18n.CurrencyUnit?) {
+        viewModelScope.launch { settingsRepository.setCurrency(currency) }
+    }
+
+    /** 里程显示单位（公里 / 英里，仅显示）。 */
+    fun setDistanceUnit(unit: com.milenote.android.i18n.DistanceUnit) {
+        viewModelScope.launch { settingsRepository.setDistanceUnit(unit) }
+    }
+
+    /** 油量显示单位（升 / 加仑，仅显示）。 */
+    fun setVolumeUnit(unit: com.milenote.android.i18n.VolumeUnit) {
+        viewModelScope.launch { settingsRepository.setVolumeUnit(unit) }
     }
 
 

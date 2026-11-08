@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.FuelInterval
 import com.milenote.android.domain.format.Format
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.MileNoteThemeTokens
 import java.time.LocalDate
@@ -104,9 +105,9 @@ fun FuelTrendChart(
 
     val density = LocalDensity.current
     val description = tr(
-        "油耗走势：最近 %d 个有效区间，最近一次 %s 升/百公里。点按数据点查看数值。",
-        "Fuel trend: last %d valid intervals, latest %s L/100km. Tap a data point to see its value.",
-        points.size, Format.money(latest.rate),
+        "油耗走势：最近 %d 个有效区间，最近一次 %s %s。点按数据点查看数值。",
+        "Fuel trend: last %d valid intervals, latest %s %s. Tap a data point to see its value.",
+        points.size, Format.money(latest.rate), Units.consumption,
     )
 
     BoxWithConstraints(

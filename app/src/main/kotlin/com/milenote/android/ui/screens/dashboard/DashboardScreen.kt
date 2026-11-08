@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.milenote.android.R
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Companion
 import com.milenote.android.domain.calc.DateRange
@@ -369,7 +370,7 @@ private fun heroSubtitle(ledger: Ledger, days: Int?): String {
 
     val km = currentKm(ledger)
     if (km > 0) {
-        return tr("当前里程 %s · 点击完善车辆信息", "Current mileage %s · tap to complete vehicle info", Format.km(km))
+        return tr("当前里程 %s · 点击完善车辆信息", "Current mileage %s · tap to complete vehicle info", Format.km(km, Units.distanceUnit))
     }
     if (vehicle.name.isNotBlank() && vehicle.name != "我的爱车") {
         return tr("点击完善车辆信息", "Tap to complete vehicle info")
@@ -524,13 +525,13 @@ private fun VehicleStatsCard(
                 StatCell(
                     label = tr("用车支出", "Expenses"),
                     value = Format.money(statsResult.total),
-                    unit = tr("元", "CNY"),
+                    unit = Units.money,
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
                     label = tr("行驶里程", "Distance"),
                     value = Format.fmt(statsResult.distance),
-                    unit = tr("公里", "km"),
+                    unit = Units.distanceUnit,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -541,13 +542,13 @@ private fun VehicleStatsCard(
                 StatCell(
                     label = tr("用车成本", "Cost"),
                     value = statsResult.perKm?.let { Format.money(it) } ?: "—",
-                    unit = if (statsResult.perKm == null) null else tr("元/公里", "CNY/km"),
+                    unit = if (statsResult.perKm == null) null else Units.costPerDistance,
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
                     label = tr("平均油耗", "Fuel economy"),
                     value = statsResult.fuelRate?.let { Numbers.toFixed2(it) } ?: "—",
-                    unit = if (statsResult.fuelRate == null) null else tr("升/百公里", "L/100km"),
+                    unit = if (statsResult.fuelRate == null) null else Units.consumption,
                     modifier = Modifier.weight(1f),
                 )
             }

@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
@@ -715,9 +716,11 @@ private fun TableOptionsCard(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = tr(
-                    "小熊实付 ¥%s · 钱迹 ¥%s",
-                    "Bear paid ¥%s · Qianji ¥%s",
+                    "小熊实付 %s%s · 钱迹 %s%s",
+                    "Bear paid %s%s · Qianji %s%s",
+                    Units.currencySymbol,
                     Format.money(conflict.bear),
+                    Units.currencySymbol,
                     Format.money(conflict.qianji),
                 ),
                 style = MaterialTheme.typography.bodyMedium,
@@ -877,7 +880,7 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
             ),
         ),
         subtitle = tr("第 %d 行 · %s", "Row %d · %s", item.row, importSourceLabel(item.record.source)) +
-            (item.record.odometer?.let { tr(" · %s 公里", " · %s km", Format.fmt(it)) } ?: ""),
+            (item.record.odometer?.let { tr(" · %s %s", " · %s %s", Format.fmt(it), Units.distanceUnit) } ?: ""),
         supporting = note,
         leading = {
             if (hasError) {
@@ -901,7 +904,7 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
                 MoneyText(
                     amount = Format.money(item.record.amount),
                     size = MoneySize.SMALL,
-                    unit = tr("元", "CNY"),
+                    unit = Units.money,
                 )
             }
         },

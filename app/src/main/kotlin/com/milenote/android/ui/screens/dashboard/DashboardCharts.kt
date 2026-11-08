@@ -65,6 +65,7 @@ import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
@@ -87,7 +88,7 @@ import kotlin.math.sin
  *
  * 设计规范 §2.7 / §6.2：
  * - 支出趋势：按所选月份区间（半年 / 一年 / 自定义）绘制分类堆叠柱，点击柱段显示
- *   「YYYY-MM · 分类：¥金额（x%）」；
+ *   「YYYY-MM · 分类：金额（x%）」；
  * - 费用构成：环图 + 下方分类图例（色点 + 名称），点击扇区显示金额，中心为总支出。
  * - 分类色一律来自 [LocalMileNoteCategoryColors]（9 类固定顺序、深浅双版本、色觉缺陷安全）。
  */
@@ -215,9 +216,9 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
     val dense = bars.size > 8
     val description = tr(
-        "里程趋势，共 %d 个月，合计 %s 公里",
-        "Mileage trend, %d months, %s km in total",
-        bars.size, Format.fmt(bars.sumOf { it.km }),
+        "里程趋势，共 %d 个月，合计 %s %s",
+        "Mileage trend, %d months, %s %s in total",
+        bars.size, Format.fmt(bars.sumOf { it.km }), Units.distanceUnit,
     )
 
     Canvas(
@@ -436,9 +437,9 @@ internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifi
     )
 
     val trendDescription = tr(
-        "支出趋势，合计 %s 元",
-        "Expense trend, %s CNY in total",
-        Format.money(bars.sumOf { it.total }),
+        "支出趋势，合计 %s %s",
+        "Expense trend, %s %s in total",
+        Format.money(bars.sumOf { it.total }), Units.money,
     )
     BoxWithConstraints(
         modifier = modifier
@@ -582,7 +583,7 @@ internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifi
                 val y = (segmentCenterY - bubbleH / 2f)
                     .coerceIn(0f, (rowHeightPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${DataLabels.category(category.name)} · ¥${Format.money(category.value)}\n" +
+                    text = "${DataLabels.category(category.name)} · ${Units.currencySymbol}${Format.money(category.value)}\n" +
                         percentText(category.value, bar.total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -623,9 +624,9 @@ internal fun CategoryBreakdown(
     var bubbleSize by remember(slices) { mutableStateOf(IntSize.Zero) }
 
     val breakdownDescription = tr(
-        "费用构成，共 %d 个分类，合计 %s 元",
-        "Expense breakdown, %d categories, %s CNY in total",
-        slices.size, Format.money(total),
+        "费用构成，共 %d 个分类，合计 %s %s",
+        "Expense breakdown, %d categories, %s %s in total",
+        slices.size, Format.money(total), Units.money,
     )
     BoxWithConstraints(
         modifier = modifier
@@ -684,7 +685,7 @@ internal fun CategoryBreakdown(
                 val x = rawX.coerceIn(0f, (widthPx - bubbleW).coerceAtLeast(0f))
                 val y = (pointY - bubbleH / 2f).coerceIn(0f, (donutPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${DataLabels.category(slice.name)} · ¥${Format.money(slice.value)}\n" +
+                    text = "${DataLabels.category(slice.name)} · ${Units.currencySymbol}${Format.money(slice.value)}\n" +
                         percentText(slice.value, total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -764,7 +765,7 @@ private fun DonutChart(
                 color = scheme.onSurfaceVariant,
             )
             Text(
-                text = "¥${Format.money(total)}",
+                text = "${Units.currencySymbol}${Format.money(total)}",
                 style = MaterialTheme.typography.moneySmall,
                 color = scheme.onSurface,
                 maxLines = 1,

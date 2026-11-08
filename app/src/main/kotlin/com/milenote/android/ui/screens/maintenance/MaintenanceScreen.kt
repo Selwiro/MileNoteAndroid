@@ -60,6 +60,7 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.CategoryBadge
@@ -174,10 +175,10 @@ fun MaintenanceScreen(
                             )
                         } else {
                             tr(
-                                "%d 项 · 当前 %s 公里",
-                                "%d items · current %s km",
+                                "%d 项 · 当前 %s",
+                                "%d items · current %s",
                                 groups.near.size,
-                                Format.fmt(km),
+                                distanceText(km),
                             )
                         },
                         action = {
@@ -206,10 +207,10 @@ fun MaintenanceScreen(
                     SectionCard(
                         title = tr("维修保养记录", "Maintenance records"),
                         subtitle = tr(
-                            "%d 次 · 当前 %s 公里",
-                            "%d entries · current %s km",
+                            "%d 次 · 当前 %s",
+                            "%d entries · current %s",
                             filteredHistory.size,
-                            Format.fmt(km),
+                            distanceText(km),
                         ),
                         action = {
                             ServiceHistoryFilter(
@@ -515,7 +516,7 @@ private fun ReminderCard(
                     Text(text = DataLabels.serviceItem(reminder.title), style = MaterialTheme.typography.titleMedium)
                     // 日期行 / 里程行各自单行省略：不换行，超宽时在卡片右侧截断。
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Format.reminderDeadline(reminder, state).split('\n').forEach { line ->
+                        Format.reminderDeadline(reminder, state, Units.distanceUnit).split('\n').forEach { line ->
                             Text(
                                 text = line,
                                 style = MaterialTheme.typography.bodySmall,
@@ -650,7 +651,7 @@ private fun EnableDefaultPlanGuide(onEnableDefault: () -> Unit, onCustomize: () 
             Text(text = tr("尚未启用保养方案", "Service plan not enabled"), style = MaterialTheme.typography.titleMedium)
             Text(
                 text = tr(
-                    "可一键启用默认 12 项周期（首保 + 11 项常规保养），也可以逐项自定义公里与时长。",
+                    "可一键启用默认 12 项周期（首保 + 11 项常规保养），也可以逐项自定义里程与时长。",
                     "Enable the 12 default intervals (first service + 11 routine services) in one tap, " +
                         "or customize mileage and duration for each item.",
                 ),
@@ -745,13 +746,11 @@ private fun PlanTableRow(
         else -> null
     }
     val kmText = when {
-        current != null -> current.dueKm?.let { Format.km(it) }
-        row.status == "done" -> row.completedKm?.let { Format.km(it) }
+        current != null -> current.dueKm?.let { distanceText(it) }
+        row.status == "done" -> row.completedKm?.let { distanceText(it) }
         else -> null
     }
-    val cycleKmText = row.intervalKm?.takeIf { it != 0.0 }?.let {
-        tr("%s 公里", "%s km", Format.fmt(it))
-    }
+    val cycleKmText = row.intervalKm?.takeIf { it != 0.0 }?.let { Format.km(it, Units.distanceUnit) }
     val cycleMonthText = row.intervalMonths?.takeIf { it != 0 }?.let { months ->
         val years = months / 12
         if (months % 12 == 0) {
@@ -907,8 +906,8 @@ private fun PlanRowDetailSheet(
         else -> null
     } ?: "—"
     val kmText = when {
-        current != null -> current.dueKm?.let { Format.km(it) }
-        row.status == "done" -> row.completedKm?.let { Format.km(it) }
+        current != null -> current.dueKm?.let { distanceText(it) }
+        row.status == "done" -> row.completedKm?.let { distanceText(it) }
         else -> null
     } ?: "—"
     ModalBottomSheet(
@@ -929,7 +928,7 @@ private fun PlanRowDetailSheet(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = DataLabels.serviceItem(row.title), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        text = Format.cycleText(row.intervalKm, row.intervalMonths),
+                        text = Format.cycleText(row.intervalKm, row.intervalMonths, Units.distanceUnit),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -1011,7 +1010,7 @@ private fun PlanDetailValue(label: String, value: String) {
 
 /** 进度摘要：已用 90% · 还剩 1,000 公里 / 已超 1,000 公里。 */
 private fun progressSummary(progress: ServiceProgress): String {
-    val unit = if (progress.kind == "km") tr("公里", "km") else tr("天", "days")
+    val unit = if (progress.kind == "km") Units.distanceUnit else tr("天", "days")
     val remaining = progress.left?.let {
         if (it >= 0) {
             tr("还剩 %s %s", "%s %s left", Format.fmt(it), unit)
@@ -1048,7 +1047,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
                     append(fullDateLabel(record.date))
                     record.odometer?.let {
                         append(" · ")
-                        append(Format.km(it))
+                        append(distanceText(it))
                     }
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -1082,7 +1081,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
             MoneyText(
                 amount = Format.money(record.amount),
                 size = MoneySize.MEDIUM,
-                unit = tr("元", "CNY"),
+                unit = Units.money,
             )
             Box(
                 modifier = Modifier
