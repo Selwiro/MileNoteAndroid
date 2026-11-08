@@ -1,5 +1,6 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
 import kotlin.math.abs
 import kotlin.math.floor
 
@@ -22,7 +23,7 @@ internal object SpreadsheetGrid {
     ): SpreadsheetData {
         val nonEmptyRows = grid.filter { row -> row.any(::isNonBlank) }
         if (nonEmptyRows.isEmpty()) {
-            throw SpreadsheetReadException("文件里没有可读取的表格内容")
+            throw SpreadsheetReadException(tr("文件里没有可读取的表格内容", "The file has no readable spreadsheet content"))
         }
 
         val headerCells = nonEmptyRows.first().trimTrailingBlanks()

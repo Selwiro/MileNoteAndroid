@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 英文系统 / 英文语言下的应用名（Manifest 引用）；界面文案由 i18n/tr() 处理。 -->
+    <string name="app_name">MileNote</string>
+</resources>

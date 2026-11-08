@@ -1,5 +1,6 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
@@ -54,7 +55,7 @@ class XlsxReader(
         val workbook = parseWorkbook(bytes)
         val sheet = workbook.sheets.firstOrNull { it.name == sheetName }
             ?: workbook.sheets.firstOrNull { it.name.equals(sheetName, ignoreCase = true) }
-            ?: throw SpreadsheetReadException("找不到工作表「$sheetName」")
+            ?: throw SpreadsheetReadException(tr("找不到工作表「%s」", "Worksheet '%s' not found", sheetName))
         return readSheet(workbook, sheet, fileName)
     }
 
@@ -65,12 +66,16 @@ class XlsxReader(
 
     private fun parseWorkbook(bytes: ByteArray): ParsedWorkbook {
         if (!looksLikeZip(bytes)) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xlsx 文件已损坏或格式不正确）")
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xlsx 文件已损坏或格式不正确）", "Not a valid Excel file (.xlsx is corrupted or has the wrong format)"),
+            )
         }
         val entries = readZipEntries(bytes)
         val workbookPath = entries.keys.firstOrNull { it.equals("xl/workbook.xml", ignoreCase = true) }
             ?: entries.keys.firstOrNull { it.endsWith("/workbook.xml", ignoreCase = true) }
-            ?: throw SpreadsheetReadException("文件不是有效的 Excel 表格：缺少 workbook.xml")
+            ?: throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格：缺少 workbook.xml", "Not a valid Excel file: workbook.xml is missing"),
+            )
 
         val workbookDocument = parseXml(entries.getValue(workbookPath), "workbook.xml")
         val workbookDir = workbookPath.substringBeforeLast('/', "")
@@ -103,7 +108,9 @@ class XlsxReader(
         val sheetsElement = workbookDocument.documentElement?.firstChildElement("sheets")
         val sheetElements = sheetsElement?.childElements("sheet").orEmpty()
         if (sheetElements.isEmpty()) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格：工作簿里没有工作表")
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格：工作簿里没有工作表", "Not a valid Excel file: the workbook has no worksheets"),
+            )
         }
         val sheets = sheetElements.mapIndexed { index, element ->
             val state = element.getAttribute("state").lowercase()
@@ -130,8 +137,17 @@ class XlsxReader(
 
     private fun readSheet(workbook: ParsedWorkbook, sheet: SheetRef, fileName: String): SpreadsheetData {
         val path = sheet.path
-            ?: throw SpreadsheetReadException("文件不是有效的 Excel 表格：找不到工作表「${sheet.name}」的数据")
-        val document = parseXml(workbook.entries.getValue(path), "工作表「${sheet.name}」")
+            ?: throw SpreadsheetReadException(
+                tr(
+                    "文件不是有效的 Excel 表格：找不到工作表「%s」的数据",
+                    "Not a valid Excel file: no data found for worksheet '%s'",
+                    sheet.name,
+                ),
+            )
+        val document = parseXml(
+            workbook.entries.getValue(path),
+            tr("工作表「%s」", "worksheet '%s'", sheet.name),
+        )
         val sheetData = document.getElementsByTagNameNS("*", "sheetData").item(0) as? Element
         val grid = ArrayList<List<Any?>>()
         var headerSeen = false
@@ -195,7 +211,13 @@ class XlsxReader(
             "s" -> {
                 val sharedIndex = rawValue.toIntOrNull() ?: return null
                 workbook.sharedStrings.getOrNull(sharedIndex)
-                    ?: throw SpreadsheetReadException("Excel 文件内容损坏：共享字符串索引越界（$sharedIndex）")
+                    ?: throw SpreadsheetReadException(
+                        tr(
+                            "Excel 文件内容损坏：共享字符串索引越界（%d）",
+                            "Corrupted Excel file: shared string index out of range (%d)",
+                            sharedIndex,
+                        ),
+                    )
             }
 
             "inlinestr" -> {
@@ -311,12 +333,16 @@ class XlsxReader(
                     val name = entry.name.removePrefix("./").removePrefix("/")
                     if (!isWantedEntry(name)) continue
                     if (entry.size > SpreadsheetLimits.MAX_ENTRY_BYTES) {
-                        throw SpreadsheetReadException("Excel 文件解压后体积过大，无法导入")
+                        throw SpreadsheetReadException(
+                            tr("Excel 文件解压后体积过大，无法导入", "Excel file is too large after decompression and cannot be imported"),
+                        )
                     }
                     val data = readEntry(zip)
                     totalBytes += data.size
                     if (totalBytes > SpreadsheetLimits.MAX_UNCOMPRESSED_BYTES) {
-                        throw SpreadsheetReadException("Excel 文件解压后体积过大，无法导入")
+                        throw SpreadsheetReadException(
+                            tr("Excel 文件解压后体积过大，无法导入", "Excel file is too large after decompression and cannot be imported"),
+                        )
                     }
                     entries[name] = data
                 }
@@ -324,10 +350,15 @@ class XlsxReader(
         } catch (exception: SpreadsheetReadException) {
             throw exception
         } catch (exception: Exception) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xlsx 压缩包无法读取）", exception)
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xlsx 压缩包无法读取）", "Not a valid Excel file (.xlsx archive cannot be read)"),
+                exception,
+            )
         }
         if (entries.isEmpty()) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格：压缩包里没有表格数据")
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格：压缩包里没有表格数据", "Not a valid Excel file: the archive contains no sheet data"),
+            )
         }
         return entries
     }
@@ -341,7 +372,9 @@ class XlsxReader(
             if (read == 0) continue
             output.write(buffer, 0, read)
             if (output.size() > SpreadsheetLimits.MAX_ENTRY_BYTES) {
-                throw SpreadsheetReadException("Excel 文件解压后体积过大，无法导入")
+                throw SpreadsheetReadException(
+                            tr("Excel 文件解压后体积过大，无法导入", "Excel file is too large after decompression and cannot be imported"),
+                        )
             }
         }
         return output.toByteArray()
@@ -434,7 +467,14 @@ class XlsxReader(
             runCatching { factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
             return factory.newDocumentBuilder().parse(ByteArrayInputStream(bytes))
         } catch (exception: Exception) {
-            throw SpreadsheetReadException("Excel 文件内容损坏（$description 解析失败）", exception)
+            throw SpreadsheetReadException(
+                tr(
+                    "Excel 文件内容损坏（%s 解析失败）",
+                    "Corrupted Excel file (%s could not be parsed)",
+                    description,
+                ),
+                exception,
+            )
         }
     }
 

@@ -1,6 +1,7 @@
 package com.milenote.android.platform.webdav
 
 import com.milenote.android.data.webdav.WebDavRemoteMeta
+import com.milenote.android.i18n.tr
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.URI
@@ -96,29 +97,45 @@ object WebDavUrl {
      */
     fun validate(fileUrl: String, allowHttp: Boolean): String {
         val url = fileUrl.trim()
-        if (url.isEmpty()) throw WebDavException("请填写 WebDAV 文件地址")
+        if (url.isEmpty()) throw WebDavException(tr("请填写 WebDAV 文件地址", "Enter the WebDAV file URL"))
         val scheme = SCHEME.find(url)?.groupValues?.get(1)?.lowercase(Locale.ROOT)
-            ?: throw WebDavException("地址格式不正确，请填写完整的 http(s) 文件地址")
+            ?: throw WebDavException(tr("地址格式不正确，请填写完整的 http(s) 文件地址", "Invalid URL — enter a full http(s) file URL"))
         if (scheme != "http" && scheme != "https") {
-            throw WebDavException("只支持 http 或 https 地址")
+            throw WebDavException(tr("只支持 http 或 https 地址", "Only http or https URLs are supported"))
         }
         if (scheme == "http" && !allowHttp) {
-            throw WebDavException("请使用 HTTPS 地址，或在设置中允许 HTTP")
+            throw WebDavException(tr("请使用 HTTPS 地址，或在设置中允许 HTTP", "Use an HTTPS URL, or allow HTTP in Settings"))
         }
         val uri = try {
             URI(url)
         } catch (e: Exception) {
-            throw WebDavException("地址格式不正确，请检查是否有多余空格或特殊字符", e)
+            throw WebDavException(
+                tr(
+                    "地址格式不正确，请检查是否有多余空格或特殊字符",
+                    "Invalid URL — check for extra spaces or special characters",
+                ),
+                e,
+            )
         }
         if (uri.host.isNullOrBlank()) {
-            throw WebDavException("地址缺少服务器名，请填写完整的文件地址")
+            throw WebDavException(tr("地址缺少服务器名，请填写完整的文件地址", "URL is missing the server name — enter a full file URL"))
         }
         val path = uri.path.orEmpty()
         if (path.isBlank()) {
-            throw WebDavException("请填写完整的文件地址（需包含文件名，例如 /dav/milenote.json）")
+            throw WebDavException(
+                tr(
+                    "请填写完整的文件地址（需包含文件名，例如 /dav/milenote.json）",
+                    "Enter a full file URL (must include a file name, e.g. /dav/milenote.json)",
+                ),
+            )
         }
         if (path.endsWith("/")) {
-            throw WebDavException("请填写完整的文件地址（以文件名结尾，不能以 / 结尾）")
+            throw WebDavException(
+                tr(
+                    "请填写完整的文件地址（以文件名结尾，不能以 / 结尾）",
+                    "Enter a full file URL (must end with a file name, not /)",
+                ),
+            )
         }
         return url
     }
@@ -310,9 +327,14 @@ class OkHttpWebDavClient(
                 in 200..299 -> metaFrom(response, fallbackSize = bytes.size.toLong())
                 409 -> throw WebDavHttpException(
                     409,
-                    "远端目录不存在或不允许创建，请检查 WebDAV 地址是否正确",
+                    tr(
+                        "远端目录不存在或不允许创建，请检查 WebDAV 地址是否正确",
+                        "Remote directory is missing or cannot be created — check the WebDAV URL",
+                    ),
                 )
-                412 -> throw WebDavException("远端文件已被其他设备修改，请重新同步")
+                412 -> throw WebDavException(
+                    tr("远端文件已被其他设备修改，请重新同步", "Remote file was modified by another device — sync again"),
+                )
                 else -> throw statusException(response.code)
             }
         }
@@ -358,34 +380,83 @@ class OkHttpWebDavClient(
         throw mapNetworkError(operation, e)
     }
 
-    private fun mapNetworkError(operation: String, error: IOException): WebDavException {
-        val prefix = "$operation 失败："
-        return when (error) {
-            is SocketTimeoutException -> WebDavException("${prefix}连接服务器超时，请检查网络后重试", error)
-            is UnknownHostException -> WebDavException("${prefix}无法解析服务器地址，请检查地址和网络", error)
-            is SSLException -> WebDavException("${prefix}HTTPS 证书校验失败，请检查服务器证书或改用正确地址", error)
-            else -> WebDavException("${prefix}网络错误（${error.message ?: "请稍后重试"}）", error)
-        }
+    private fun mapNetworkError(operation: String, error: IOException): WebDavException = when (error) {
+        is SocketTimeoutException -> WebDavException(
+            networkMessage(operation, "连接服务器超时，请检查网络后重试", "connection timed out — check your network and retry"),
+            error,
+        )
+        is UnknownHostException -> WebDavException(
+            networkMessage(operation, "无法解析服务器地址，请检查地址和网络", "cannot resolve the server address — check the URL and network"),
+            error,
+        )
+        is SSLException -> WebDavException(
+            networkMessage(
+                operation,
+                "HTTPS 证书校验失败，请检查服务器证书或改用正确地址",
+                "HTTPS certificate validation failed — check the server certificate or use the correct URL",
+            ),
+            error,
+        )
+        else -> WebDavException(
+            networkMessage(
+                operation,
+                "网络错误（${error.message ?: "请稍后重试"}）",
+                "network error (${error.message ?: "try again later"})",
+            ),
+            error,
+        )
     }
+
+    /** 网络错误前缀：中文 `HEAD 失败：…` / 英文 `HEAD failed: …`。 */
+    private fun networkMessage(operation: String, zh: String, en: String): String =
+        "$operation ${tr("失败：$zh", "failed: $en")}"
 
     /** HTTP 状态码 → 中文异常。 */
     private fun statusException(code: Int): WebDavException = when {
         code == 401 || code == 403 -> WebDavHttpException(
             code,
-            "认证失败，请检查用户名和应用密码是否正确",
+            tr("认证失败，请检查用户名和应用密码是否正确", "Authentication failed — check the username and app password"),
         )
-        code == 404 || code == 410 -> WebDavHttpException(code, "远端文件不存在")
+        code == 404 || code == 410 -> WebDavHttpException(
+            code,
+            tr("远端文件不存在", "Remote file does not exist"),
+        )
         code == 405 || code == 501 -> WebDavHttpException(
             code,
-            "服务器不支持该操作（HTTP $code），请确认地址指向 WebDAV 文件",
+            tr(
+                "服务器不支持该操作（HTTP %d），请确认地址指向 WebDAV 文件",
+                "Server does not support this operation (HTTP %d) — make sure the URL points to a WebDAV file",
+                code,
+            ),
         )
-        code == 409 -> WebDavHttpException(code, "远端目录不存在或冲突（HTTP 409）")
-        code == 412 -> WebDavHttpException(code, "远端文件已被其他设备修改，请重新同步")
-        code == 413 -> WebDavHttpException(code, "备份文件过大，服务器拒绝接收")
-        code == 423 -> WebDavHttpException(code, "远端文件被服务器锁定，请稍后重试")
-        code == 507 -> WebDavHttpException(code, "远端存储空间不足")
-        code in 500..599 -> WebDavHttpException(code, "服务器错误（HTTP $code），请稍后重试")
-        else -> WebDavHttpException(code, "服务器返回异常状态（HTTP $code），请稍后重试")
+        code == 409 -> WebDavHttpException(
+            code,
+            tr("远端目录不存在或冲突（HTTP 409）", "Remote directory is missing or conflicts (HTTP 409)"),
+        )
+        code == 412 -> WebDavHttpException(
+            code,
+            tr("远端文件已被其他设备修改，请重新同步", "Remote file was modified by another device — sync again"),
+        )
+        code == 413 -> WebDavHttpException(
+            code,
+            tr("备份文件过大，服务器拒绝接收", "Backup file is too large — the server rejected it"),
+        )
+        code == 423 -> WebDavHttpException(
+            code,
+            tr("远端文件被服务器锁定，请稍后重试", "Remote file is locked by the server — try again later"),
+        )
+        code == 507 -> WebDavHttpException(
+            code,
+            tr("远端存储空间不足", "Remote storage is full"),
+        )
+        code in 500..599 -> WebDavHttpException(
+            code,
+            tr("服务器错误（HTTP %d），请稍后重试", "Server error (HTTP %d) — try again later", code),
+        )
+        else -> WebDavHttpException(
+            code,
+            tr("服务器返回异常状态（HTTP %d），请稍后重试", "Server returned an unexpected status (HTTP %d) — try again later", code),
+        )
     }
 
     private fun parseHttpDateMillis(value: String?): Long? {

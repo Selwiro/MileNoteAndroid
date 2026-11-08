@@ -16,6 +16,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.milenote.android.R
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.MileNoteShapes
 import com.milenote.android.util.DataUrlImages
 
@@ -43,7 +44,7 @@ internal fun VehicleImage(
         isRemoteVehicleImage(image) -> {
             AsyncImage(
                 model = image,
-                contentDescription = "车辆图片",
+                contentDescription = tr("车辆图片", "Vehicle image"),
                 contentScale = contentScale,
                 modifier = modifier,
             )
@@ -54,7 +55,7 @@ internal fun VehicleImage(
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
-                    contentDescription = "车辆图片",
+                    contentDescription = tr("车辆图片", "Vehicle image"),
                     contentScale = contentScale,
                     modifier = modifier,
                 )
@@ -92,7 +93,7 @@ internal fun VehicleThumb(
 private fun VehiclePlaceholder(modifier: Modifier = Modifier) {
     Image(
         painter = painterResource(id = R.drawable.ill_vehicle_placeholder),
-        contentDescription = "默认车辆插画",
+        contentDescription = tr("默认车辆插画", "Default vehicle illustration"),
         contentScale = ContentScale.Fit,
         modifier = modifier.padding(6.dp),
     )

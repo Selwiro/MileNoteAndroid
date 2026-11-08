@@ -61,6 +61,8 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.CategoryChip
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.icons.MileNoteIcons
@@ -111,9 +113,14 @@ internal fun CompleteServiceDialog(
         shape = MileNoteShapes.extraLarge,
         title = {
             Column {
-                Text(text = "完成并记录", style = MaterialTheme.typography.headlineSmall)
+                Text(text = tr("完成并记录", "Complete & log"), style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    text = "${reminder.title} · 记入「$category」",
+                    text = tr(
+                        "%s · 记入「%s」",
+                        "%s · logged under \"%s\"",
+                        DataLabels.serviceItem(reminder.title),
+                        DataLabels.category(category),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -130,7 +137,7 @@ internal fun CompleteServiceDialog(
                     FormField(
                         value = date,
                         onValueChange = { date = it },
-                        label = "日期",
+                        label = tr("日期", "Date"),
                         placeholder = "YYYY-MM-DD",
                         keyboardType = KeyboardType.Text,
                         modifier = Modifier.weight(1f),
@@ -138,21 +145,21 @@ internal fun CompleteServiceDialog(
                     FormField(
                         value = odometer,
                         onValueChange = { odometer = it },
-                        label = "总里程",
-                        suffix = "公里",
+                        label = tr("总里程", "Odometer"),
+                        suffix = tr("公里", "km"),
                         keyboardType = KeyboardType.Decimal,
-                        supportingText = "当前 ${Format.km(currentKm)}",
+                        supportingText = tr("当前 %s", "Current %s", Format.km(currentKm)),
                         modifier = Modifier.weight(1f),
                     )
                 }
-                Text(text = "保养项目", style = MaterialTheme.typography.titleSmall)
+                Text(text = tr("保养项目", "Service items"), style = MaterialTheme.typography.titleSmall)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     projectOptions.forEach { project ->
                         CategoryChip(
-                            name = project,
+                            name = DataLabels.serviceItem(project),
                             selected = project in selectedProjects,
                             onClick = {
                                 selectedProjects = if (project in selectedProjects) {
@@ -167,27 +174,27 @@ internal fun CompleteServiceDialog(
                 FormField(
                     value = customProject,
                     onValueChange = { customProject = it },
-                    label = "其他项目（选填，、分隔）",
-                    placeholder = "如：雨刮片、四轮定位",
+                    label = tr("其他项目（选填，、分隔）", "Other items (optional, comma-separated)"),
+                    placeholder = tr("如：雨刮片、四轮定位", "e.g. wiper blades, wheel alignment"),
                 )
                 FormField(
                     value = location,
                     onValueChange = { location = it },
-                    label = "地点（选填）",
-                    placeholder = "门店 / 修理厂",
+                    label = tr("地点（选填）", "Location (optional)"),
+                    placeholder = tr("门店 / 修理厂", "Shop / garage"),
                     leadingIcon = MileNoteIcons.Location,
                 )
                 FormField(
                     value = amount,
                     onValueChange = { amount = it },
-                    label = "费用（元，免费填 0）",
-                    suffix = "元",
+                    label = tr("费用（元，免费填 0）", "Cost (CNY, enter 0 if free)"),
+                    suffix = tr("元", "CNY"),
                     keyboardType = KeyboardType.Decimal,
                 )
                 FormField(
                     value = note,
                     onValueChange = { note = it },
-                    label = "备注（选填）",
+                    label = tr("备注（选填）", "Note (optional)"),
                     singleLine = false,
                     minLines = 2,
                 )
@@ -212,13 +219,17 @@ internal fun CompleteServiceDialog(
                         addAll(customProject.split(Regex("[、,，;；\\s]+")))
                     }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
                     val nextError = when {
-                        dateValue == null || dateValue.isEmpty() -> "日期无效"
+                        dateValue == null || dateValue.isEmpty() -> tr("日期无效", "Invalid date")
                         odometer.isNotBlank() && (odometerValue == null || odometerValue < 0) ->
-                            "里程必须是有效非负数"
+                            tr("里程必须是有效非负数", "Mileage must be a valid non-negative number")
                         reminder.intervalKm != null && odometerValue == null ->
-                            "该提醒按公里数循环，请填写总里程"
-                        projects.isEmpty() -> "请填写维修保养项目"
-                        amountValue == null || amountValue < 0 -> "金额必须大于或等于 0"
+                            tr(
+                                "该提醒按公里数循环，请填写总里程",
+                                "This reminder repeats by mileage — enter the odometer",
+                            )
+                        projects.isEmpty() -> tr("请填写维修保养项目", "Enter at least one service item")
+                        amountValue == null || amountValue < 0 ->
+                            tr("金额必须大于或等于 0", "Amount must be 0 or greater")
                         else -> null
                     }
                     error = nextError
@@ -240,11 +251,11 @@ internal fun CompleteServiceDialog(
                     }
                 },
             ) {
-                Text("保存并完成")
+                Text(tr("保存并完成", "Save & complete"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
         },
     )
 }
@@ -278,7 +289,7 @@ internal fun ReminderEditorDialog(
         shape = MileNoteShapes.extraLarge,
         title = {
             Text(
-                text = if (reminder == null) "添加提醒" else "编辑提醒",
+                text = if (reminder == null) tr("添加提醒", "Add reminder") else tr("编辑提醒", "Edit reminder"),
                 style = MaterialTheme.typography.headlineSmall,
             )
         },
@@ -287,22 +298,22 @@ internal fun ReminderEditorDialog(
                 FormField(
                     value = title,
                     onValueChange = { title = it },
-                    label = "提醒事项",
-                    placeholder = "如：更换雨刮片",
+                    label = tr("提醒事项", "Reminder"),
+                    placeholder = tr("如：更换雨刮片", "e.g. Replace wiper blades"),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FormField(
                         value = dueDate,
                         onValueChange = { dueDate = it },
-                        label = "到期日期",
+                        label = tr("到期日期", "Due date"),
                         placeholder = "YYYY-MM-DD",
                         modifier = Modifier.weight(1f),
                     )
                     FormField(
                         value = dueKm,
                         onValueChange = { dueKm = it },
-                        label = "到期里程",
-                        suffix = "公里",
+                        label = tr("到期里程", "Due mileage"),
+                        suffix = tr("公里", "km"),
                         keyboardType = KeyboardType.Decimal,
                         modifier = Modifier.weight(1f),
                     )
@@ -310,12 +321,12 @@ internal fun ReminderEditorDialog(
                 FormField(
                     value = note,
                     onValueChange = { note = it },
-                    label = "备注（选填）",
+                    label = tr("备注（选填）", "Note (optional)"),
                     singleLine = false,
                     minLines = 2,
                 )
                 Text(
-                    text = "请至少设置到期日期或到期里程。",
+                    text = tr("请至少设置到期日期或到期里程。", "Set at least a due date or due mileage."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -345,13 +356,13 @@ internal fun ReminderEditorDialog(
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("导出日历")
+                        Text(tr("导出日历", "Export to calendar"))
                     }
                 }
                 if (onDelete != null) {
                     TextButton(onClick = onDelete) {
                         Text(
-                            text = "删除提醒",
+                            text = tr("删除提醒", "Delete reminder"),
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -365,10 +376,12 @@ internal fun ReminderEditorDialog(
                     val dateValue = normalizeDateInput(dueDate)
                     val kmValue = if (dueKm.isBlank()) null else parseDecimal(dueKm)
                     val nextError = when {
-                        title.isBlank() -> "请填写提醒事项"
-                        dateValue == null -> "日期无效"
-                        dateValue.isEmpty() && kmValue == null -> "请至少设置到期日期或到期里程。"
-                        dueKm.isNotBlank() && (kmValue == null || kmValue < 0) -> "里程必须是有效非负数"
+                        title.isBlank() -> tr("请填写提醒事项", "Enter a reminder title")
+                        dateValue == null -> tr("日期无效", "Invalid date")
+                        dateValue.isEmpty() && kmValue == null ->
+                            tr("请至少设置到期日期或到期里程。", "Set at least a due date or due mileage.")
+                        dueKm.isNotBlank() && (kmValue == null || kmValue < 0) ->
+                            tr("里程必须是有效非负数", "Mileage must be a valid non-negative number")
                         else -> null
                     }
                     error = nextError
@@ -386,11 +399,11 @@ internal fun ReminderEditorDialog(
                     }
                 },
             ) {
-                Text("保存")
+                Text(tr("保存", "Save"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
         },
     )
 }
@@ -421,29 +434,37 @@ internal fun DefaultServicePlanDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = MileNoteShapes.extraLarge,
-        title = { Text(text = "启用默认保养方案", style = MaterialTheme.typography.headlineSmall) },
+        title = {
+            Text(
+                text = tr("启用默认保养方案", "Enable default service plan"),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "将按默认 12 项周期（首保 + 11 项常规保养）生成提醒，" +
-                        "以提车日期和记账起始里程为基准。",
+                    text = tr(
+                        "将按默认 12 项周期（首保 + 11 项常规保养）生成提醒，以提车日期和记账起始里程为基准。",
+                        "Creates reminders for the 12 default intervals (first service + 11 routine " +
+                            "services), based on the delivery date and the ledger's starting mileage.",
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 FormField(
                     value = baseDate,
                     onValueChange = { baseDate = it },
-                    label = "基准日期",
+                    label = tr("基准日期", "Base date"),
                     placeholder = "YYYY-MM-DD",
-                    supportingText = "默认提车日期",
+                    supportingText = tr("默认提车日期", "Defaults to delivery date"),
                 )
                 FormField(
                     value = baseKm,
                     onValueChange = { baseKm = it },
-                    label = "基准总里程",
-                    suffix = "公里",
+                    label = tr("基准总里程", "Base odometer"),
+                    suffix = tr("公里", "km"),
                     keyboardType = KeyboardType.Decimal,
-                    supportingText = "默认记账起始里程",
+                    supportingText = tr("默认记账起始里程", "Defaults to starting mileage"),
                 )
                 Row(
                     modifier = Modifier
@@ -457,7 +478,10 @@ internal fun DefaultServicePlanDialog(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "包含首保（已完成的首保不会重复创建）",
+                        text = tr(
+                            "包含首保（已完成的首保不会重复创建）",
+                            "Include first service (a completed first service won't be recreated)",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -477,8 +501,10 @@ internal fun DefaultServicePlanDialog(
                     val dateValue = normalizeDateInput(baseDate)
                     val kmValue = parseDecimal(baseKm)
                     val nextError = when {
-                        dateValue == null || dateValue.isEmpty() -> "请填写有效基准日期"
-                        kmValue == null || kmValue < 0 -> "请填写有效基准里程"
+                        dateValue == null || dateValue.isEmpty() ->
+                            tr("请填写有效基准日期", "Enter a valid base date")
+                        kmValue == null || kmValue < 0 ->
+                            tr("请填写有效基准里程", "Enter a valid base odometer")
                         else -> null
                     }
                     error = nextError
@@ -487,11 +513,11 @@ internal fun DefaultServicePlanDialog(
                     }
                 },
             ) {
-                Text("启用方案")
+                Text(tr("启用方案", "Enable plan"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
         },
     )
 }
@@ -557,20 +583,41 @@ private fun buildPlanEntries(rows: List<PlanDraftRow>): PlanBuildResult {
     for (row in rows) {
         val title = row.title.trim()
         if (title.isEmpty() || !titles.add(title)) {
-            return PlanBuildResult(null, "项目名称不能为空或重复")
+            return PlanBuildResult(null, tr("项目名称不能为空或重复", "Item names must be non-empty and unique"))
         }
         val km = if (row.kmText.isBlank()) null else parseDecimal(row.kmText)
         if (row.kmText.isNotBlank() && (km == null || km <= 0)) {
-            return PlanBuildResult(null, "$title：公里数须为正数")
+            return PlanBuildResult(
+                null,
+                tr(
+                    "%s：公里数须为正数",
+                    "%s: mileage must be a positive number",
+                    DataLabels.serviceItem(title),
+                ),
+            )
         }
         val monthsRaw = if (row.monthsText.isBlank()) null else parseDecimal(row.monthsText)
         if (row.monthsText.isNotBlank()) {
             if (monthsRaw == null || monthsRaw % 1.0 != 0.0 || monthsRaw < 1 || monthsRaw > 600) {
-                return PlanBuildResult(null, "$title：时长须为 1–600 的整月")
+                return PlanBuildResult(
+                    null,
+                    tr(
+                        "%s：时长须为 1–600 的整月",
+                        "%s: duration must be a whole number of months from 1 to 600",
+                        DataLabels.serviceItem(title),
+                    ),
+                )
             }
         }
         if (!row.builtin && km == null && monthsRaw == null) {
-            return PlanBuildResult(null, "$title：自定义项目至少填写公里数或时长")
+            return PlanBuildResult(
+                null,
+                tr(
+                    "%s：自定义项目至少填写公里数或时长",
+                    "%s: custom items need at least a mileage or duration",
+                    DataLabels.serviceItem(title),
+                ),
+            )
         }
         entries += PlanEntry(
             key = row.key,
@@ -647,16 +694,16 @@ internal fun ServicePlanEditorDialog(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = MileNoteIcons.Close,
-                            contentDescription = "关闭",
+                            contentDescription = tr("关闭", "Close"),
                         )
                     }
                     Text(
-                        text = "编辑保养计划",
+                        text = tr("编辑保养计划", "Edit service plan"),
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(onClick = { rows = defaultPlanDraftRows() }) {
-                        Text("恢复默认")
+                        Text(tr("恢复默认", "Reset to default"))
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -668,26 +715,30 @@ internal fun ServicePlanEditorDialog(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(text = "起算基准", style = MaterialTheme.typography.titleMedium)
+                    Text(text = tr("起算基准", "Start baseline"), style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         FormField(
                             value = baseDate,
                             onValueChange = { baseDate = it },
-                            label = "基准日期",
+                            label = tr("基准日期", "Base date"),
                             placeholder = "YYYY-MM-DD",
                             modifier = Modifier.weight(1f),
                         )
                         FormField(
                             value = baseKm,
                             onValueChange = { baseKm = it },
-                            label = "基准总里程",
-                            suffix = "公里",
+                            label = tr("基准总里程", "Base odometer"),
+                            suffix = tr("公里", "km"),
                             keyboardType = KeyboardType.Decimal,
                             modifier = Modifier.weight(1f),
                         )
                     }
                     Text(
-                        text = "默认使用提车日期和记账起始里程。已有保养记录的项目优先按最近一次实际保养起算。",
+                        text = tr(
+                            "默认使用提车日期和记账起始里程。已有保养记录的项目优先按最近一次实际保养起算。",
+                            "Defaults to the delivery date and starting mileage. Items with service " +
+                                "records count from the latest actual service.",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -705,11 +756,14 @@ internal fun ServicePlanEditorDialog(
                         Spacer(modifier = Modifier.width(4.dp))
                         Column {
                             Text(
-                                text = "包含首保",
+                                text = tr("包含首保", "Include first service"),
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Text(
-                                text = "已完成的首保不会重复创建",
+                                text = tr(
+                                    "已完成的首保不会重复创建",
+                                    "A completed first service won't be recreated",
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -717,9 +771,13 @@ internal fun ServicePlanEditorDialog(
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Text(text = "项目与周期", style = MaterialTheme.typography.titleMedium)
+                    Text(text = tr("项目与周期", "Items & intervals"), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "默认项目留空沿用灰字提示的周期；自定义项目至少填写一项。12 个月为 1 年。",
+                        text = tr(
+                            "默认项目留空沿用灰字提示的周期；自定义项目至少填写一项。12 个月为 1 年。",
+                            "Leave a default item blank to keep the greyed-out interval; custom items " +
+                                "need at least one value. 12 months = 1 year.",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -754,10 +812,14 @@ internal fun ServicePlanEditorDialog(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("新增自定义项目")
+                        Text(tr("新增自定义项目", "Add custom item"))
                     }
                     Text(
-                        text = "保存后更新未完成项目，保留已完成记录。不勾选首保时，不新增或修改已有首保提醒。",
+                        text = tr(
+                            "保存后更新未完成项目，保留已完成记录。不勾选首保时，不新增或修改已有首保提醒。",
+                            "Saving updates open items and keeps completed records. When first service " +
+                                "is unchecked, existing first-service reminders are left untouched.",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -784,7 +846,7 @@ internal fun ServicePlanEditorDialog(
                             .weight(1f)
                             .height(MileNoteDimens.ButtonMinHeight),
                     ) {
-                        Text("取消")
+                        Text(tr("取消", "Cancel"))
                     }
                     Button(
                         onClick = {
@@ -792,8 +854,10 @@ internal fun ServicePlanEditorDialog(
                             val kmValue = parseDecimal(baseKm)
                             val build = buildPlanEntries(rows)
                             val nextError = when {
-                                dateValue == null || dateValue.isEmpty() -> "请填写有效基准日期"
-                                kmValue == null || kmValue < 0 -> "请填写有效基准里程"
+                                dateValue == null || dateValue.isEmpty() ->
+                                    tr("请填写有效基准日期", "Enter a valid base date")
+                                kmValue == null || kmValue < 0 ->
+                                    tr("请填写有效基准里程", "Enter a valid base odometer")
                                 else -> build.error
                             }
                             error = nextError
@@ -807,7 +871,7 @@ internal fun ServicePlanEditorDialog(
                             .weight(2f)
                             .height(MileNoteDimens.ButtonMinHeight),
                     ) {
-                        Text("保存并应用方案")
+                        Text(tr("保存并应用方案", "Save & apply plan"))
                     }
                 }
             }
@@ -832,20 +896,20 @@ private fun PlanEditorTable(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "项目",
+                text = tr("项目", "Item"),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
             )
             Text(
-                text = "周期公里",
+                text = tr("周期公里", "Interval km"),
                 modifier = Modifier.width(96.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
                 textAlign = TextAlign.End,
             )
             Text(
-                text = "周期月数",
+                text = tr("周期月数", "Interval months"),
                 modifier = Modifier.width(84.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
@@ -885,14 +949,14 @@ private fun PlanEditorTableRow(
         Column(modifier = Modifier.weight(1f)) {
             if (row.builtin) {
                 Text(
-                    text = row.title,
+                    text = DataLabels.serviceItem(row.title),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (row.firstOnly) {
                     Text(
-                        text = "仅一次 · 含机油机滤",
+                        text = tr("仅一次 · 含机油机滤", "One-off · includes oil & filter"),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
@@ -902,7 +966,7 @@ private fun PlanEditorTableRow(
                 PlanEditorCell(
                     value = row.title,
                     onValueChange = { value -> onUpdate { it.copy(title = value) } },
-                    placeholder = "项目名称",
+                    placeholder = tr("项目名称", "Item name"),
                     keyboardType = KeyboardType.Text,
                     textAlign = TextAlign.Start,
                     modifier = Modifier.fillMaxWidth(),
@@ -912,14 +976,14 @@ private fun PlanEditorTableRow(
         PlanEditorCell(
             value = row.kmText,
             onValueChange = { value -> onUpdate { it.copy(kmText = value) } },
-            placeholder = row.defaultKm?.let { Format.fmt(it) } ?: "选填",
+            placeholder = row.defaultKm?.let { Format.fmt(it) } ?: tr("选填", "Optional"),
             keyboardType = KeyboardType.Decimal,
             modifier = Modifier.width(96.dp),
         )
         PlanEditorCell(
             value = row.monthsText,
             onValueChange = { value -> onUpdate { it.copy(monthsText = value) } },
-            placeholder = row.defaultMonths?.toString() ?: "选填",
+            placeholder = row.defaultMonths?.toString() ?: tr("选填", "Optional"),
             keyboardType = KeyboardType.Number,
             modifier = Modifier.width(84.dp),
         )
@@ -930,7 +994,7 @@ private fun PlanEditorTableRow(
             ) {
                 Icon(
                     imageVector = MileNoteIcons.Delete,
-                    contentDescription = "删除自定义项目",
+                    contentDescription = tr("删除自定义项目", "Delete custom item"),
                     modifier = Modifier.size(18.dp),
                     tint = scheme.error,
                 )

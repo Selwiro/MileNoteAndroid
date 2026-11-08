@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.milenote.android.i18n.tr
 import java.io.File
 
 /**
@@ -22,7 +23,7 @@ object FileExporter {
 
     fun writeTo(context: Context, uri: Uri, bytes: ByteArray) {
         context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-            ?: error("无法写入所选文件")
+            ?: error(tr("无法写入所选文件", "Cannot write the selected file"))
     }
 
     fun shareText(context: Context, fileName: String, mimeType: String, bytes: ByteArray) {
@@ -34,6 +35,6 @@ object FileExporter {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "分享 $fileName"))
+        context.startActivity(Intent.createChooser(intent, tr("分享 %s", "Share %s", fileName)))
     }
 }

@@ -1,6 +1,7 @@
 package com.milenote.android.data.webdav
 
 import android.content.Context
+import com.milenote.android.i18n.tr
 import com.milenote.android.platform.webdav.OkHttpWebDavClient
 import com.milenote.android.platform.webdav.WebDavClient
 import com.milenote.android.platform.webdav.WebDavCredentials
@@ -193,10 +194,10 @@ class WebDavRepository(
         WebDavSyncPlanner.plan(localChanged, remoteChanged, remoteExists)
 
     private suspend fun requireCredentials(): WebDavCredentials {
-        val cfg = configStore.config.first() ?: throw WebDavException("请先配置 WebDAV 服务器")
-        if (!cfg.hasPassword) throw WebDavException("请先填写应用密码")
+        val cfg = configStore.config.first() ?: throw WebDavException(tr("请先配置 WebDAV 服务器", "Configure the WebDAV server first"))
+        if (!cfg.hasPassword) throw WebDavException(tr("请先填写应用密码", "Enter the app password first"))
         val password = configStore.readPassword()
-            ?: throw WebDavException("密码读取失败，请重新输入应用密码")
+            ?: throw WebDavException(tr("密码读取失败，请重新输入应用密码", "Could not read the password — please re-enter the app password"))
         return WebDavCredentials(
             url = cfg.fileUrl,
             username = cfg.username,

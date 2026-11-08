@@ -64,6 +64,8 @@ import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteCategoryNames
@@ -73,6 +75,8 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -168,7 +172,7 @@ internal fun buildMileageBars(
     return months.map { month ->
         MileageBar(
             key = monthKey(month),
-            label = "${month.monthValue} 月",
+            label = monthAxisLabel(month),
             km = mileageOf(month),
         )
     }
@@ -194,7 +198,7 @@ private fun monthsCovered(start: YearMonth, end: YearMonth): List<YearMonth> {
 @Composable
 internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modifier) {
     if (bars.isEmpty() || bars.all { it.km <= 0.0 }) {
-        EmptyChartHint(text = "暂无里程数据", modifier = modifier)
+        EmptyChartHint(text = tr("暂无里程数据", "No mileage data yet"), modifier = modifier)
         return
     }
     val scheme = MaterialTheme.colorScheme
@@ -210,7 +214,11 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
     val dense = bars.size > 8
-    val description = "里程趋势，共 ${bars.size} 个月，合计 ${Format.fmt(bars.sumOf { it.km })} 公里"
+    val description = tr(
+        "里程趋势，共 %d 个月，合计 %s 公里",
+        "Mileage trend, %d months, %s km in total",
+        bars.size, Format.fmt(bars.sumOf { it.km }),
+    )
 
     Canvas(
         modifier = modifier
@@ -356,7 +364,7 @@ internal fun buildMonthBars(
     val result = stats(ledger, "$key-01", "$key-31")
     MonthBar(
         key = key,
-        label = "${month.monthValue} 月",
+        label = monthAxisLabel(month),
         total = result.total,
         categories = result.categories
             .filter { it.value > 0.0 }
@@ -367,6 +375,10 @@ internal fun buildMonthBars(
 /** `YearMonth` → `YYYY-MM`。 */
 internal fun monthKey(month: YearMonth): String =
     "${month.year}-${month.monthValue.toString().padStart(2, '0')}"
+
+/** 图表横轴月份标签：中文 `11 月`，英文 `Nov`。 */
+private fun monthAxisLabel(month: YearMonth): String =
+    tr("${month.monthValue} 月", month.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH))
 
 /**
  * 分类图表色：9 类走主题固定色板；自定义分类沿用 Web 的 31 进制 hash → HSL 规则生成，
@@ -404,7 +416,7 @@ internal fun percentText(value: Double, total: Double): String {
 @Composable
 internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifier) {
     if (bars.isEmpty() || bars.all { it.total <= 0.0 }) {
-        EmptyChartHint(text = "当前范围还没有支出", modifier = modifier)
+        EmptyChartHint(text = tr("当前范围还没有支出", "No expenses in this range"), modifier = modifier)
         return
     }
     val scheme = MaterialTheme.colorScheme
@@ -423,7 +435,11 @@ internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifi
         label = "trendReveal",
     )
 
-    val trendDescription = "支出趋势，合计 ${Format.money(bars.sumOf { it.total })} 元"
+    val trendDescription = tr(
+        "支出趋势，合计 %s 元",
+        "Expense trend, %s CNY in total",
+        Format.money(bars.sumOf { it.total }),
+    )
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
@@ -566,7 +582,7 @@ internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifi
                 val y = (segmentCenterY - bubbleH / 2f)
                     .coerceIn(0f, (rowHeightPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${category.name} · ¥${Format.money(category.value)}\n" +
+                    text = "${DataLabels.category(category.name)} · ¥${Format.money(category.value)}\n" +
                         percentText(category.value, bar.total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -600,13 +616,17 @@ internal fun CategoryBreakdown(
             .map { ChartCategory(it.name, it.value, chartColorOf(it.name, palette, darkTheme)) }
     }
     if (slices.isEmpty() || total <= 0.0) {
-        EmptyChartHint(text = "等待你的第一笔记录", modifier = modifier)
+        EmptyChartHint(text = tr("等待你的第一笔记录", "Waiting for your first entry"), modifier = modifier)
         return
     }
     var selected by remember(slices) { mutableStateOf<DonutSelection?>(null) }
     var bubbleSize by remember(slices) { mutableStateOf(IntSize.Zero) }
 
-    val breakdownDescription = "费用构成，共 ${slices.size} 个分类，合计 ${Format.money(total)} 元"
+    val breakdownDescription = tr(
+        "费用构成，共 %d 个分类，合计 %s 元",
+        "Expense breakdown, %d categories, %s CNY in total",
+        slices.size, Format.money(total),
+    )
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
@@ -664,7 +684,7 @@ internal fun CategoryBreakdown(
                 val x = rawX.coerceIn(0f, (widthPx - bubbleW).coerceAtLeast(0f))
                 val y = (pointY - bubbleH / 2f).coerceIn(0f, (donutPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${slice.name} · ¥${Format.money(slice.value)}\n" +
+                    text = "${DataLabels.category(slice.name)} · ¥${Format.money(slice.value)}\n" +
                         percentText(slice.value, total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -739,7 +759,7 @@ private fun DonutChart(
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "总支出",
+                text = tr("总支出", "Total"),
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
             )
@@ -751,7 +771,7 @@ private fun DonutChart(
                 softWrap = false,
             )
             Text(
-                text = "${slices.size} 个分类",
+                text = tr("%d 个分类", "%d categories", slices.size),
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
             )
@@ -801,7 +821,7 @@ private fun CategoryLegend(
                         .background(color, CircleShape),
                 )
                 Text(
-                    text = name,
+                    text = DataLabels.category(name),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.onSurface

@@ -45,6 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.domain.calc.Categories
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteCategoryNames
@@ -83,7 +85,11 @@ internal fun AmountField(
         textStyle = MaterialTheme.typography.moneyLarge,
         label = {
             Text(
-                text = if (form.isManual) "费用金额 · 元（可选）" else "实付金额 · 元",
+                text = if (form.isManual) {
+                    tr("费用金额 · 元（可选）", "Amount · CNY (optional)")
+                } else {
+                    tr("实付金额 · 元", "Amount paid · CNY")
+                },
                 style = MaterialTheme.typography.bodyMedium,
             )
         },
@@ -99,7 +105,7 @@ internal fun AmountField(
                 IconButton(onClick = onOcrClick) {
                     Icon(
                         imageVector = MileNoteIcons.Camera,
-                        contentDescription = "拍照识别小票",
+                        contentDescription = tr("拍照识别小票", "Scan receipt"),
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -123,7 +129,7 @@ internal fun DateField(
         FormField(
             value = form.date,
             onValueChange = {},
-            label = "日期",
+            label = tr("日期", "Date"),
             readOnly = true,
             trailing = {
                 Icon(
@@ -137,7 +143,7 @@ internal fun DateField(
             modifier = Modifier
                 .matchParentSize()
                 .clickable(
-                    onClickLabel = "选择日期",
+                    onClickLabel = tr("选择日期", "Select date"),
                     role = Role.Button,
                 ) { form.showDatePicker = true },
         )
@@ -180,7 +186,7 @@ internal fun CategoryField(
             ) {
                 row.forEach { (name, isAdd) ->
                     CategoryCell(
-                        label = if (isAdd) "新增分类" else name,
+                        label = if (isAdd) tr("新增分类", "Add category") else DataLabels.category(name),
                         icon = when {
                             isAdd -> MileNoteIcons.Add
                             else -> {
@@ -245,8 +251,8 @@ internal fun OdometerField(
     FormField(
         value = form.odometer,
         onValueChange = { form.odometer = it },
-        label = "总里程（选填）",
-        suffix = "公里",
+        label = tr("总里程（选填）", "Odometer (optional)"),
+        suffix = tr("公里", "km"),
         keyboardType = KeyboardType.Decimal,
         leadingIcon = MileNoteIcons.Road,
         modifier = modifier,
@@ -270,8 +276,8 @@ internal fun FuelFields(
                     form.liters = it
                     form.onFuelFieldChanged("liters")
                 },
-                label = "加油量",
-                suffix = "升",
+                label = tr("加油量", "Fuel amount"),
+                suffix = tr("升", "L"),
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -281,8 +287,8 @@ internal fun FuelFields(
                     form.unitPrice = it
                     form.onFuelFieldChanged("unitPrice")
                 },
-                label = "油价",
-                suffix = "元/升",
+                label = tr("油价", "Unit price"),
+                suffix = tr("元/升", "CNY/L"),
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -294,8 +300,8 @@ internal fun FuelFields(
                     form.payable = it
                     form.onFuelFieldChanged("payable")
                 },
-                label = "应付金额",
-                suffix = "元",
+                label = tr("应付金额", "Amount due"),
+                suffix = tr("元", "CNY"),
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -305,8 +311,8 @@ internal fun FuelFields(
                     form.discount = it
                     form.onFuelFieldChanged("discount")
                 },
-                label = "优惠金额",
-                suffix = "元",
+                label = tr("优惠金额", "Discount"),
+                suffix = tr("元", "CNY"),
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -319,13 +325,13 @@ internal fun FuelFields(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             CheckRow(
-                label = "本次加满",
+                label = tr("本次加满", "Filled up this time"),
                 checked = form.full,
                 onCheckedChange = { form.full = it },
                 fillWidth = false,
             )
             CheckRow(
-                label = "此前漏记",
+                label = tr("此前漏记", "Missed earlier"),
                 checked = form.missed,
                 onCheckedChange = { form.missed = it },
                 fillWidth = false,
@@ -363,7 +369,7 @@ private fun CompactFuelGradeDropdown(
             Spacer(modifier = Modifier.weight(1f))
             Icon(
                 imageVector = MileNoteIcons.ChevronDown,
-                contentDescription = "燃油标号",
+                contentDescription = tr("燃油标号", "Fuel grade"),
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -382,7 +388,7 @@ private fun CompactFuelGradeDropdown(
                         {
                             Icon(
                                 imageVector = MileNoteIcons.Check,
-                                contentDescription = "已选中",
+                                contentDescription = tr("已选中", "Selected"),
                                 modifier = Modifier.size(18.dp),
                             )
                         }
@@ -408,20 +414,20 @@ internal fun ManualFuelFields(
         FormField(
             value = form.rate,
             onValueChange = { form.rate = it },
-            label = "百公里油耗 *",
-            suffix = "升/百公里",
+            label = tr("百公里油耗 *", "L/100km *"),
+            suffix = tr("升/百公里", "L/100km"),
             keyboardType = KeyboardType.Decimal,
             leadingIcon = MileNoteIcons.Fuel,
         )
         FormField(
             value = form.distance,
             onValueChange = { form.distance = it },
-            label = "本次行驶里程（用于平均油耗）",
-            suffix = "公里",
+            label = tr("本次行驶里程（用于平均油耗）", "Distance this time (for fuel economy)"),
+            suffix = tr("公里", "km"),
             keyboardType = KeyboardType.Decimal,
         )
         Text(
-            text = "不填行驶里程时只保存油耗，不参与综合平均。",
+            text = tr("不填行驶里程时只保存油耗，不参与综合平均。", "If distance is left empty, only the fuel economy value is saved and it is excluded from the average."),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -455,7 +461,7 @@ internal fun ProjectPickerSection(
                 FilterChip(
                     selected = selected,
                     onClick = { form.toggleProject(project) },
-                    label = { Text(project, style = MaterialTheme.typography.bodyMedium) },
+                    label = { Text(DataLabels.serviceItem(project), style = MaterialTheme.typography.bodyMedium) },
                     leadingIcon = if (selected) {
                         {
                             Icon(
@@ -479,9 +485,9 @@ internal fun ProjectPickerSection(
                 value = form.newProjects,
                 onValueChange = { form.newProjects = it.take(100) },
                 modifier = Modifier.weight(1f),
-                label = { Text("新增其他项目", style = MaterialTheme.typography.bodyMedium) },
+                label = { Text(tr("新增其他项目", "Add other items"), style = MaterialTheme.typography.bodyMedium) },
                 placeholder = {
-                    Text("多个用顿号分隔", style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("多个用顿号分隔", "Separate multiple items with commas"), style = MaterialTheme.typography.bodyMedium)
                 },
                 singleLine = true,
                 shape = MileNoteShapes.medium,
@@ -492,11 +498,11 @@ internal fun ProjectPickerSection(
                 shape = MileNoteShapeTokens.full,
                 modifier = Modifier.height(56.dp),
             ) {
-                Text("添加")
+                Text(tr("添加", "Add"))
             }
         }
         Text(
-            text = "保存记录后，新增项目会留在本车的可选列表中。",
+            text = tr("保存记录后，新增项目会留在本车的可选列表中。", "New items stay in this vehicle's selectable list after saving."),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -516,13 +522,13 @@ internal fun ServiceFields(
         FormField(
             value = form.location,
             onValueChange = { form.location = it.take(200) },
-            label = "地点 / 门店（选填）",
-            placeholder = "例如：4S 店 / 修理厂",
+            label = tr("地点 / 门店（选填）", "Location / shop (optional)"),
+            placeholder = tr("例如：4S 店 / 修理厂", "e.g. 4S dealership / repair shop"),
             leadingIcon = MileNoteIcons.Location,
         )
         ProjectPickerSection(
             form = form,
-            title = "${form.effectiveCategory}项目 *（可多选）",
+            title = tr("%s项目 *（可多选）", "%s items * (multi-select)", DataLabels.category(form.effectiveCategory)),
         )
     }
 }
@@ -535,7 +541,7 @@ internal fun InsuranceFields(
 ) {
     ProjectPickerSection(
         form = form,
-        title = "保险项目（可多选）",
+        title = tr("保险项目（可多选）", "Insurance items (multi-select)"),
         modifier = modifier,
     )
 }
@@ -549,8 +555,8 @@ internal fun NoteField(
     FormField(
         value = form.note,
         onValueChange = { form.note = it.take(1000) },
-        label = "备注（选填）",
-        placeholder = "加油站、保养项目，或路上的小事…",
+        label = tr("备注（选填）", "Note (optional)"),
+        placeholder = tr("加油站、保养项目，或路上的小事…", "Gas station, service items, or anything else from the road…"),
         singleLine = false,
         minLines = 3,
         supportingText = "${form.note.length}/1000",
@@ -585,4 +591,4 @@ internal fun CheckRow(
 }
 
 /** 燃油标号展示文案（柴油补全为「0# 柴油」）。 */
-private fun fuelGradeLabel(grade: String): String = if (grade == "0#") "0# 柴油" else grade
+private fun fuelGradeLabel(grade: String): String = if (grade == "0#") tr("0# 柴油", "0# diesel") else grade

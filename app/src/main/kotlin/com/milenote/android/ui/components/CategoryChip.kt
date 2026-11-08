@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteCategoryNames
 import com.milenote.android.ui.theme.MileNoteShapeTokens
@@ -55,7 +56,10 @@ fun CategoryChip(
         modifier = modifier,
         shape = MileNoteShapeTokens.full,
         label = {
-            Text(text = name, style = MaterialTheme.typography.labelLarge)
+            Text(
+                text = com.milenote.android.i18n.DataLabels.category(name),
+                style = MaterialTheme.typography.labelLarge,
+            )
         },
         leadingIcon = if (icon != null) {
             {
@@ -121,7 +125,12 @@ fun CategoryChipGrid(
             AssistChip(
                 onClick = onAddCategory,
                 shape = MileNoteShapeTokens.full,
-                label = { Text("新增分类", style = MaterialTheme.typography.labelLarge) },
+                label = {
+                    Text(
+                        tr("新增分类", "New category"),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                },
                 leadingIcon = {
                     Icon(
                         imageVector = MileNoteIcons.Add,

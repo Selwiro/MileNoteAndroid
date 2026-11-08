@@ -43,6 +43,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.EditorTarget
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.MessageBar
@@ -238,7 +239,7 @@ private fun RecordEditorBody(
                 }
                 if (form.isService) {
                     Text(
-                        text = "维修保养费用会计入用车成本；所选项目按最近保养日期和里程更新下次期限。",
+                        text = tr("维修保养费用会计入用车成本；所选项目按最近保养日期和里程更新下次期限。", "Maintenance costs count toward running costs; the selected items update the next due date and mileage based on the latest service."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -269,7 +270,7 @@ private fun EditorHeader(title: String, onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = MileNoteIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = tr("返回", "Back"),
                 )
             }
             Text(
@@ -312,7 +313,7 @@ private fun EditorActionBar(
             if (isEditing) {
                 TextButton(onClick = onDelete) {
                     Text(
-                        text = "删除",
+                        text = tr("删除", "Delete"),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -320,14 +321,14 @@ private fun EditorActionBar(
             }
             Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = onCancel) {
-                Text("取消", style = MaterialTheme.typography.labelLarge)
+                Text(tr("取消", "Cancel"), style = MaterialTheme.typography.labelLarge)
             }
             Button(
                 onClick = onSave,
                 shape = MileNoteShapeTokens.full,
                 modifier = Modifier.height(48.dp),
             ) {
-                Text("保存记录", style = MaterialTheme.typography.labelLarge)
+                Text(tr("保存记录", "Save record"), style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -362,12 +363,12 @@ private fun EditorDatePickerDialog(
                     onDismiss()
                 },
             ) {
-                Text("确定")
+                Text(tr("确定", "OK"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(tr("取消", "Cancel"))
             }
         },
     ) {
@@ -387,12 +388,12 @@ private fun AddCategoryDialog(
         onDismissRequest = onDismiss,
         shape = MileNoteShapes.extraLarge,
         title = {
-            Text("新增费用分类", style = MaterialTheme.typography.headlineSmall)
+            Text(tr("新增费用分类", "Add category"), style = MaterialTheme.typography.headlineSmall)
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "新增分类会保存到本车账本，之后记账可直接选择。",
+                    text = tr("新增分类会保存到本车账本，之后记账可直接选择。", "New categories are saved in this vehicle's ledger and can be picked right away."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -403,7 +404,7 @@ private fun AddCategoryDialog(
                         error = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("分类名称（最多 40 字）") },
+                    label = { Text(tr("分类名称（最多 40 字）", "Category name (up to 40 characters)")) },
                     singleLine = true,
                     isError = error != null,
                     supportingText = error?.let {
@@ -418,19 +419,19 @@ private fun AddCategoryDialog(
                 onClick = {
                     val trimmed = name.trim()
                     if (trimmed.isEmpty()) {
-                        error = "请输入分类名称"
+                        error = tr("请输入分类名称", "Enter a category name")
                     } else {
                         onConfirm(trimmed)
                     }
                 },
                 shape = CircleShape,
             ) {
-                Text("添加")
+                Text(tr("添加", "Add"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(tr("取消", "Cancel"))
             }
         },
     )

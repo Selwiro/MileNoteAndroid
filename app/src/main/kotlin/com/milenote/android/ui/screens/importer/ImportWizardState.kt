@@ -13,6 +13,7 @@ import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.file.SpreadsheetData
 import com.milenote.android.domain.import.normalizeImport
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -156,32 +157,34 @@ internal class ImportWizardState(
     /** 读取 SAF URI 并解析；解析失败时保留 [picked] 供「重试」。 */
     suspend fun load(uri: Uri) {
         val src = source ?: run {
-            error = "请先选择导入来源"
+            error = tr("请先选择导入来源", "Select an import source first")
             return
         }
         busy = true
-        busyMessage = "正在读取文件…"
+        busyMessage = tr("正在读取文件…", "Reading file…")
         error = null
         try {
-            val name = queryDisplayName(context, uri) ?: "未命名文件"
+            val name = queryDisplayName(context, uri) ?: tr("未命名文件", "Unnamed file")
             val isBackup = src == ImportSource.BACKUP
             val limit = if (isBackup) BACKUP_MAX_BYTES else TABLE_MAX_BYTES
             val limitMessage = if (isBackup) {
-                "备份文件超过 20 MB，无法恢复"
+                tr("备份文件超过 20 MB，无法恢复", "Backup file exceeds 20 MB and can't be restored")
             } else {
-                "文件超过 10 MB，请拆分后再导入"
+                tr("文件超过 10 MB，请拆分后再导入", "File exceeds 10 MB — split it before importing")
             }
             val size = queryFileSize(context, uri)
             if (size != null && size > limit) throw ImportFileException(limitMessage)
             val bytes = withContext(Dispatchers.IO) { readUriBytes(context, uri, limit, limitMessage) }
-            if (bytes.isEmpty()) throw ImportFileException("文件是空的，请选择有效文件")
+            if (bytes.isEmpty()) {
+                throw ImportFileException(tr("文件是空的，请选择有效文件", "The file is empty — choose a valid file"))
+            }
             picked = PickedFile(name, bytes.size.toLong(), bytes)
             parsePicked(src, name, bytes)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             android.util.Log.e("ImportWizard", "load(uri) failed", e)
-            error = e.message ?: "读取文件失败，请重新选择"
+            error = e.message ?: tr("读取文件失败，请重新选择", "Failed to read the file — pick it again")
         } finally {
             busy = false
             busyMessage = null
@@ -200,16 +203,16 @@ internal class ImportWizardState(
     suspend fun loadShared(bytes: ByteArray, fileName: String, mimeType: String?) {
         if (busy) return
         fromShare = true
-        sharedFileName = fileName.ifBlank { "分享导入" }
+        sharedFileName = fileName.ifBlank { tr("分享导入", "Shared import") }
         error = null
         if (bytes.isEmpty()) {
-            error = "分享内容为空，无法导入"
+            error = tr("分享内容为空，无法导入", "Shared content is empty and can't be imported")
             return
         }
         busy = true
-        busyMessage = "正在读取分享内容…"
+        busyMessage = tr("正在读取分享内容…", "Reading shared content…")
         try {
-            val rawName = fileName.ifBlank { "分享导入" }
+            val rawName = fileName.ifBlank { tr("分享导入", "Shared import") }
             // 20 MB 级文本解码放到后台，避免主线程卡顿。
             val trimmed = withContext(Dispatchers.Default) {
                 runCatching { decodeText(bytes) }.getOrNull()?.trim()
@@ -218,7 +221,9 @@ internal class ImportWizardState(
             val jsonLike = textContent.startsWith("[") || textContent.startsWith("{")
             if (jsonLike && looksLikeBackupJson(textContent)) {
                 if (bytes.size > BACKUP_MAX_BYTES) {
-                    throw ImportFileException("备份文件超过 20 MB，无法恢复")
+                    throw ImportFileException(
+                        tr("备份文件超过 20 MB，无法恢复", "Backup file exceeds 20 MB and can't be restored"),
+                    )
                 }
                 val name = ensureExtension(rawName, "json")
                 source = ImportSource.BACKUP
@@ -230,7 +235,9 @@ internal class ImportWizardState(
                 return
             }
             if (bytes.size > TABLE_MAX_BYTES) {
-                throw ImportFileException("文件超过 10 MB，请拆分后再导入")
+                throw ImportFileException(
+                    tr("文件超过 10 MB，请拆分后再导入", "File exceeds 10 MB — split it before importing"),
+                )
             }
             val name = ensureExtension(rawName, if (jsonLike) "json" else "csv")
             val data = withContext(Dispatchers.IO) {
@@ -249,7 +256,8 @@ internal class ImportWizardState(
             throw e
         } catch (e: Exception) {
             android.util.Log.e("ImportWizard", "loadShared failed", e)
-            error = e.message ?: "分享内容解析失败，请重试或手动选择文件"
+            error = e.message
+                ?: tr("分享内容解析失败，请重试或手动选择文件", "Failed to parse the shared content — try again or pick a file manually")
         } finally {
             busy = false
             busyMessage = null
@@ -292,7 +300,7 @@ internal class ImportWizardState(
     }
 
     private fun ensureExtension(name: String, extension: String): String {
-        val trimmed = name.trim().ifBlank { "分享导入" }
+        val trimmed = name.trim().ifBlank { tr("分享导入", "Shared import") }
         val hasExtension = trimmed.substringAfterLast('.', "").isNotBlank()
         return if (hasExtension) trimmed else "$trimmed.$extension"
     }
@@ -309,7 +317,7 @@ internal class ImportWizardState(
         val file = picked ?: return
         scope.launch {
             busy = true
-            busyMessage = "正在重新解析…"
+            busyMessage = tr("正在重新解析…", "Re-parsing…")
             error = null
             try {
                 parsePicked(src, file.name, file.bytes)
@@ -317,7 +325,7 @@ internal class ImportWizardState(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.e("ImportWizard", "retry failed", e)
-                error = e.message ?: "解析失败，请检查文件格式"
+                error = e.message ?: tr("解析失败，请检查文件格式", "Parsing failed — check the file format")
             } finally {
                 busy = false
                 busyMessage = null
@@ -327,7 +335,7 @@ internal class ImportWizardState(
 
     private suspend fun parsePicked(src: ImportSource, name: String, bytes: ByteArray) {
         busy = true
-        busyMessage = "正在解析文件…"
+        busyMessage = tr("正在解析文件…", "Parsing file…")
         error = null
         try {
             when (src) {
@@ -357,7 +365,7 @@ internal class ImportWizardState(
             throw e
         } catch (e: Exception) {
             android.util.Log.e("ImportWizard", "parsePicked failed", e)
-            error = e.message ?: "解析失败，请检查文件格式"
+            error = e.message ?: tr("解析失败，请检查文件格式", "Parsing failed — check the file format")
         } finally {
             busy = false
             busyMessage = null
@@ -403,7 +411,7 @@ internal class ImportWizardState(
         if (name == current.activeSheet) return
         scope.launch {
             busy = true
-            busyMessage = "正在读取工作表…"
+            busyMessage = tr("正在读取工作表…", "Reading worksheet…")
             error = null
             try {
                 val data = withContext(Dispatchers.IO) {
@@ -418,7 +426,7 @@ internal class ImportWizardState(
                 if (src == ImportSource.QIANJI) applyQianjiHeuristics()
                 scheduleTablePreview()
             } catch (e: Exception) {
-                error = e.message ?: "读取工作表失败"
+                error = e.message ?: tr("读取工作表失败", "Failed to read the worksheet")
             } finally {
                 busy = false
                 busyMessage = null
@@ -476,7 +484,7 @@ internal class ImportWizardState(
         val currentExcluded = excluded
         scope.launch {
             busy = true
-            busyMessage = "正在生成预览…"
+            busyMessage = tr("正在生成预览…", "Building preview…")
             try {
                 val normalized = withContext(Dispatchers.Default) {
                     normalizeImport(data.rows, currentMapping, src.key, currentDefault, custom)
@@ -505,7 +513,7 @@ internal class ImportWizardState(
                 fuelConflict = withContext(Dispatchers.Default) { fuelBatchConflict(base, marked) }
             } catch (e: Exception) {
                 if (generation == previewGeneration) {
-                    error = e.message ?: "预览生成失败"
+                    error = e.message ?: tr("预览生成失败", "Failed to build the preview")
                 }
             } finally {
                 if (generation == previewGeneration) {
@@ -533,53 +541,84 @@ internal class ImportWizardState(
         val currentLedger = ledger
         scope.launch {
             busy = true
-            busyMessage = "正在应用导入…"
+            busyMessage = tr("正在应用导入…", "Applying import…")
             error = null
             try {
                 when (src) {
                     ImportSource.BACKUP -> {
-                        val text = backupText ?: throw ImportFileException("请先选择备份文件")
+                        val text = backupText
+                            ?: throw ImportFileException(tr("请先选择备份文件", "Select a backup file first"))
                         val preview = backupPreview
                         vm.restoreBackup(text)
                         result = WizardResult(
-                            title = "备份已恢复",
+                            title = tr("备份已恢复", "Backup restored"),
                             lines = buildList {
                                 if (preview != null) {
-                                    add("备份版本：version ${preview.version}")
-                                    add("车辆 ${preview.cars} 辆 · 记录 ${preview.records} 条 · 提醒 ${preview.reminders} 条")
+                                    add(tr("备份版本：version %d", "Backup version: %d", preview.version))
+                                    add(
+                                        tr(
+                                            "车辆 %d 辆 · 记录 %d 条 · 提醒 %d 条",
+                                            "%d vehicles · %d records · %d reminders",
+                                            preview.cars,
+                                            preview.records,
+                                            preview.reminders,
+                                        ),
+                                    )
                                 }
                             },
-                            note = "按车辆编号合并：已有记录保留，新增记录追加；旧版单车备份合并到当前车辆。",
+                            note = tr(
+                                "按车辆编号合并：已有记录保留，新增记录追加；旧版单车备份合并到当前车辆。",
+                                "Merged by vehicle ID: existing records are kept and new ones appended; " +
+                                    "legacy single-car backups merge into the current vehicle.",
+                            ),
                         )
                     }
 
                     ImportSource.BEAR, ImportSource.QIANJI -> {
                         val items = effectiveTableItems()
                         if (items.none { it.isValid }) {
-                            throw ImportFileException("没有可导入的记录，请检查字段匹配")
+                            throw ImportFileException(
+                                tr(
+                                    "没有可导入的记录，请检查字段匹配",
+                                    "No importable records — check the field mapping",
+                                ),
+                            )
                         }
                         val merge = withContext(Dispatchers.Default) {
                             mergeFuelBatch(currentLedger?.records.orEmpty(), items, fuelBasis)
                         }
                         vm.applyImport(items, fuelBasis, overwriteDuplicates)
                         result = WizardResult(
-                            title = if (overwriteDuplicates) "导入已提交（覆盖重复）" else "导入已提交",
+                            title = if (overwriteDuplicates) {
+                                tr("导入已提交（覆盖重复）", "Import submitted (duplicates overwritten)")
+                            } else {
+                                tr("导入已提交", "Import submitted")
+                            },
                             lines = if (overwriteDuplicates) {
-                                listOf("重复记录已按覆盖方式替换原记录")
+                                listOf(
+                                    tr(
+                                        "重复记录已按覆盖方式替换原记录",
+                                        "Duplicate records were replaced by the imported ones",
+                                    ),
+                                )
                             } else {
                                 listOf(
-                                    "新增 ${merge.added} 条",
-                                    "合并 ${merge.merged} 条",
-                                    "跳过 ${merge.skipped} 条",
+                                    tr("新增 %d 条", "%d added", merge.added),
+                                    tr("合并 %d 条", "%d merged", merge.merged),
+                                    tr("跳过 %d 条", "%d skipped", merge.skipped),
                                 )
                             },
-                            note = "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",
+                            note = tr(
+                                "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",
+                                "Open Records to review the result; Qianji service records auto-complete " +
+                                    "matching to-dos by item.",
+                            ),
                         )
                     }
                 }
                 step = 2
             } catch (e: Exception) {
-                error = e.message ?: "导入失败，请重试"
+                error = e.message ?: tr("导入失败，请重试", "Import failed — try again")
             } finally {
                 busy = false
                 busyMessage = null
@@ -609,7 +648,7 @@ internal class ImportWizardState(
     }
 
     fun confirmLabel(): String = when (source) {
-        ImportSource.BACKUP -> "确认恢复"
-        else -> "确认导入"
+        ImportSource.BACKUP -> tr("确认恢复", "Restore")
+        else -> tr("确认导入", "Import")
     }
 }

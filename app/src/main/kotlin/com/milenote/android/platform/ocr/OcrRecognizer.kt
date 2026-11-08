@@ -9,6 +9,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.milenote.android.domain.ocr.OcrText
 import com.milenote.android.domain.ocr.OcrTextLine
+import com.milenote.android.i18n.tr
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -51,14 +52,14 @@ object MlKitOcrRecognizer : OcrRecognizer {
     private const val TAG = "MlKitOcrRecognizer"
 
     override suspend fun recognize(bitmap: Bitmap): OcrText {
-        if (bitmap.isRecycled) throw OcrException("图片已失效，请重新拍摄")
+        if (bitmap.isRecycled) throw OcrException(tr("图片已失效，请重新拍摄", "Image is no longer available — take a new photo"))
         return suspendCancellableCoroutine { cont ->
             val closed = AtomicBoolean(false)
             val recognizer = try {
                 TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             } catch (e: Exception) {
                 if (cont.isActive) {
-                    cont.resumeWithException(OcrException("文字识别组件初始化失败，请稍后重试", e))
+                    cont.resumeWithException(OcrException(tr("文字识别组件初始化失败，请稍后重试", "Text recognition failed to initialize — try again later"), e))
                 }
                 return@suspendCancellableCoroutine
             }
@@ -75,7 +76,7 @@ object MlKitOcrRecognizer : OcrRecognizer {
                 InputImage.fromBitmap(bitmap, 0)
             } catch (e: Exception) {
                 closeOnce()
-                if (cont.isActive) cont.resumeWithException(OcrException("图片格式不受支持，请重新拍摄", e))
+                if (cont.isActive) cont.resumeWithException(OcrException(tr("图片格式不受支持，请重新拍摄", "Unsupported image format — take a new photo"), e))
                 return@suspendCancellableCoroutine
             }
             recognizer.process(image)
@@ -100,7 +101,14 @@ object MlKitOcrRecognizer : OcrRecognizer {
                     Log.w(TAG, "文字识别失败", e)
                     if (cont.isActive) {
                         cont.resumeWithException(
-                            OcrException("小票识别失败：${e.message ?: "请检查光线和清晰度"}", e),
+                            OcrException(
+                                tr(
+                                    "小票识别失败：%s",
+                                    "Receipt scan failed: %s",
+                                    e.message ?: tr("请检查光线和清晰度", "check lighting and focus"),
+                                ),
+                                e,
+                            ),
                         )
                     }
                 }
@@ -115,13 +123,13 @@ object MlKitOcrRecognizer : OcrRecognizer {
  */
 object MlKitLatinOcrRecognizer : OcrRecognizer {
     override suspend fun recognize(bitmap: Bitmap): OcrText {
-        if (bitmap.isRecycled) throw OcrException("图片已失效，请重新拍摄")
+        if (bitmap.isRecycled) throw OcrException(tr("图片已失效，请重新拍摄", "Image is no longer available — take a new photo"))
         return suspendCancellableCoroutine { cont ->
             val recognizer: TextRecognizer = try {
                 TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             } catch (e: Exception) {
                 if (cont.isActive) {
-                    cont.resumeWithException(OcrException("数字识别组件初始化失败，请稍后重试", e))
+                    cont.resumeWithException(OcrException(tr("数字识别组件初始化失败，请稍后重试", "Number recognition failed to initialize — try again later"), e))
                 }
                 return@suspendCancellableCoroutine
             }
@@ -130,7 +138,7 @@ object MlKitLatinOcrRecognizer : OcrRecognizer {
                 InputImage.fromBitmap(bitmap, 0)
             } catch (e: Exception) {
                 runCatching { recognizer.close() }
-                if (cont.isActive) cont.resumeWithException(OcrException("图片格式不受支持，请重新拍摄", e))
+                if (cont.isActive) cont.resumeWithException(OcrException(tr("图片格式不受支持，请重新拍摄", "Unsupported image format — take a new photo"), e))
                 return@suspendCancellableCoroutine
             }
             recognizer.process(image)
@@ -147,7 +155,16 @@ object MlKitLatinOcrRecognizer : OcrRecognizer {
                 .addOnFailureListener { e ->
                     runCatching { recognizer.close() }
                     if (cont.isActive) {
-                        cont.resumeWithException(OcrException("数字识别失败：${e.message ?: "请重试"}", e))
+                        cont.resumeWithException(
+                            OcrException(
+                                tr(
+                                    "数字识别失败：%s",
+                                    "Number scan failed: %s",
+                                    e.message ?: tr("请重试", "try again"),
+                                ),
+                                e,
+                            ),
+                        )
                     }
                 }
         }

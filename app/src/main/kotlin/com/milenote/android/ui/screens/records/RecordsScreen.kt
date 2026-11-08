@@ -50,10 +50,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.R
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
+import com.milenote.android.domain.calc.splitProjects
 import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
@@ -77,6 +80,9 @@ import com.milenote.android.ui.theme.categoryColorOf
 import com.milenote.android.ui.theme.moneySmall
 import com.milenote.android.ui.theme.MileNoteShapes
 import java.time.LocalDate
+import java.time.Month
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
@@ -99,7 +105,7 @@ fun RecordsScreen(
     val ledger = state.activeCar
     if (ledger == null) {
         LoadingState(
-            label = "正在读取本机账本…",
+            label = tr("正在读取本机账本…", "Reading the local ledger…"),
             modifier = modifier
                 .fillMaxSize()
                 .padding(top = 64.dp),
@@ -179,7 +185,7 @@ private fun RecordsContent(
     // 页签固定在页面顶部（不进 LazyColumn），三页共用 SecondaryTabs 版式。
     Column(modifier = modifier.fillMaxSize()) {
         SecondaryTabs(
-            labels = listOf("统计", "明细"),
+            labels = listOf(tr("统计", "Statistics"), tr("明细", "Records")),
             selected = selectedTab,
             onSelect = { selectedTab = it },
         )
@@ -214,10 +220,10 @@ private fun RecordsContent(
             } else {
                 item(key = "stats-empty") {
                     EmptyState(
-                        title = "还没有费用统计",
-                        description = "记下一笔支出后，这里会展示支出趋势与费用构成。",
+                        title = tr("还没有费用统计", "No analytics yet"),
+                        description = tr("记下一笔支出后，这里会展示支出趋势与费用构成。", "Add an expense and your trends and breakdown will appear here."),
                         illustration = painterResource(R.drawable.ill_empty_records),
-                        actionLabel = "记一笔",
+                        actionLabel = tr("记一笔", "Add entry"),
                         onAction = onAddRecord,
                     )
                 }
@@ -246,10 +252,10 @@ private fun RecordsContent(
             item(key = "empty") {
                 if (hasAnyRecord) {
                     EmptyState(
-                        title = "没有匹配的记录",
-                        description = "试试更换关键词，或清除分类与时间筛选。",
+                        title = tr("没有匹配的记录", "No matching records"),
+                        description = tr("试试更换关键词，或清除分类与时间筛选。", "Try a different keyword, or clear the category and date filters."),
                         icon = MileNoteIcons.Search,
-                        actionLabel = "清除筛选",
+                        actionLabel = tr("清除筛选", "Clear filters"),
                         onAction = {
                             query = ""
                             categoryFilter = ""
@@ -258,10 +264,10 @@ private fun RecordsContent(
                     )
                 } else {
                     EmptyState(
-                        title = "这里还没有费用统计",
-                        description = "记下一笔支出，让用车成本一目了然。",
+                        title = tr("这里还没有费用统计", "No analytics here yet"),
+                        description = tr("记下一笔支出，让用车成本一目了然。", "Add an expense to see your running costs at a glance."),
                         illustration = painterResource(R.drawable.ill_empty_records),
-                        actionLabel = "记一笔",
+                        actionLabel = tr("记一笔", "Add entry"),
                         onAction = onAddRecord,
                     )
                 }
@@ -309,7 +315,7 @@ private fun RecordsSearchFilterRow(
         FormField(
             value = query,
             onValueChange = onQueryChange,
-            label = "搜索备注、日期或来源…",
+            label = tr("搜索备注、日期或来源…", "Search notes, dates or sources…"),
             leadingIcon = MileNoteIcons.Search,
             shape = CircleShape,
             modifier = Modifier.weight(1f),
@@ -336,13 +342,13 @@ private fun RecordsSearchFilterRow(
                     )
                     Icon(
                         imageVector = MileNoteIcons.ChevronDown,
-                        contentDescription = "筛选记录",
+                        contentDescription = tr("筛选记录", "Filter records"),
                         modifier = Modifier.size(18.dp),
                     )
                 }
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                FilterMenuGroupLabel(text = "时间")
+                FilterMenuGroupLabel(text = tr("时间", "Date"))
                 Period.entries.forEach { item ->
                     DropdownMenuItem(
                         text = { Text(item.filterLabel()) },
@@ -357,9 +363,9 @@ private fun RecordsSearchFilterRow(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.outlineVariant,
                 )
-                FilterMenuGroupLabel(text = "分类")
+                FilterMenuGroupLabel(text = tr("分类", "Category"))
                 DropdownMenuItem(
-                    text = { Text("全部分类") },
+                    text = { Text(tr("全部分类", "All categories")) },
                     trailingIcon = filterCheckIcon(category == null),
                     onClick = {
                         onSelectCategory(null)
@@ -368,7 +374,7 @@ private fun RecordsSearchFilterRow(
                 )
                 categories.forEach { name ->
                     DropdownMenuItem(
-                        text = { Text(name) },
+                        text = { Text(DataLabels.category(name)) },
                         trailingIcon = filterCheckIcon(category == name),
                         onClick = {
                             onSelectCategory(name)
@@ -381,7 +387,7 @@ private fun RecordsSearchFilterRow(
                     color = MaterialTheme.colorScheme.outlineVariant,
                 )
                 DropdownMenuItem(
-                    text = { Text("重置筛选") },
+                    text = { Text(tr("重置筛选", "Reset filters")) },
                     onClick = {
                         onReset()
                         expanded = false
@@ -423,19 +429,19 @@ private fun filterPillLabel(period: Period, category: String?): String {
     val parts = buildList {
         when (period) {
             Period.ALL -> Unit
-            Period.MONTH -> add("本月")
-            Period.YEAR -> add("今年")
+            Period.MONTH -> add(tr("本月", "This month"))
+            Period.YEAR -> add(tr("今年", "This year"))
         }
-        category?.takeIf { it.isNotBlank() }?.let { add(it) }
+        category?.takeIf { it.isNotBlank() }?.let { add(DataLabels.category(it)) }
     }
-    return if (parts.isEmpty()) "筛选" else parts.joinToString(" · ")
+    return if (parts.isEmpty()) tr("筛选", "Filter") else parts.joinToString(" · ")
 }
 
 /** 时间选项文案。 */
 private fun Period.filterLabel(): String = when (this) {
-    Period.ALL -> "全部"
-    Period.MONTH -> "本月"
-    Period.YEAR -> "今年"
+    Period.ALL -> tr("全部", "All")
+    Period.MONTH -> tr("本月", "This month")
+    Period.YEAR -> tr("今年", "This year")
 }
 
 /** 结果汇总：「共 N 条 · ¥X」。 */
@@ -448,12 +454,12 @@ private fun RecordsSummaryRow(count: Int, total: Double) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "共 $count 条记录",
+            text = tr("共 %d 条记录", "%d records", count),
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = "筛选合计 ¥ ${Format.money(total)}",
+            text = tr("筛选合计 ¥ %s", "Filtered total ¥ %s", Format.money(total)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -493,7 +499,7 @@ private fun MonthHeader(month: String, records: List<Record>, ledger: Ledger) {
                         color = scheme.onSurface,
                     )
                     Text(
-                        text = "${records.size} 笔记录",
+                        text = tr("%d 笔记录", "%d entries", records.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -606,7 +612,7 @@ private fun RecordRowCard(
                     MoneyText(
                         amount = Format.money(record.amount),
                         size = MoneySize.SMALL,
-                        unit = "元",
+                        unit = tr("元", "CNY"),
                         color = if (cost > 0.0) scheme.onSurface else scheme.onSurfaceVariant,
                     )
                 } else {
@@ -626,7 +632,7 @@ private fun RecordRowCard(
                 }
                 if (record.amount > 0.0 && cost <= 0.0) {
                     Text(
-                        text = "未计入费用",
+                        text = tr("未计入费用", "Not counted as expense"),
                         style = MaterialTheme.typography.labelSmall,
                         color = semantic.warning.content,
                         maxLines = 1,
@@ -639,7 +645,7 @@ private fun RecordRowCard(
 
 /** 记录行标题：手填油耗单独显示（与 Web 记录表一致）。 */
 private fun recordTitle(record: Record): String =
-    if (record.kind == "manual") "手填油耗" else Categories.normalize(record.category)
+    if (record.kind == "manual") tr("手填油耗", "Manual fuel entry") else DataLabels.category(Categories.normalize(record.category))
 
 /** 记录行副标题：日期 + 备注（不再展示记录来源）。 */
 private fun recordSubtitle(record: Record): String {
@@ -652,7 +658,10 @@ private fun recordSubtitle(record: Record): String {
 private fun recordSupporting(record: Record): String? {
     val parts = buildList {
         val projects = record.projects.orEmpty()
-        if (projects.isNotBlank()) add(projects)
+        if (projects.isNotBlank()) {
+            val separator = tr("、", ", ")
+            add(splitProjects(projects).joinToString(separator) { DataLabels.serviceItem(it) })
+        }
         val location = record.location.orEmpty()
         if (location.isNotBlank()) add(location)
     }
@@ -691,8 +700,9 @@ private fun filterRecords(
 
 /** `2026-11` → `2026 年 11 月`；空 / 非法日期 → `未设置日期`。 */
 private fun monthLabel(month: String): String {
-    if (month.length < 7) return "未设置日期"
+    if (month.length < 7) return tr("未设置日期", "No date")
     val year = month.substring(0, 4)
-    val monthNumber = month.substring(5, 7).toIntOrNull() ?: return "未设置日期"
-    return "$year 年 $monthNumber 月"
+    val monthNumber = month.substring(5, 7).toIntOrNull() ?: return tr("未设置日期", "No date")
+    val monthEn = Month.of(monthNumber).getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+    return tr("$year 年 $monthNumber 月", "$monthEn $year")
 }

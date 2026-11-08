@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.WebDavConflictChoice
 import com.milenote.android.ui.WebDavUiState
 import com.milenote.android.ui.components.FormField
@@ -117,11 +118,11 @@ internal fun WebDavPage(
     fun submitConfig(): Boolean {
         val trimmed = url.trim()
         val error = when {
-            trimmed.isEmpty() -> "请填写服务器文件完整地址"
+            trimmed.isEmpty() -> tr("请填写服务器文件完整地址", "Enter the full server file URL")
             !(trimmed.startsWith("https://") || trimmed.startsWith("http://")) ->
-                "地址需以 https:// 或 http:// 开头"
+                tr("地址需以 https:// 或 http:// 开头", "The address must start with https:// or http://")
             trimmed.startsWith("http://") && !allowHttp ->
-                "HTTP 连接需先开启下方「允许 HTTP（不安全）」"
+                tr("HTTP 连接需先开启下方「允许 HTTP（不安全）」", "Turn on “Allow HTTP (insecure)” below to use an HTTP connection")
             else -> null
         }
         urlError = error
@@ -134,15 +135,15 @@ internal fun WebDavPage(
     Column(verticalArrangement = Arrangement.spacedBy(MileNoteDimens.SectionGap)) {
         // ---------------- 状态 ----------------
         SectionCard(
-            title = "连接状态",
-            subtitle = "支持前台自动同步；退出应用后不后台运行",
+            title = tr("连接状态", "Connection status"),
+            subtitle = tr("支持前台自动同步；退出应用后不后台运行", "Auto sync runs in the foreground only; nothing runs after you leave the app"),
             action = if (state.configured) {
                 {
                     TextButton(
                         onClick = { showClearConfirm = true },
                         enabled = !state.busy,
                     ) {
-                        Text("清除连接", color = scheme.error, style = MaterialTheme.typography.labelLarge)
+                        Text(tr("清除连接", "Remove connection"), color = scheme.error, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             } else {
@@ -155,13 +156,13 @@ internal fun WebDavPage(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 StatusPill(
-                    text = if (state.configured) "已配置" else "未配置",
+                    text = if (state.configured) tr("已配置", "Configured") else tr("未配置", "Not configured"),
                     status = if (state.configured) StatusKind.DONE else StatusKind.NORMAL,
                 )
                 if (state.busy) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text(
-                        text = "处理中…",
+                        text = tr("处理中…", "Working…"),
                         style = MaterialTheme.typography.labelMedium,
                         color = scheme.onSurfaceVariant,
                     )
@@ -169,18 +170,18 @@ internal fun WebDavPage(
                 Spacer(modifier = Modifier.weight(1f))
                 if (state.hasPassword) {
                     Text(
-                        text = "密码已保存",
+                        text = tr("密码已保存", "Password saved"),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
                 }
             }
             Spacer(modifier = Modifier.size(8.dp))
-            WebDavInfoRow("上次同步", formatSyncTime(state.lastSyncAt))
-            WebDavInfoRow("上次结果", state.lastResult ?: "—")
-            WebDavInfoRow("远端文件", remoteSummary(state))
+            WebDavInfoRow(tr("上次同步", "Last sync"), formatSyncTime(state.lastSyncAt))
+            WebDavInfoRow(tr("上次结果", "Last result"), state.lastResult ?: "—")
+            WebDavInfoRow(tr("远端文件", "Remote file"), remoteSummary(state))
             if (state.configured && !state.fileUrl.isBlank()) {
-                WebDavInfoRow("地址", state.fileUrl, maxLines = 2)
+                WebDavInfoRow(tr("地址", "Address"), state.fileUrl, maxLines = 2)
             }
         }
 
@@ -195,8 +196,8 @@ internal fun WebDavPage(
 
         // ---------------- 连接表单 ----------------
         SectionCard(
-            title = "连接",
-            subtitle = "WebDAV 上的账本文件完整地址（JSON）",
+            title = tr("连接", "Connection"),
+            subtitle = tr("WebDAV 上的账本文件完整地址（JSON）", "Full URL of the ledger file on WebDAV (JSON)"),
         ) {
             FormField(
                 value = url,
@@ -204,8 +205,8 @@ internal fun WebDavPage(
                     url = it
                     urlError = null
                 },
-                label = "服务器文件地址",
-                placeholder = "https://dav.jianguoyun.com/dav/里程志/账本.json",
+                label = tr("服务器文件地址", "Server URL"),
+                placeholder = tr("https://dav.jianguoyun.com/dav/里程志/账本.json", "https://dav.jianguoyun.com/dav/MileNote/ledger.json"),
                 singleLine = true,
                 isError = urlError != null,
                 supportingText = urlError,
@@ -214,16 +215,16 @@ internal fun WebDavPage(
             FormField(
                 value = username,
                 onValueChange = { username = it },
-                label = "用户名",
-                placeholder = "WebDAV 登录账号",
+                label = tr("用户名", "Username"),
+                placeholder = tr("WebDAV 登录账号", "WebDAV account"),
                 singleLine = true,
             )
             Spacer(modifier = Modifier.size(12.dp))
             FormField(
                 value = password,
                 onValueChange = { password = it },
-                label = "应用密码",
-                placeholder = if (state.hasPassword) "已保存（留空则不修改）" else "请输入应用密码",
+                label = tr("应用密码", "App password"),
+                placeholder = if (state.hasPassword) tr("已保存（留空则不修改）", "Saved (leave empty to keep)") else tr("请输入应用密码", "Enter app password"),
                 singleLine = true,
                 visualTransformation = if (passwordVisible) {
                     VisualTransformation.None
@@ -241,7 +242,7 @@ internal fun WebDavPage(
                             } else {
                                 MileNoteIcons.Lock
                             },
-                            contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                            contentDescription = if (passwordVisible) tr("隐藏密码", "Hide password") else tr("显示密码", "Show password"),
                             modifier = Modifier.size(20.dp),
                             tint = scheme.onSurfaceVariant,
                         )
@@ -249,8 +250,12 @@ internal fun WebDavPage(
                 },
             )
             Text(
-                text = "建议使用服务商提供的应用密码：坚果云「账户安全 → 应用密钥 → 添加应用」生成，" +
-                    "不要填写登录密码。密码仅保存在本机，不进入账本备份。",
+                text = tr(
+                    "建议使用服务商提供的应用密码：坚果云「账户安全 → 应用密钥 → 添加应用」生成，" +
+                        "不要填写登录密码。密码仅保存在本机，不进入账本备份。",
+                    "Use the app password from your provider (Jianguoyun: Account security → App keys → Add app). " +
+                        "Do not enter your login password. The password stays on this device and is not included in ledger backups.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
@@ -264,9 +269,12 @@ internal fun WebDavPage(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("允许 HTTP（不安全）", style = MaterialTheme.typography.titleMedium)
+                    Text(tr("允许 HTTP（不安全）", "Allow HTTP (insecure)"), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "仅建议自建局域网服务器；公网请使用 HTTPS，否则账本与密码可能被窃听。",
+                        text = tr(
+                            "仅建议自建局域网服务器；公网请使用 HTTPS，否则账本与密码可能被窃听。",
+                            "Only recommended for a self-hosted LAN server; use HTTPS on the public internet or the ledger and password may be intercepted.",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -303,7 +311,7 @@ internal fun WebDavPage(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
-                    Text("保存并测试", maxLines = 1)
+                    Text(tr("保存并测试", "Save & test"), maxLines = 1)
                 }
                 OutlinedButton(
                     onClick = { showClearConfirm = true },
@@ -311,7 +319,7 @@ internal fun WebDavPage(
                     shape = MileNoteShapeTokens.full,
                     modifier = Modifier.heightIn(min = MileNoteDimens.ButtonMinHeight),
                 ) {
-                    Text("清除连接", maxLines = 1)
+                    Text(tr("清除连接", "Remove connection"), maxLines = 1)
                 }
             }
         }
@@ -319,17 +327,20 @@ internal fun WebDavPage(
         // ---------------- 同步操作 ----------------
         if (state.configured) {
             SectionCard(
-                title = "同步",
-                subtitle = "智能比较本地与远端，决定上传或下载",
+                title = tr("同步", "Sync"),
+                subtitle = tr("智能比较本地与远端，决定上传或下载", "Compares local and remote, then uploads or downloads"),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("自动同步", style = MaterialTheme.typography.titleMedium)
+                        Text(tr("自动同步", "Auto sync"), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = "仅在应用打开期间运行：打开应用或本地修改后同步；退出应用后不再后台执行。冲突时暂停自动处理。",
+                            text = tr(
+                                "仅在应用打开期间运行：打开应用或本地修改后同步；退出应用后不再后台执行。冲突时暂停自动处理。",
+                                "Runs only while the app is open: on launch or after local changes; nothing runs in the background after you leave. Auto handling pauses on conflicts.",
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant,
                         )
@@ -342,8 +353,8 @@ internal fun WebDavPage(
                 }
                 if (state.autoSyncEnabled) {
                     Spacer(modifier = Modifier.size(8.dp))
-                    WebDavInfoRow("上次自动同步", formatSyncTime(state.lastAutoSyncAt))
-                    WebDavInfoRow("自动同步结果", state.lastAutoSyncResult ?: "—")
+                    WebDavInfoRow(tr("上次自动同步", "Last auto sync"), formatSyncTime(state.lastAutoSyncAt))
+                    WebDavInfoRow(tr("自动同步结果", "Auto sync result"), state.lastAutoSyncResult ?: "—")
                 }
                 Spacer(modifier = Modifier.size(8.dp))
                 HorizontalDivider(color = scheme.outlineVariant)
@@ -360,11 +371,15 @@ internal fun WebDavPage(
                         .fillMaxWidth()
                         .heightIn(min = MileNoteDimens.ButtonMinHeight),
                 ) {
-                    Text("立即同步")
+                    Text(tr("立即同步", "Sync now"))
                 }
                 Text(
-                    text = "说明：先比较本地账本与远端文件；只有本端有修改时上传，只有远端有修改时下载；" +
-                        "两边都有修改时弹出冲突选项，由你决定保留哪一边。",
+                    text = tr(
+                        "说明：先比较本地账本与远端文件；只有本端有修改时上传，只有远端有修改时下载；" +
+                            "两边都有修改时弹出冲突选项，由你决定保留哪一边。",
+                        "How it works: local and remote are compared first; if only this device changed, it uploads, " +
+                            "if only the remote changed, it downloads. If both changed, you pick which side to keep.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
@@ -378,7 +393,7 @@ internal fun WebDavPage(
                             .fillMaxWidth()
                             .heightIn(min = MileNoteDimens.ButtonMinHeight),
                     ) {
-                        Text("上传到远端（覆盖）")
+                        Text(tr("上传到远端（覆盖）", "Upload to remote (overwrite)"))
                     }
                     OutlinedButton(
                         onClick = { overwriteAction = WebDavOverwrite.DOWNLOAD },
@@ -388,11 +403,14 @@ internal fun WebDavPage(
                             .fillMaxWidth()
                             .heightIn(min = MileNoteDimens.ButtonMinHeight),
                     ) {
-                        Text("从远端下载（覆盖本地）")
+                        Text(tr("从远端下载（覆盖本地）", "Download from remote (overwrite local)"))
                     }
                 }
                 Text(
-                    text = "这两个按钮不做比较，直接用本端覆盖对端；点击后会再次确认。",
+                    text = tr(
+                        "这两个按钮不做比较，直接用本端覆盖对端；点击后会再次确认。",
+                        "These two skip the comparison and overwrite the other side directly; you will be asked to confirm.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
@@ -409,12 +427,12 @@ internal fun WebDavPage(
         }
 
         // ---------------- 说明 ----------------
-        SectionCard(title = "说明") {
-            WebDavNote("推荐使用 HTTPS。开启「允许 HTTP」仅建议自建局域网服务器，公网切勿使用明文 HTTP。")
-            WebDavNote("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。")
-            WebDavNote("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。")
-            WebDavNote("账本以 JSON 明文保存在远端，传输由 HTTPS 保护；建议放在私有目录，不要把直链分享给他人。")
-            WebDavNote("自动同步开启后：只在应用打开期间，打开时或本地修改后自动同步；退出应用后不会保留后台任务。两边都有修改时会暂停并提示手动处理。")
+        SectionCard(title = tr("说明", "Notes")) {
+            WebDavNote(tr("推荐使用 HTTPS。开启「允许 HTTP」仅建议自建局域网服务器，公网切勿使用明文 HTTP。", "HTTPS is recommended. “Allow HTTP” is only for a self-hosted LAN server; never use plain HTTP on the public internet."))
+            WebDavNote(tr("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。", "Jianguoyun: Account security → Add app → generate an app password; use the app password, not your login password."))
+            WebDavNote(tr("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。", "Create the target folder in your WebDAV service first; the app only reads and writes the JSON file you entered."))
+            WebDavNote(tr("账本以 JSON 明文保存在远端，传输由 HTTPS 保护；建议放在私有目录，不要把直链分享给他人。", "The ledger is stored remotely as plain JSON; transport is protected by HTTPS. Keep it in a private folder and do not share the direct link."))
+            WebDavNote(tr("自动同步开启后：只在应用打开期间，打开时或本地修改后自动同步；退出应用后不会保留后台任务。两边都有修改时会暂停并提示手动处理。", "With auto sync on: syncs only while the app is open, on launch or after local changes; no background task survives after you leave. It pauses and asks you to resolve when both sides changed."))
         }
     }
 
@@ -423,11 +441,15 @@ internal fun WebDavPage(
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
             shape = MileNoteShapes.extraLarge,
-            title = { Text("清除 WebDAV 连接？") },
+            title = { Text(tr("清除 WebDAV 连接？", "Remove WebDAV connection?")) },
             text = {
                 Text(
-                    text = "将清除本机保存的服务器地址、用户名与应用密码；远端文件不会被删除。" +
-                        "已同步的本地账本保持不变。",
+                    text = tr(
+                        "将清除本机保存的服务器地址、用户名与应用密码；远端文件不会被删除。" +
+                            "已同步的本地账本保持不变。",
+                        "This removes the server URL, username and app password stored on this device. The remote file is not deleted, " +
+                            "and the local ledger stays as it is.",
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
                 )
@@ -444,11 +466,11 @@ internal fun WebDavPage(
                         contentColor = scheme.onError,
                     ),
                 ) {
-                    Text("清除")
+                    Text(tr("清除", "Remove"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showClearConfirm = false }) { Text(tr("取消", "Cancel")) }
             },
         )
     }
@@ -459,13 +481,13 @@ internal fun WebDavPage(
         AlertDialog(
             onDismissRequest = { overwriteAction = null },
             shape = MileNoteShapes.extraLarge,
-            title = { Text(if (upload) "上传并覆盖远端？" else "下载并覆盖本地？") },
+            title = { Text(if (upload) tr("上传并覆盖远端？", "Upload and overwrite the remote?") else tr("下载并覆盖本地？", "Download and overwrite this device?")) },
             text = {
                 Text(
                     text = if (upload) {
-                        "将用本机当前账本覆盖远端 JSON 文件；远端原有内容会被替换，无法自动恢复。"
+                        tr("将用本机当前账本覆盖远端 JSON 文件；远端原有内容会被替换，无法自动恢复。", "The remote JSON file will be replaced with the ledger on this device; the previous remote content cannot be restored automatically.")
                     } else {
-                        "将用远端 JSON 文件覆盖本机账本；本机现有数据会被替换，建议先导出完整备份。"
+                        tr("将用远端 JSON 文件覆盖本机账本；本机现有数据会被替换，建议先导出完整备份。", "The ledger on this device will be replaced with the remote JSON file; export a full backup first.")
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
@@ -483,11 +505,11 @@ internal fun WebDavPage(
                         contentColor = scheme.onError,
                     ),
                 ) {
-                    Text(if (upload) "上传并覆盖" else "下载并覆盖")
+                    Text(if (upload) tr("上传并覆盖", "Upload and overwrite") else tr("下载并覆盖", "Download and overwrite"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { overwriteAction = null }) { Text("取消") }
+                TextButton(onClick = { overwriteAction = null }) { Text(tr("取消", "Cancel")) }
             },
         )
     }
@@ -498,22 +520,26 @@ internal fun WebDavPage(
         AlertDialog(
             onDismissRequest = onDismissConflict,
             shape = MileNoteShapes.extraLarge,
-            title = { Text("本地与远端都有修改") },
+            title = { Text(tr("本地与远端都有修改", "Local and remote both changed")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "本地账本与远端文件在上次同步后都发生了变化，请选择保留方式：" +
-                            "「合并」只把远端新增记录并入本地，不删除本地数据。",
+                        text = tr(
+                            "本地账本与远端文件在上次同步后都发生了变化，请选择保留方式：" +
+                                "「合并」只把远端新增记录并入本地，不删除本地数据。",
+                            "The local ledger and the remote file both changed since the last sync. Choose what to keep: " +
+                                "“Merge” only adds new remote records locally and never deletes local data.",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
                     )
-                    ConflictOption("用本地覆盖远端", "上传本机账本，远端内容被替换") {
+                    ConflictOption(tr("用本地覆盖远端", "Overwrite remote with local"), tr("上传本机账本，远端内容被替换", "Upload this device's ledger; remote content is replaced")) {
                         onResolveConflict(WebDavConflictChoice.KEEP_LOCAL)
                     }
-                    ConflictOption("用远端覆盖本地", "下载远端账本，本机内容被替换") {
+                    ConflictOption(tr("用远端覆盖本地", "Overwrite local with remote"), tr("下载远端账本，本机内容被替换", "Download the remote ledger; local content is replaced")) {
                         onResolveConflict(WebDavConflictChoice.KEEP_REMOTE)
                     }
-                    ConflictOption("合并（只新增远端记录）", "保留本地并追加远端新增记录") {
+                    ConflictOption(tr("合并（只新增远端记录）", "Merge (only add remote records)"), tr("保留本地并追加远端新增记录", "Keep local and append new remote records")) {
                         onResolveConflict(WebDavConflictChoice.MERGE)
                     }
                 }
@@ -521,7 +547,7 @@ internal fun WebDavPage(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = onDismissConflict) {
-                    Text("取消（保持现状）")
+                    Text(tr("取消（保持现状）", "Cancel (keep as is)"))
                 }
             },
         )
@@ -610,15 +636,15 @@ private fun ConflictOption(title: String, detail: String, onClick: () -> Unit) {
  * 无「本地有未同步修改」标记（VM 未暴露 dirty 状态），因此用「未配置 / 上次同步时间 / 已配置但尚未同步」表达。
  */
 internal fun webDavStatusSummary(state: WebDavUiState): String = when {
-    !state.configured -> "未配置 · 点按填写服务器与账号"
-    state.busy -> "处理中…"
-    state.lastSyncAt != null -> "上次同步：${formatSyncTime(state.lastSyncAt)}"
-    else -> "已配置 · 尚未同步"
+    !state.configured -> tr("未配置 · 点按填写服务器与账号", "Not configured · Tap to enter server and account")
+    state.busy -> tr("处理中…", "Working…")
+    state.lastSyncAt != null -> tr("上次同步：%s", "Last sync: %s", formatSyncTime(state.lastSyncAt))
+    else -> tr("已配置 · 尚未同步", "Configured · Not synced yet")
 }
 
 /** 上次同步时间：本地时区 `MM.dd HH:mm`；为空显示「尚未同步」。 */
 private fun formatSyncTime(millis: Long?): String {
-    if (millis == null) return "尚未同步"
+    if (millis == null) return tr("尚未同步", "Not synced yet")
     return runCatching {
         Instant.ofEpochMilli(millis)
             .atZone(ZoneId.systemDefault())
@@ -628,9 +654,9 @@ private fun formatSyncTime(millis: Long?): String {
 
 /** 远端文件状态：存在（大小）/ 不存在 / 未知。 */
 private fun remoteSummary(state: WebDavUiState): String = when (state.remoteExists) {
-    null -> "未知（保存并测试后显示）"
-    false -> "不存在（首次同步将创建）"
-    true -> state.remoteSize?.let { "存在 · ${formatFileSize(it)}" } ?: "存在"
+    null -> tr("未知（保存并测试后显示）", "Unknown (shown after save & test)")
+    false -> tr("不存在（首次同步将创建）", "Missing (created on first sync)")
+    true -> state.remoteSize?.let { tr("存在 · %s", "Exists · %s", formatFileSize(it)) } ?: tr("存在", "Exists")
 }
 
 /** 文件大小格式化：B / KB / MB。 */

@@ -6,6 +6,7 @@ import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.duplicateOf
 import com.milenote.android.domain.calc.splitProjects
 import com.milenote.android.domain.calc.validateRecord
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanBase
@@ -23,15 +24,15 @@ object GarageOps {
         val v = value?.trim().orEmpty()
         if (v.isEmpty()) return ""
         if (DATA_IMAGE.matches(v)) {
-            if (v.length > 1_500_000) throw BackupException("图片过大，请重新上传压缩后的图片")
+            if (v.length > 1_500_000) throw BackupException(tr("图片过大，请重新上传压缩后的图片", "Image too large — upload a compressed image"))
             return v
         }
-        if (v.length > 2048) throw BackupException("图片 URL 过长")
+        if (v.length > 2048) throw BackupException(tr("图片 URL 过长", "Image URL is too long"))
         val uri = runCatching { java.net.URI(v) }
-            .getOrElse { throw BackupException("请输入完整的 http 或 https 图片 URL") }
+            .getOrElse { throw BackupException(tr("请输入完整的 http 或 https 图片 URL", "Enter a full http or https image URL")) }
         val scheme = uri.scheme?.lowercase()
         if ((scheme != "http" && scheme != "https") || !uri.userInfo.isNullOrEmpty() || uri.host.isNullOrEmpty()) {
-            throw BackupException("仅支持不含账号密码的 http / https 图片 URL")
+            throw BackupException(tr("仅支持不含账号密码的 http / https 图片 URL", "Only http/https image URLs without credentials are supported"))
         }
         return normalizeHttpUrl(uri)
     }
@@ -41,25 +42,25 @@ object GarageOps {
      * 版本、记录（id/合法性/编号唯一）、提醒（id/标题/到期/里程）、车辆里程、图片。
      */
     fun validateLedger(ledger: Ledger): Ledger {
-        if (ledger.version != 1) throw BackupException("账本格式无效")
+        if (ledger.version != 1) throw BackupException(tr("账本格式无效", "Invalid ledger format"))
         val custom = ledger.customCategories.orEmpty()
         for (r in ledger.records) {
-            if (r.id.isEmpty()) throw BackupException("账本包含无效费用记录")
-            if (validateRecord(r, custom).isNotEmpty()) throw BackupException("账本包含无效费用记录")
+            if (r.id.isEmpty()) throw BackupException(tr("账本包含无效费用记录", "The ledger contains an invalid expense record"))
+            if (validateRecord(r, custom).isNotEmpty()) throw BackupException(tr("账本包含无效费用记录", "The ledger contains an invalid expense record"))
         }
         if (ledger.records.map { it.id }.toSet().size != ledger.records.size) {
-            throw BackupException("费用记录编号重复")
+            throw BackupException(tr("费用记录编号重复", "Duplicate expense record ID"))
         }
         for (r in ledger.reminders) {
-            if (r.id.isEmpty() || r.title.isEmpty()) throw BackupException("账本包含无效提醒")
-            if (!Dates.isValid(r.dueDate) && r.dueKm == null) throw BackupException("账本包含无效提醒")
+            if (r.id.isEmpty() || r.title.isEmpty()) throw BackupException(tr("账本包含无效提醒", "The ledger contains an invalid reminder"))
+            if (!Dates.isValid(r.dueDate) && r.dueKm == null) throw BackupException(tr("账本包含无效提醒", "The ledger contains an invalid reminder"))
             val dueKm = r.dueKm
-            if (dueKm != null && (!dueKm.isFinite() || dueKm < 0)) throw BackupException("账本包含无效提醒")
+            if (dueKm != null && (!dueKm.isFinite() || dueKm < 0)) throw BackupException(tr("账本包含无效提醒", "The ledger contains an invalid reminder"))
         }
         val currentKm = ledger.vehicle.currentKm
-        if (!currentKm.isFinite() || currentKm < 0) throw BackupException("车辆里程无效")
+        if (!currentKm.isFinite() || currentKm < 0) throw BackupException(tr("车辆里程无效", "Invalid vehicle mileage"))
         val startKm = ledger.vehicle.startKm
-        if (startKm != null && (!startKm.isFinite() || startKm < 0)) throw BackupException("车辆里程无效")
+        if (startKm != null && (!startKm.isFinite() || startKm < 0)) throw BackupException(tr("车辆里程无效", "Invalid vehicle mileage"))
         safeImage(ledger.vehicle.image)
         return ledger
     }
@@ -74,11 +75,11 @@ object GarageOps {
             val car = com.milenote.android.domain.model.blankLedger().copy(id = Ids.newId())
             return Garage(version = 2, activeId = car.id, theme = "blue", cars = listOf(car))
         }
-        if (input.version != 2 || input.cars.isEmpty()) throw BackupException("不是有效的多车账本")
+        if (input.version != 2 || input.cars.isEmpty()) throw BackupException(tr("不是有效的多车账本", "Not a valid multi-vehicle ledger"))
         val ids = mutableSetOf<String>()
         for (car in input.cars) {
             validateLedger(car)
-            if (car.id.isEmpty() || !ids.add(car.id)) throw BackupException("车辆编号无效或重复")
+            if (car.id.isEmpty() || !ids.add(car.id)) throw BackupException(tr("车辆编号无效或重复", "Invalid or duplicate vehicle ID"))
         }
         val cars = input.cars.map { car ->
             car.copy(records = car.records.map { it.copy(category = Categories.normalize(it.category)) })
@@ -182,7 +183,7 @@ object GarageOps {
     /** 恢复 v1 单车备份：只合并到当前车辆（Web `mergeGarage` 的 version===1 分支）。 */
     fun mergeLegacyBackup(current: Garage, legacy: Ledger): Garage {
         validateLedger(legacy)
-        val active = current.activeCar ?: throw BackupException("不是有效的多车账本")
+        val active = current.activeCar ?: throw BackupException(tr("不是有效的多车账本", "Not a valid multi-vehicle ledger"))
         return replaceActive(current, mergeLedger(active, legacy))
     }
 
@@ -192,8 +193,8 @@ object GarageOps {
      * `scope=one` 删除指定车；`scope=all` 删除全部；删空后创建空白车。
      */
     fun deleteGarageData(garage: Garage, scope: String, carId: String? = null): Garage {
-        if (scope != "one" && scope != "all") throw BackupException("请选择删除范围")
-        if (scope == "one" && garage.cars.none { it.id == carId }) throw BackupException("请选择有效车辆")
+        if (scope != "one" && scope != "all") throw BackupException(tr("请选择删除范围", "Choose a delete scope"))
+        if (scope == "one" && garage.cars.none { it.id == carId }) throw BackupException(tr("请选择有效车辆", "Choose a valid vehicle"))
         var next = garage.copy(
             cars = if (scope == "all") emptyList() else garage.cars.filter { it.id != carId },
         )

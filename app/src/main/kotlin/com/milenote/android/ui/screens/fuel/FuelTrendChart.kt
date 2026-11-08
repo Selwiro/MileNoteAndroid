@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.FuelInterval
 import com.milenote.android.domain.format.Format
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.MileNoteThemeTokens
 import java.time.LocalDate
 import kotlin.math.abs
@@ -102,8 +103,11 @@ fun FuelTrendChart(
     var selected by remember(points) { mutableIntStateOf(-1) }
 
     val density = LocalDensity.current
-    val description = "油耗走势：最近 ${points.size} 个有效区间，最近一次 " +
-        "${Format.money(latest.rate)} 升/百公里。点按数据点查看数值。"
+    val description = tr(
+        "油耗走势：最近 %d 个有效区间，最近一次 %s 升/百公里。点按数据点查看数值。",
+        "Fuel trend: last %d valid intervals, latest %s L/100km. Tap a data point to see its value.",
+        points.size, Format.money(latest.rate),
+    )
 
     BoxWithConstraints(
         modifier = modifier
@@ -278,7 +282,14 @@ fun FuelTrendChart(
                     if (order % sampleStep != 0 && order != monthStarts.lastIndex) return@forEachIndexed
                     val fraction = ((month.toEpochDay().toFloat() - startEpochDay) / domainDays)
                         .coerceIn(0f, 1f)
-                    drawAxisLabel("${month.monthValue}月", leftPad + plotWidth * fraction)
+                    drawAxisLabel(
+                        tr(
+                            "${month.monthValue}月",
+                            java.time.Month.of(month.monthValue)
+                                .getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH),
+                        ),
+                        leftPad + plotWidth * fraction,
+                    )
                 }
             } else {
                 var tick = rangeStart
@@ -298,7 +309,7 @@ fun FuelTrendChart(
                 val lastY = yOf(latest.rate)
                 drawPill(
                     textMeasurer = textMeasurer,
-                    text = "最近 ${Format.money(latest.rate)}",
+                    text = tr("最近 %s", "Latest %s", Format.money(latest.rate)),
                     style = pillStyle,
                     centerX = lastX,
                     anchorY = lastY,

@@ -16,6 +16,7 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.ocr.FuelReceipt
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.EditorTarget
 
 /** 燃油标号选项（车辆设置与油费记录共用同一口径）。 */
@@ -128,9 +129,9 @@ internal class RecordEditorState(
     /** 弹层标题：编辑 / 记录加油 / 记一笔。 */
     val title: String
         get() = when {
-            original != null -> "编辑记录"
-            isFuel -> "记录加油"
-            else -> "记一笔"
+            original != null -> tr("编辑记录", "Edit record")
+            isFuel -> tr("记录加油", "Log refuel")
+            else -> tr("记一笔", "Add entry")
         }
 
     /**
@@ -182,49 +183,53 @@ internal class RecordEditorState(
         receipt.amount?.let { value ->
             if (amount.isBlank()) {
                 amount = Numbers.jsString(value)
-                filled += "金额"
+                filled += tr("金额", "amount")
             }
         }
         receipt.liters?.let { value ->
             if (liters.isBlank()) {
                 liters = Numbers.jsString(value)
-                filled += "加油量"
+                filled += tr("加油量", "fuel amount")
             }
         }
         receipt.unitPrice?.let { value ->
             if (unitPrice.isBlank()) {
                 unitPrice = Numbers.jsString(value)
-                filled += "油价"
+                filled += tr("油价", "unit price")
             }
         }
         receipt.payable?.let { value ->
             if (payable.isBlank()) {
                 payable = Numbers.jsString(value)
-                filled += "应付金额"
+                filled += tr("应付金额", "amount due")
             }
         }
         receipt.discount?.let { value ->
             if (discount.isBlank()) {
                 discount = Numbers.jsString(value)
-                filled += "优惠金额"
+                filled += tr("优惠金额", "discount")
             }
         }
         if (!dateTouched && Dates.isValid(receipt.date)) {
             date = receipt.date
-            filled += "日期"
+            filled += tr("日期", "date")
         }
         receipt.odometer?.let { value ->
             if (odometer.isBlank()) {
                 odometer = Numbers.jsString(value)
-                filled += "总里程"
+                filled += tr("总里程", "odometer")
             }
         }
         if (isFuel) autoFillFuel()
         ocrWarnings = receipt.warnings
         ocrNotice = if (filled.isEmpty()) {
-            "未识别到可回填字段，请手动填写。"
+            tr("未识别到可回填字段，请手动填写。", "No fillable fields were detected. Enter them manually.")
         } else {
-            "已识别并填入 ${filled.joinToString("、")}，请核对后保存。"
+            tr(
+                "已识别并填入 %s，请核对后保存。",
+                "Filled in %s — please check and save.",
+                filled.joinToString(", "),
+            )
         }
     }
 
@@ -310,11 +315,11 @@ internal class RecordEditorState(
     fun validate(): String? {
         val reminder = serviceReminder
         if (reminder?.firstOnly == true && !projects.contains("机油机滤")) {
-            return "首保项目需包含机油机滤"
+            return tr("首保项目需包含机油机滤", "The first service item must include Oil & filter")
         }
-        if (isService && projects.isEmpty()) return "请填写维修保养项目"
+        if (isService && projects.isEmpty()) return tr("请填写维修保养项目", "Add at least one service item")
         if (reminder != null && (reminder.intervalKm ?: 0.0) > 0.0 && Numbers.parse(odometer) == null) {
-            return "该提醒按公里数循环，请填写总里程"
+            return tr("该提醒按公里数循环，请填写总里程", "This reminder repeats by mileage — enter the odometer")
         }
         return validateRecord(buildRecord(), customCategories).ifBlank { null }
     }
@@ -336,7 +341,11 @@ internal class RecordEditorState(
 
     /** 金额字段的局部错误（就地显示在金额下方）。 */
     fun amountError(): String? = currentError()
-        ?.takeIf { it.contains("金额") || it.contains("日期") }
+        ?.takeIf {
+            val lower = it.lowercase()
+            it.contains("金额") || it.contains("日期") ||
+                lower.contains("amount") || lower.contains("date")
+        }
 }
 
 /** 数值字段回填：整数不带 `.0`，小数去掉尾随 0（与 Web `String(number)` 一致）。 */

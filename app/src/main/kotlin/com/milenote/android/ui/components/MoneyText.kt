@@ -79,7 +79,10 @@ fun MoneyText(
         modifier = modifier,
         verticalAlignment = Alignment.Bottom,
     ) {
-        if (showCurrencySymbol) {
+        // 英文界面单位已是 CNY 系列（如 "266.00 CNY"），不再重复显示 ¥ 符号。
+        val showSymbol = showCurrencySymbol &&
+            !(com.milenote.android.i18n.I18n.english && unit?.startsWith("CNY") == true)
+        if (showSymbol) {
             Text(
                 text = "¥",
                 style = symbolStyle,

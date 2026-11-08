@@ -31,6 +31,10 @@ enum class AppTheme(
     GRAPHITE("石墨灰", Color(0xFF697F8E)),
     ;
 
+    /** 当前语言下的显示名（中文「里程蓝」/ 英文 "Mile Blue"）。 */
+    val displayName: String
+        get() = com.milenote.android.i18n.DataLabels.theme(label)
+
     companion object {
         /** 由持久化 id 安全还原（大小写不敏感，账本里存 `blue/forest/purple/orange/graphite`）；未知值回退 [BLUE]。 */
         fun fromId(id: String?): AppTheme =

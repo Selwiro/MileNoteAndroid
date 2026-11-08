@@ -5,6 +5,7 @@ import com.milenote.android.domain.calc.ReminderLevel
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.StatusKind
 import java.time.LocalDate
 
@@ -28,10 +29,10 @@ internal val GENERATED_REMINDER_NOTES: Set<String> = setOf(
 
 /** 提醒等级 → 中文徽章（Web `labels`）。 */
 internal fun reminderLevelLabel(level: ReminderLevel): String = when (level) {
-    ReminderLevel.DONE -> "已完成"
-    ReminderLevel.OVERDUE -> "已到期"
-    ReminderLevel.SOON -> "即将到期"
-    ReminderLevel.NORMAL -> "计划中"
+    ReminderLevel.DONE -> tr("已完成", "Completed")
+    ReminderLevel.OVERDUE -> tr("已到期", "Overdue")
+    ReminderLevel.SOON -> tr("即将到期", "Due soon")
+    ReminderLevel.NORMAL -> tr("计划中", "Planned")
 }
 
 /** 提醒等级 → [StatusKind]。 */
@@ -44,10 +45,10 @@ internal fun reminderLevelStatus(level: ReminderLevel): StatusKind = when (level
 
 /** 计划表状态 → 中文徽章（Web `servicePlanTable` 的 `labels`）。 */
 internal fun planStatusLabel(status: String): String = when (status) {
-    "overdue" -> "过期"
-    "done" -> "已做"
-    "unconfigured" -> "未启用"
-    else -> "待做"
+    "overdue" -> tr("过期", "Overdue")
+    "done" -> tr("已做", "Done")
+    "unconfigured" -> tr("未启用", "Not enabled")
+    else -> tr("待做", "To do")
 }
 
 /** 计划表状态 → [StatusKind]。 */
@@ -81,7 +82,11 @@ internal fun reminderDueText(reminder: Reminder): String {
         reminder.dueDate?.takeIf { it.isNotEmpty() }?.let { add(it) }
         reminder.dueKm?.let { add(Format.km(it)) }
     }
-    return if (parts.isEmpty()) "待补充日期 / 里程" else parts.joinToString(" 或 ")
+    return if (parts.isEmpty()) {
+        tr("待补充日期 / 里程", "Date / mileage to be filled in")
+    } else {
+        parts.joinToString(tr(" 或 ", " or "))
+    }
 }
 
 

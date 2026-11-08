@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.milenote.android.R
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Companion
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
@@ -178,7 +180,7 @@ private fun DashboardContent(
             item(key = "load-error") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MessageBar(
-                        message = "本地账本读取异常，已暂停保存。请先导出原始数据检查。",
+                        message = tr("本地账本读取异常，已暂停保存。请先导出原始数据检查。", "The local ledger could not be read, so saving is paused. Export the raw data and check it first."),
                         kind = MessageKind.ERROR,
                     )
                     Text(
@@ -195,12 +197,12 @@ private fun DashboardContent(
         if (ledger.records.isEmpty()) {
             item(key = "empty") {
                 EmptyState(
-                    title = "从第一笔记录开始",
-                    description = "手动记账，或导入你已有的小熊油耗、钱迹数据。",
+                    title = tr("从第一笔记录开始", "Start with your first record"),
+                    description = tr("手动记账，或导入你已有的小熊油耗、钱迹数据。", "Add entries manually, or import your existing Bear or Qianji data."),
                     illustration = painterResource(R.drawable.ill_empty_records),
-                    actionLabel = "记一笔",
+                    actionLabel = tr("记一笔", "Add entry"),
                     onAction = onAddRecord,
-                    secondaryLabel = "看看演示",
+                    secondaryLabel = tr("看看演示", "See the demo"),
                     onSecondaryAction = onEnterDemo,
                 )
             }
@@ -249,7 +251,7 @@ private fun DashboardLoadState(
     val error = state.loadError
     if (error == null) {
         LoadingState(
-            label = "正在读取本机账本…",
+            label = tr("正在读取本机账本…", "Reading the local ledger…"),
             modifier = modifier
                 .fillMaxSize()
                 .padding(top = 64.dp),
@@ -263,7 +265,7 @@ private fun DashboardLoadState(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         MessageBar(
-            message = "本地账本暂时无法读取或迁移。原记录仍保留，请导出原始数据检查；已暂停保存。",
+            message = tr("本地账本暂时无法读取或迁移。原记录仍保留，请导出原始数据检查；已暂停保存。", "The local ledger cannot be read or migrated right now. Your records are intact — export the raw data and check it; saving is paused."),
             kind = MessageKind.ERROR,
         )
         Text(
@@ -272,7 +274,7 @@ private fun DashboardLoadState(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(onClick = { onNavigate(Routes.SETTINGS) }) {
-            Text("前往设置导出原始数据")
+            Text(tr("前往设置导出原始数据", "Go to Settings to export raw data"))
         }
     }
 }
@@ -281,9 +283,9 @@ private fun DashboardLoadState(
 @Composable
 private fun DemoBanner(onExitDemo: () -> Unit) {
     MessageBar(
-        message = "演示账本 · 可切换车辆、试记账与换肤，退出后不保留修改",
+        message = tr("演示账本 · 可切换车辆、试记账与换肤，退出后不保留修改", "Demo ledger · switch vehicles, try entries and themes; changes are discarded on exit"),
         kind = MessageKind.DEMO,
-        actionLabel = "退出演示",
+        actionLabel = tr("退出演示", "Exit demo"),
         onAction = onExitDemo,
     )
 }
@@ -325,7 +327,7 @@ private fun VehicleHeroCard(
             ) {
                 HeroBadge(text = badge.first, icon = badge.second)
                 Text(
-                    text = vehicle.name.ifBlank { "我的爱车" },
+                    text = DataLabels.vehicleName(vehicle.name),
                     style = MaterialTheme.typography.titleLargeEmphasized,
                     color = gradient.contentColor,
                     maxLines = 2,
@@ -362,12 +364,18 @@ private fun heroSubtitle(ledger: Ledger, days: Int?): String {
     if (modelPlate.isNotEmpty()) return modelPlate
 
     // 徽章已显示「陪伴 X 天 · N 笔」或「已记录 N 笔」时，副标题只提示完善信息，避免重复。
-    if (ledger.records.isNotEmpty() || (days != null && days > 0)) return "点击完善车辆信息"
+    if (ledger.records.isNotEmpty() || (days != null && days > 0)) {
+        return tr("点击完善车辆信息", "Tap to complete vehicle info")
+    }
 
     val km = currentKm(ledger)
-    if (km > 0) return "当前里程 ${Format.km(km)} · 点击完善车辆信息"
-    if (vehicle.name.isNotBlank() && vehicle.name != "我的爱车") return "点击完善车辆信息"
-    return "添加车辆信息，开启你的用车账本"
+    if (km > 0) {
+        return tr("当前里程 %s · 点击完善车辆信息", "Current mileage %s · tap to complete vehicle info", Format.km(km))
+    }
+    if (vehicle.name.isNotBlank() && vehicle.name != "我的爱车") {
+        return tr("点击完善车辆信息", "Tap to complete vehicle info")
+    }
+    return tr("添加车辆信息，开启你的用车账本", "Add vehicle info to start your ledger")
 }
 
 /**
@@ -377,11 +385,15 @@ private fun heroSubtitle(ledger: Ledger, days: Int?): String {
 private fun heroBadge(ledger: Ledger, days: Int?): Pair<String, ImageVector> {
     val recordCount = ledger.records.size
     if (days != null && days > 0) {
-        val text = if (recordCount > 0) "陪伴 $days 天 · $recordCount 笔" else "陪伴 $days 天"
+        val text = if (recordCount > 0) {
+            tr("陪伴 %d 天 · %d 笔", "%d days · %d entries", days, recordCount)
+        } else {
+            tr("陪伴 %d 天", "%d days", days)
+        }
         return text to MileNoteIcons.Calendar
     }
-    if (recordCount > 0) return "已记录 $recordCount 笔" to MileNoteIcons.Records
-    return "完善车辆信息" to MileNoteIcons.Edit
+    if (recordCount > 0) return tr("已记录 %d 笔", "%d entries", recordCount) to MileNoteIcons.Records
+    return tr("完善车辆信息", "Complete vehicle info") to MileNoteIcons.Edit
 }
 
 /** 紧凑 Hero 右侧插画：用户图片优先（圆角 + 白描边 + 轻阴影）；无图 / 解码失败用品牌车插画。 */
@@ -396,7 +408,7 @@ private fun HeroVehicleArt(vehicle: Vehicle, modifier: Modifier = Modifier) {
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
-                    contentDescription = vehicle.name.ifBlank { "车辆图片" },
+                    contentDescription = DataLabels.vehicleName(vehicle.name),
                     modifier = modifier
                         .shadow(elevation = 4.dp, shape = shape, clip = false)
                         .border(width = 2.dp, color = Color.White.copy(alpha = 0.82f), shape = shape)
@@ -410,7 +422,7 @@ private fun HeroVehicleArt(vehicle: Vehicle, modifier: Modifier = Modifier) {
         !image.isNullOrBlank() -> {
             AsyncImage(
                 model = image,
-                contentDescription = vehicle.name.ifBlank { "车辆图片" },
+                contentDescription = DataLabels.vehicleName(vehicle.name),
                 modifier = modifier
                     .shadow(elevation = 4.dp, shape = shape, clip = false)
                     .border(width = 2.dp, color = Color.White.copy(alpha = 0.82f), shape = shape)
@@ -486,7 +498,7 @@ private fun VehicleStatsCard(
 
     DashboardCard(
         modifier = modifier,
-        title = "用车统计",
+        title = tr("用车统计", "Vehicle stats"),
         action = {
             RangeFilterButton(
                 label = rangeLabel(period = period, customRange = customRange),
@@ -513,17 +525,17 @@ private fun VehicleStatsCard(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 StatCell(
-                    label = "用车支出",
+                    label = tr("用车支出", "Expenses"),
                     value = Format.money(statsResult.total),
-                    unit = "元",
+                    unit = tr("元", "CNY"),
                     icon = MileNoteIcons.Wallet,
                     accent = scheme.primary,
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
-                    label = "行驶里程",
+                    label = tr("行驶里程", "Distance"),
                     value = Format.fmt(statsResult.distance),
-                    unit = "公里",
+                    unit = tr("公里", "km"),
                     icon = MileNoteIcons.Road,
                     accent = semantic.info.content,
                     modifier = Modifier.weight(1f),
@@ -534,17 +546,17 @@ private fun VehicleStatsCard(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 StatCell(
-                    label = "用车成本",
+                    label = tr("用车成本", "Cost"),
                     value = statsResult.perKm?.let { Format.money(it) } ?: "—",
-                    unit = if (statsResult.perKm == null) null else "元/公里",
+                    unit = if (statsResult.perKm == null) null else tr("元/公里", "CNY/km"),
                     icon = MileNoteIcons.Chart,
                     accent = scheme.tertiary,
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
-                    label = "平均油耗",
+                    label = tr("平均油耗", "Fuel economy"),
                     value = statsResult.fuelRate?.let { Numbers.toFixed2(it) } ?: "—",
-                    unit = if (statsResult.fuelRate == null) null else "升/百公里",
+                    unit = if (statsResult.fuelRate == null) null else tr("升/百公里", "L/100km"),
                     icon = MileNoteIcons.Fuel,
                     accent = semantic.success.content,
                     modifier = Modifier.weight(1f),
@@ -590,7 +602,7 @@ private fun RangePillMenu(
                 Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 Icon(
                     imageVector = MileNoteIcons.ChevronDown,
-                    contentDescription = "选择统计范围",
+                    contentDescription = tr("选择统计范围", "Select date range"),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -619,22 +631,22 @@ private fun RangeFilterButton(
     ) {
         val presetSelected = customRange == null
         DropdownMenuItem(
-            text = { Text("全部") },
+            text = { Text(tr("全部", "All")) },
             trailingIcon = checkIcon(presetSelected && period == Period.ALL),
             onClick = { onSelectPeriod(Period.ALL) },
         )
         DropdownMenuItem(
-            text = { Text("本月") },
+            text = { Text(tr("本月", "This month")) },
             trailingIcon = checkIcon(presetSelected && period == Period.MONTH),
             onClick = { onSelectPeriod(Period.MONTH) },
         )
         DropdownMenuItem(
-            text = { Text("今年") },
+            text = { Text(tr("今年", "This year")) },
             trailingIcon = checkIcon(presetSelected && period == Period.YEAR),
             onClick = { onSelectPeriod(Period.YEAR) },
         )
         DropdownMenuItem(
-            text = { Text("自定义…") },
+            text = { Text(tr("自定义…", "Custom…")) },
             trailingIcon = checkIcon(customRange != null),
             onClick = onSelectCustom,
         )
@@ -660,7 +672,7 @@ private fun MileageTrendCard(
     val bars = remember(ledger, range) { buildMileageBars(ledger, range) }
 
     DashboardCard(
-        title = "里程趋势",
+        title = tr("里程趋势", "Mileage trend"),
         action = {
             RangeFilterButton(
                 label = rangeLabel(period = period, customRange = customRange),
@@ -696,10 +708,17 @@ private fun MileageTrendCard(
 }
 
 /** 支出趋势的时间维度。 */
-private enum class TrendRangeMode(val label: String) {
-    HALF("半年"),
-    YEAR("一年"),
-    CUSTOM("自定义月份"),
+private enum class TrendRangeMode {
+    HALF,
+    YEAR,
+    CUSTOM,
+}
+
+/** 支出趋势维度 → 显示文案（按当前语言取）。 */
+private fun trendModeLabel(mode: TrendRangeMode): String = when (mode) {
+    TrendRangeMode.HALF -> tr("半年", "6 months")
+    TrendRangeMode.YEAR -> tr("一年", "12 months")
+    TrendRangeMode.CUSTOM -> tr("自定义月份", "Custom months")
 }
 
 /**
@@ -727,7 +746,7 @@ internal fun ExpenseTrendCard(ledger: Ledger, today: LocalDate) {
     }
 
     DashboardCard(
-        title = "支出趋势",
+        title = tr("支出趋势", "Expense trend"),
         action = {
             RangePillMenu(
                 label = trendRangeLabel(mode, customStart.ifBlank { null }, customEnd.ifBlank { null }, months),
@@ -738,7 +757,7 @@ internal fun ExpenseTrendCard(ledger: Ledger, today: LocalDate) {
                 TrendRangeMode.entries.forEach { entry ->
                     if (entry == TrendRangeMode.CUSTOM) {
                         DropdownMenuItem(
-                            text = { Text(entry.label) },
+                            text = { Text(trendModeLabel(entry)) },
                             trailingIcon = checkIcon(mode == entry),
                             onClick = {
                                 menuExpanded = false
@@ -747,7 +766,7 @@ internal fun ExpenseTrendCard(ledger: Ledger, today: LocalDate) {
                         )
                     } else {
                         DropdownMenuItem(
-                            text = { Text(entry.label) },
+                            text = { Text(trendModeLabel(entry)) },
                             trailingIcon = checkIcon(mode == entry),
                             onClick = {
                                 modeName = entry.name
@@ -824,8 +843,8 @@ private fun trendRangeLabel(
     endMonth: String?,
     months: List<YearMonth>,
 ): String = when (mode) {
-    TrendRangeMode.HALF -> TrendRangeMode.HALF.label
-    TrendRangeMode.YEAR -> TrendRangeMode.YEAR.label
+    TrendRangeMode.HALF -> trendModeLabel(TrendRangeMode.HALF)
+    TrendRangeMode.YEAR -> trendModeLabel(TrendRangeMode.YEAR)
     TrendRangeMode.CUSTOM -> {
         val start = startMonth?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
         val end = endMonth?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
@@ -834,8 +853,8 @@ private fun trendRangeLabel(
                 "${start.year}.${month2(start)}–${month2(end)}"
             start != null && end != null ->
                 "${start.year}.${month2(start)}–${end.year}.${month2(end)}"
-            months.isNotEmpty() -> "${months.size} 个月"
-            else -> TrendRangeMode.CUSTOM.label
+            months.isNotEmpty() -> tr("%d 个月", "%d months", months.size)
+            else -> trendModeLabel(TrendRangeMode.CUSTOM)
         }
     }
 }
@@ -866,24 +885,24 @@ private fun MonthRangePickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = MileNoteShapes.extraLarge,
-        title = { Text("自定义月份", style = MaterialTheme.typography.headlineSmall) },
+        title = { Text(tr("自定义月份", "Custom months"), style = MaterialTheme.typography.headlineSmall) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "选择起止月份，最多 24 个月。",
+                    text = tr("选择起止月份，最多 24 个月。", "Pick a start and end month, up to 24 months."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                MonthDropdown(label = "起始月", selected = start, options = options, onSelect = { start = it })
-                MonthDropdown(label = "结束月", selected = end, options = options, onSelect = { end = it })
+                MonthDropdown(label = tr("起始月", "Start month"), selected = start, options = options, onSelect = { start = it })
+                MonthDropdown(label = tr("结束月", "End month"), selected = end, options = options, onSelect = { end = it })
                 when {
                     start > end -> Text(
-                        text = "结束月不能早于起始月",
+                        text = tr("结束月不能早于起始月", "The end month cannot be before the start month"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                     span > 24 -> Text(
-                        text = "月份范围最多 24 个月（当前 $span 个月）",
+                        text = tr("月份范围最多 24 个月（当前 %d 个月）", "The range can span at most 24 months (currently %d)", span),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -895,12 +914,12 @@ private fun MonthRangePickerDialog(
                 enabled = valid,
                 onClick = { onConfirm(monthKey(start), monthKey(end)) },
             ) {
-                Text("确定")
+                Text(tr("确定", "OK"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(tr("取消", "Cancel"))
             }
         },
     )
@@ -978,7 +997,7 @@ internal fun CompositionCard(
     var showRangePicker by remember { mutableStateOf(false) }
 
     DashboardCard(
-        title = "费用构成",
+        title = tr("费用构成", "Expense breakdown"),
         action = {
             RangeFilterButton(
                 label = rangeLabel(period = period, customRange = customRange),
@@ -1111,9 +1130,9 @@ private fun rangeLabel(period: Period, customRange: DateRange?): String {
         }
     }
     return when (period) {
-        Period.ALL -> "全部"
-        Period.MONTH -> "本月"
-        Period.YEAR -> "今年"
+        Period.ALL -> tr("全部", "All")
+        Period.MONTH -> tr("本月", "This month")
+        Period.YEAR -> tr("今年", "This year")
     }
 }
 
@@ -1150,12 +1169,12 @@ private fun CustomRangePickerDialog(
                     }
                 },
             ) {
-                Text("确定")
+                Text(tr("确定", "OK"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(tr("取消", "Cancel"))
             }
         },
     ) {
@@ -1167,7 +1186,7 @@ private fun CustomRangePickerDialog(
                 .padding(horizontal = 8.dp),
             title = {
                 Text(
-                    text = "选择统计范围",
+                    text = tr("选择统计范围", "Select date range"),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(start = 16.dp, top = 16.dp),
                 )
@@ -1197,10 +1216,10 @@ private fun NearRemindersCard(
 ) {
     val km = remember(ledger) { currentKm(ledger) }
     DashboardCard(
-        title = "爱车待办",
+        title = tr("爱车待办", "Upcoming reminders"),
         action = {
             TextButton(onClick = { onNavigate(Routes.MAINTENANCE) }) {
-                Text("管理提醒", style = MaterialTheme.typography.labelLarge)
+                Text(tr("管理提醒", "Manage reminders"), style = MaterialTheme.typography.labelLarge)
             }
         },
     ) {
@@ -1210,13 +1229,13 @@ private fun NearRemindersCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "暂无待办",
+                    text = tr("暂无待办", "Nothing due"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = { onNavigate(Routes.MAINTENANCE) }) {
-                    Text("添加提醒")
+                    Text(tr("添加提醒", "Add reminder"))
                 }
             }
         } else {
@@ -1248,7 +1267,7 @@ private fun NearRemindersCard(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
-                                    text = reminder.title,
+                                    text = DataLabels.serviceItem(reminder.title),
                                     style = MaterialTheme.typography.titleSmall,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -1286,10 +1305,10 @@ private fun NearRemindersCard(
 
 /** 待办状态 → 文案（与 Web `normal/soon/overdue/done` 一致）。 */
 private fun reminderStatusLabel(level: ReminderLevel): String = when (level) {
-    ReminderLevel.DONE -> "已完成"
-    ReminderLevel.OVERDUE -> "已到期"
-    ReminderLevel.SOON -> "即将到期"
-    ReminderLevel.NORMAL -> "计划中"
+    ReminderLevel.DONE -> tr("已完成", "Done")
+    ReminderLevel.OVERDUE -> tr("已到期", "Overdue")
+    ReminderLevel.SOON -> tr("即将到期", "Due soon")
+    ReminderLevel.NORMAL -> tr("计划中", "Planned")
 }
 
 /** 待办状态 → 组件状态。 */

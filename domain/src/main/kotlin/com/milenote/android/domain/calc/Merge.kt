@@ -1,6 +1,7 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.import.ImportItem
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Record
 
 /** 导入合并结果（Web `{records, added, merged, skipped}`）。 */
@@ -121,7 +122,7 @@ private fun indexOfSame(records: List<Record>, target: Record): Int {
  */
 fun applyImportPolicy(items: List<ImportItem>, basis: String): List<ImportItem> = items.map { item ->
     if (basis == "bear" && item.record.source == "钱迹" && item.record.category == "油费") {
-        item.copy(error = "按成本设置跳过钱迹油费（以小熊实付为准）")
+        item.copy(error = tr("按成本设置跳过钱迹油费（以小熊实付为准）", "Skipped Qianji fuel per cost setting (Bear paid amount takes precedence)"))
     } else {
         item
     }
@@ -177,7 +178,7 @@ fun mergeWithFuelChoices(
     val conflicts = fuelImportConflicts(records, items)
     for (c in conflicts) {
         if (choices[c.date] !in FUEL_CHOICES) {
-            throw IllegalArgumentException("${c.date} 有油费冲突，请选择处理方式")
+            throw IllegalArgumentException(tr("%s 有油费冲突，请选择处理方式", "%s has a fuel conflict — choose how to handle it", c.date))
         }
     }
     var result = records.toMutableList()
@@ -246,7 +247,7 @@ fun mergeFuelBatch(
     items: List<ImportItem>,
     basis: String = "bear",
 ): MergeResult {
-    if (basis !in FUEL_CHOICES) throw IllegalArgumentException("请选择油费处理方式")
+    if (basis !in FUEL_CHOICES) throw IllegalArgumentException(tr("请选择油费处理方式", "Choose how to handle the fuel entries"))
     val conflict = fuelBatchConflict(records, items)
     val choices = fuelImportConflicts(records, items).associate { it.date to basis }
     val result = mergeWithFuelChoices(records, items, choices)

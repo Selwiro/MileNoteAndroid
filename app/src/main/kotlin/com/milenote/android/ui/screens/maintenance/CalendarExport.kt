@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.i18n.tr
 import com.milenote.android.platform.FileExporter
 import com.milenote.android.platform.LedgerExports
 
@@ -40,7 +41,11 @@ internal fun rememberCalendarExportAction(): (Reminder) -> Unit {
         if (uri == null || target == null) return@rememberLauncherForActivityResult
         val saved = runCatching { FileExporter.writeTo(context, uri, target.bytes) }.isSuccess
         if (saved) {
-            Toast.makeText(context, "日历文件已保存，可导入到系统日历", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                context,
+                tr("日历文件已保存，可导入到系统日历", "Calendar file saved. You can import it into your calendar app."),
+                Toast.LENGTH_LONG,
+            ).show()
             return@rememberLauncherForActivityResult
         }
         val shared = runCatching {
@@ -48,14 +53,22 @@ internal fun rememberCalendarExportAction(): (Reminder) -> Unit {
         }.isSuccess
         Toast.makeText(
             context,
-            if (shared) "已打开分享，可发送到日历或文件应用" else "日历文件导出失败，请稍后重试",
+            if (shared) {
+                tr("已打开分享，可发送到日历或文件应用", "Share sheet opened — send to a calendar or file app.")
+            } else {
+                tr("日历文件导出失败，请稍后重试", "Calendar export failed. Try again later.")
+            },
             Toast.LENGTH_LONG,
         ).show()
     }
     return { reminder ->
         val ics = LedgerExports.ics(reminder)
         if (ics == null || !Dates.isValid(reminder.dueDate)) {
-            Toast.makeText(context, "该提醒没有有效到期日期，无法导出日历", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                tr("该提醒没有有效到期日期，无法导出日历", "This reminder has no valid due date, so it cannot be exported."),
+                Toast.LENGTH_SHORT,
+            ).show()
         } else {
             val fileName = LedgerExports.icsFileName(reminder)
             pending = PendingIcs(fileName = fileName, bytes = ics.toByteArray(Charsets.UTF_8))

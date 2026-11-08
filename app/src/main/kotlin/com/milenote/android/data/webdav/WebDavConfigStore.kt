@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.milenote.android.i18n.tr
 import com.milenote.android.platform.webdav.WebDavException
 import java.security.KeyStore
 import java.util.Base64
@@ -71,7 +72,7 @@ class WebDavConfigStore(private val context: Context) {
         val existing = context.webDavConfigDataStore.data.first()
         val hasExistingPassword = !existing[Keys.passwordCipher].isNullOrBlank()
         if (password.isNullOrBlank() && !hasExistingPassword) {
-            throw WebDavException("请输入应用密码")
+            throw WebDavException(tr("请输入应用密码", "Enter the app password"))
         }
         val encrypted: Pair<String, String>? = if (!password.isNullOrBlank()) {
             PasswordCipher.encrypt(password)
@@ -155,7 +156,13 @@ internal object PasswordCipher {
             Base64.getEncoder().encodeToString(encrypted) to
                 Base64.getEncoder().encodeToString(cipher.iv)
         } catch (t: Throwable) {
-            throw WebDavException("密码加密失败，请重试（设备安全模块可能暂时不可用）", t)
+            throw WebDavException(
+                tr(
+                    "密码加密失败，请重试（设备安全模块可能暂时不可用）",
+                    "Password encryption failed — try again (the device security module may be temporarily unavailable)",
+                ),
+                t,
+            )
         }
     }
 

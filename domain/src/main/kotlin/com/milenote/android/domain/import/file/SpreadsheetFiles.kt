@@ -1,5 +1,7 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
+
 /**
  * 表格文件读取门面：按文件签名 + 扩展名分派到
  * [XlsxReader] / [XlsReader] / [CsvReader] / [QianJiJsonReader]。
@@ -28,8 +30,12 @@ class SpreadsheetFiles(
             isXlsxSignature(bytes) -> xlsxReader.read(bytes, fileName)
             isXlsSignature(bytes) -> xlsReader.read(bytes, fileName)
             else -> when (extensionOf(fileName)) {
-                "xlsx" -> throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xlsx 文件已损坏或格式不正确）")
-                "xls" -> throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件已损坏或格式不正确）")
+                "xlsx" -> throw SpreadsheetReadException(
+                    tr("文件不是有效的 Excel 表格（.xlsx 文件已损坏或格式不正确）", "Not a valid Excel file (.xlsx is corrupted or has the wrong format)"),
+                )
+                "xls" -> throw SpreadsheetReadException(
+                    tr("文件不是有效的 Excel 表格（.xls 文件已损坏或格式不正确）", "Not a valid Excel file (.xls is corrupted or has the wrong format)"),
+                )
                 else -> readTextLike(bytes, fileName)
             }
         }
@@ -46,8 +52,12 @@ class SpreadsheetFiles(
             isXlsxSignature(bytes) -> xlsxReader.readSheet(bytes, sheetName, fileName)
             isXlsSignature(bytes) -> xlsReader.readSheet(bytes, sheetName, fileName)
             else -> when (extensionOf(fileName)) {
-                "xlsx" -> throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xlsx 文件已损坏或格式不正确）")
-                "xls" -> throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件已损坏或格式不正确）")
+                "xlsx" -> throw SpreadsheetReadException(
+                    tr("文件不是有效的 Excel 表格（.xlsx 文件已损坏或格式不正确）", "Not a valid Excel file (.xlsx is corrupted or has the wrong format)"),
+                )
+                "xls" -> throw SpreadsheetReadException(
+                    tr("文件不是有效的 Excel 表格（.xls 文件已损坏或格式不正确）", "Not a valid Excel file (.xls is corrupted or has the wrong format)"),
+                )
                 else -> readTextLike(bytes, fileName)
             }
         }
@@ -67,10 +77,10 @@ class SpreadsheetFiles(
 
     private fun validateFile(bytes: ByteArray) {
         if (bytes.isEmpty()) {
-            throw SpreadsheetReadException("文件是空的，请选择有效的表格文件")
+            throw SpreadsheetReadException(tr("文件是空的，请选择有效的表格文件", "The file is empty — choose a valid spreadsheet file"))
         }
         if (bytes.size > SpreadsheetLimits.MAX_FILE_BYTES) {
-            throw SpreadsheetReadException("文件超过 10 MB，请拆分后再导入")
+            throw SpreadsheetReadException(tr("文件超过 10 MB，请拆分后再导入", "File exceeds 10 MB — split it and import again"))
         }
     }
 
@@ -86,11 +96,21 @@ class SpreadsheetFiles(
             "csv", "tsv" -> csvReader.read(bytes, fileName)
             else -> if (looksLikeText(bytes)) {
                 if (looksLikeJson(bytes)) {
-                    throw SpreadsheetReadException("文件内容是 JSON 数据，请将扩展名改为 .json 或 .txt 后再导入")
+                    throw SpreadsheetReadException(
+                        tr(
+                            "文件内容是 JSON 数据，请将扩展名改为 .json 或 .txt 后再导入",
+                            "The file contains JSON data — rename it to .json or .txt and import again",
+                        ),
+                    )
                 }
                 csvReader.read(bytes, fileName)
             } else {
-                throw SpreadsheetReadException("不支持的文件格式，请选择 .xlsx、.xls、.csv、.tsv、.json 或 .txt 文件")
+                throw SpreadsheetReadException(
+                    tr(
+                        "不支持的文件格式，请选择 .xlsx、.xls、.csv、.tsv、.json 或 .txt 文件",
+                        "Unsupported file format — choose a .xlsx, .xls, .csv, .tsv, .json or .txt file",
+                    ),
+                )
             }
         }
 

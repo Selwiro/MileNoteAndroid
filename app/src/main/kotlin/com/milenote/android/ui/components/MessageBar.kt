@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.MileNoteShapes
@@ -115,7 +116,7 @@ fun MessageBar(
                 IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = MileNoteIcons.Close,
-                        contentDescription = "关闭提示",
+                        contentDescription = tr("关闭提示", "Dismiss message"),
                         modifier = Modifier.size(16.dp),
                     )
                 }

@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.util.Base64
+import com.milenote.android.i18n.tr
 import java.io.ByteArrayOutputStream
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -47,22 +48,22 @@ internal object VehicleImageCodec {
     fun toDataUrl(resolver: ContentResolver, uri: Uri): String {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         // 注意：inJustDecodeBounds 时 decodeStream 按设计返回 null，不能拿返回值判断读取失败。
-        val stream = resolver.openInputStream(uri) ?: throw IllegalArgumentException("无法读取所选图片")
+        val stream = resolver.openInputStream(uri) ?: throw IllegalArgumentException(tr("无法读取所选图片", "Could not read the selected image"))
         stream.use { BitmapFactory.decodeStream(it, null, bounds) }
         val sourceWidth = bounds.outWidth
         val sourceHeight = bounds.outHeight
         if (sourceWidth <= 0 || sourceHeight <= 0) {
-            throw IllegalArgumentException("不支持该图片格式，请选择 PNG / JPG / WebP")
+            throw IllegalArgumentException(tr("不支持该图片格式，请选择 PNG / JPG / WebP", "Unsupported image format. Choose PNG / JPG / WebP"))
         }
         if (sourceWidth.toLong() * sourceHeight > MaxPixels) {
-            throw IllegalArgumentException("图片像素过大，请换一张尺寸更小的图片")
+            throw IllegalArgumentException(tr("图片像素过大，请换一张尺寸更小的图片", "Image resolution is too large. Choose a smaller image"))
         }
 
         val options = BitmapFactory.Options().apply {
             inSampleSize = sampleSize(sourceWidth, sourceHeight)
         }
         val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: throw IllegalArgumentException("图片解码失败，请换一张试试")
+            ?: throw IllegalArgumentException(tr("图片解码失败，请换一张试试", "Could not decode the image. Try another one"))
         val scaled = scaleWithin(decoded)
         if (scaled !== decoded) decoded.recycle()
 
@@ -74,7 +75,7 @@ internal object VehicleImageCodec {
             }
             if (!scaled.compress(format, Quality, output)) {
                 scaled.recycle()
-                throw IllegalStateException("图片压缩失败，请换一张图片")
+                throw IllegalStateException(tr("图片压缩失败，请换一张图片", "Could not compress the image. Try another one"))
             }
             output.toByteArray()
         }
@@ -82,7 +83,7 @@ internal object VehicleImageCodec {
 
         val dataUrl = "data:image/webp;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
         if (dataUrl.length > MaxDataUrlLength) {
-            throw IllegalArgumentException("图片过大，请换一张分辨率更低的图片")
+            throw IllegalArgumentException(tr("图片过大，请换一张分辨率更低的图片", "Image is too large. Choose a lower-resolution image"))
         }
         return dataUrl
     }

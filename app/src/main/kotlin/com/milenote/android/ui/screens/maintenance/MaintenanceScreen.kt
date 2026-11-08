@@ -59,6 +59,8 @@ import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.CategoryBadge
 import com.milenote.android.ui.components.LoadingState
@@ -98,7 +100,7 @@ fun MaintenanceScreen(
     val ledger = state.activeCar
     if (ledger == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            LoadingState(label = "正在加载账本…")
+            LoadingState(label = tr("正在加载账本…", "Loading ledger…"))
         }
         return
     }
@@ -145,7 +147,7 @@ fun MaintenanceScreen(
 
     Column(modifier = modifier.fillMaxSize()) {
         SecondaryTabs(
-            labels = listOf("待办与记录", "计划"),
+            labels = listOf(tr("待办与记录", "Tasks & records"), tr("计划", "Plan")),
             selected = selectedTab,
             onSelect = { selectedTab = it },
         )
@@ -162,14 +164,24 @@ fun MaintenanceScreen(
             ) {
                 item(key = "todo") {
                     SectionCard(
-                        title = "待办事项",
+                        title = tr("待办事项", "To-dos"),
                         subtitle = if (overdueCount > 0) {
-                            "${groups.near.size} 项 · ${overdueCount} 项已到期"
+                            tr(
+                                "%d 项 · %d 项已到期",
+                                "%d items · %d overdue",
+                                groups.near.size,
+                                overdueCount,
+                            )
                         } else {
-                            "${groups.near.size} 项 · 当前 ${Format.fmt(km)} 公里"
+                            tr(
+                                "%d 项 · 当前 %s 公里",
+                                "%d items · current %s km",
+                                groups.near.size,
+                                Format.fmt(km),
+                            )
                         },
                         action = {
-                            TextButton(onClick = { addReminder = true }) { Text("添加提醒") }
+                            TextButton(onClick = { addReminder = true }) { Text(tr("添加提醒", "Add reminder")) }
                         },
                     ) {
                         if (groups.near.isEmpty()) {
@@ -192,8 +204,13 @@ fun MaintenanceScreen(
                 }
                 item(key = "history") {
                     SectionCard(
-                        title = "维修保养记录",
-                        subtitle = "${filteredHistory.size} 次 · 当前 ${Format.fmt(km)} 公里",
+                        title = tr("维修保养记录", "Maintenance records"),
+                        subtitle = tr(
+                            "%d 次 · 当前 %s 公里",
+                            "%d entries · current %s km",
+                            filteredHistory.size,
+                            Format.fmt(km),
+                        ),
                         action = {
                             ServiceHistoryFilter(
                                 filter = historyFilter,
@@ -222,10 +239,13 @@ fun MaintenanceScreen(
             ) {
                 item(key = "plan") {
                     SectionCard(
-                        title = "保养计划",
-                        subtitle = "按最近一次保养记录计算下次到期",
+                        title = tr("保养计划", "Service plan"),
+                        subtitle = tr(
+                            "按最近一次保养记录计算下次到期",
+                            "Next due date is based on the latest service record",
+                        ),
                         action = {
-                            TextButton(onClick = { vm.openServicePlanEditor() }) { Text("编辑计划") }
+                            TextButton(onClick = { vm.openServicePlanEditor() }) { Text(tr("编辑计划", "Edit plan")) }
                         },
                     ) {
                         if (!configured) {
@@ -237,7 +257,11 @@ fun MaintenanceScreen(
                         }
                         if (rows.isEmpty()) {
                             Text(
-                                text = "暂无计划项目。启用默认方案或编辑自定义方案后，这里会显示完整周期。",
+                                text = tr(
+                                    "暂无计划项目。启用默认方案或编辑自定义方案后，这里会显示完整周期。",
+                                    "No plan items yet. Enable the default plan or edit a custom plan to " +
+                                        "see the full schedule here.",
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -260,7 +284,7 @@ fun MaintenanceScreen(
                             }
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "点项目行查看详情、完成并记录",
+                                text = tr("点项目行查看详情、完成并记录", "Tap an item to see details and log a service"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -349,9 +373,16 @@ private fun ServiceHistoryFlatList(
     if (records.isEmpty()) {
         Text(
             text = if (filterActive) {
-                "没有符合条件的记录。点右上角「筛选」可切回全部。"
+                tr(
+                    "没有符合条件的记录。点右上角「筛选」可切回全部。",
+                    "No matching records. Tap Filter at the top right to show all.",
+                )
             } else {
-                "还没有维修保养记录。完成维修、保养或汽车美容后，记下日期、地点、里程、项目和费用。"
+                tr(
+                    "还没有维修保养记录。完成维修、保养或汽车美容后，记下日期、地点、里程、项目和费用。",
+                    "No maintenance records yet. After a repair, service, or detailing job, log the " +
+                        "date, location, mileage, items, and cost.",
+                )
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -394,13 +425,13 @@ private fun ServiceHistoryFilter(filter: String, onSelect: (String) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = if (filter == "全部") "筛选" else filter,
+                    text = if (filter == "全部") tr("筛选", "Filter") else DataLabels.category(filter),
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                 )
                 Icon(
                     imageVector = MileNoteIcons.ChevronDown,
-                    contentDescription = "筛选维修保养记录",
+                    contentDescription = tr("筛选维修保养记录", "Filter maintenance records"),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -408,7 +439,9 @@ private fun ServiceHistoryFilter(filter: String, onSelect: (String) -> Unit) {
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             SERVICE_HISTORY_FILTERS.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option) },
+                    text = {
+                        Text(if (option == "全部") tr("全部", "All") else DataLabels.category(option))
+                    },
                     trailingIcon = historyFilterCheckIcon(selected = option == filter),
                     onClick = {
                         onSelect(option)
@@ -479,7 +512,7 @@ private fun ReminderCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(text = reminder.title, style = MaterialTheme.typography.titleMedium)
+                    Text(text = DataLabels.serviceItem(reminder.title), style = MaterialTheme.typography.titleMedium)
                     // 日期行 / 里程行各自单行省略：不换行，超宽时在卡片右侧截断。
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Format.reminderDeadline(reminder, state).split('\n').forEach { line ->
@@ -524,7 +557,7 @@ private fun ReminderCard(
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("完成并记录", style = MaterialTheme.typography.labelLarge)
+                        Text(tr("完成并记录", "Complete & log"), style = MaterialTheme.typography.labelLarge)
                     }
                 } else {
                     Spacer(modifier = Modifier.width(1.dp))
@@ -532,7 +565,7 @@ private fun ReminderCard(
                 IconButton(onClick = { onEdit(reminder) }) {
                     Icon(
                         imageVector = MileNoteIcons.Edit,
-                        contentDescription = "编辑",
+                        contentDescription = tr("编辑", "Edit"),
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
@@ -558,9 +591,9 @@ private fun PendingEmptyState(onAdd: () -> Unit) {
             modifier = Modifier.size(32.dp),
             tint = scheme.onSurfaceVariant,
         )
-        Text(text = "未来一年内暂无待办", style = MaterialTheme.typography.titleMedium)
+        Text(text = tr("未来一年内暂无待办", "No to-dos in the next 12 months"), style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = onAdd) {
-            Text("＋ 添加维修保养提醒")
+            Text(tr("＋ 添加维修保养提醒", "＋ Add maintenance reminder"))
         }
     }
 }
@@ -614,9 +647,13 @@ private fun EnableDefaultPlanGuide(onEnableDefault: () -> Unit, onCustomize: () 
             modifier = Modifier.padding(MileNoteDimens.CardPadding),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(text = "尚未启用保养方案", style = MaterialTheme.typography.titleMedium)
+            Text(text = tr("尚未启用保养方案", "Service plan not enabled"), style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "可一键启用默认 12 项周期（首保 + 11 项常规保养），也可以逐项自定义公里与时长。",
+                text = tr(
+                    "可一键启用默认 12 项周期（首保 + 11 项常规保养），也可以逐项自定义公里与时长。",
+                    "Enable the 12 default intervals (first service + 11 routine services) in one tap, " +
+                        "or customize mileage and duration for each item.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f),
             )
@@ -625,7 +662,7 @@ private fun EnableDefaultPlanGuide(onEnableDefault: () -> Unit, onCustomize: () 
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilledTonalButton(onClick = onEnableDefault) {
-                    Text("启用默认方案")
+                    Text(tr("启用默认方案", "Enable default plan"))
                 }
                 TextButton(
                     onClick = onCustomize,
@@ -633,7 +670,7 @@ private fun EnableDefaultPlanGuide(onEnableDefault: () -> Unit, onCustomize: () 
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     ),
                 ) {
-                    Text("自己设置")
+                    Text(tr("自己设置", "Set up manually"))
                 }
             }
         }
@@ -656,19 +693,19 @@ private fun PlanTableHeader() {
             verticalAlignment = Alignment.Bottom,
         ) {
             Text(
-                text = "项目",
+                text = tr("项目", "Item"),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
             )
             Text(
-                text = "周期",
+                text = tr("周期", "Interval"),
                 modifier = Modifier.width(PlanCycleColumnWidth),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
             )
             Text(
-                text = "日期 / 里程",
+                text = tr("日期 / 里程", "Date / mileage"),
                 modifier = Modifier.width(PlanDateColumnWidth),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
@@ -712,9 +749,16 @@ private fun PlanTableRow(
         row.status == "done" -> row.completedKm?.let { Format.km(it) }
         else -> null
     }
-    val cycleKmText = row.intervalKm?.takeIf { it != 0.0 }?.let { "${Format.fmt(it)} 公里" }
-    val cycleMonthText = row.intervalMonths?.takeIf { it != 0 }?.let {
-        if (it % 12 == 0) "${it / 12} 年" else "$it 个月"
+    val cycleKmText = row.intervalKm?.takeIf { it != 0.0 }?.let {
+        tr("%s 公里", "%s km", Format.fmt(it))
+    }
+    val cycleMonthText = row.intervalMonths?.takeIf { it != 0 }?.let { months ->
+        val years = months / 12
+        if (months % 12 == 0) {
+            if (years == 1) tr("%d 年", "%d year", years) else tr("%d 年", "%d years", years)
+        } else {
+            if (months == 1) tr("%d 个月", "%d month", months) else tr("%d 个月", "%d months", months)
+        }
     }
     Row(
         modifier = Modifier
@@ -739,7 +783,7 @@ private fun PlanTableRow(
                         .background(accent, CircleShape),
                 )
                 Text(
-                    text = row.title,
+                    text = DataLabels.serviceItem(row.title),
                     style = MaterialTheme.typography.titleSmall,
                     color = if (row.status == "unconfigured") scheme.onSurfaceVariant else scheme.onSurface,
                     maxLines = 1,
@@ -791,7 +835,7 @@ private fun PlanTableRow(
             }
             if (cycleKmText == null && cycleMonthText == null) {
                 Text(
-                    text = "单次",
+                    text = tr("单次", "One-off"),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
@@ -823,7 +867,11 @@ private fun PlanTableRow(
                 }
                 if (dateText == null && kmText == null) {
                     Text(
-                        text = if (row.status == "unconfigured") "未设置" else "待补充",
+                        text = if (row.status == "unconfigured") {
+                            tr("未设置", "Not set")
+                        } else {
+                            tr("待补充", "To be filled")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
@@ -879,7 +927,7 @@ private fun PlanRowDetailSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = row.title, style = MaterialTheme.typography.titleLarge)
+                    Text(text = DataLabels.serviceItem(row.title), style = MaterialTheme.typography.titleLarge)
                     Text(
                         text = Format.cycleText(row.intervalKm, row.intervalMonths),
                         style = MaterialTheme.typography.bodySmall,
@@ -892,8 +940,8 @@ private fun PlanRowDetailSheet(
             when {
                 current != null -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                        PlanDetailValue(label = "下次到期", value = dateText)
-                        PlanDetailValue(label = "到期里程", value = kmText)
+                        PlanDetailValue(label = tr("下次到期", "Next due date"), value = dateText)
+                        PlanDetailValue(label = tr("到期里程", "Due mileage"), value = kmText)
                     }
                     progress?.let { p ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -917,23 +965,29 @@ private fun PlanRowDetailSheet(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("完成并记录")
+                        Text(tr("完成并记录", "Complete & log"))
                     }
                 }
                 row.status == "done" -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                        PlanDetailValue(label = "上次完成", value = dateText)
-                        PlanDetailValue(label = "完成里程", value = kmText)
+                        PlanDetailValue(label = tr("上次完成", "Last completed"), value = dateText)
+                        PlanDetailValue(label = tr("完成里程", "Completed mileage"), value = kmText)
                     }
                     Text(
-                        text = "本轮已完成；完成下一轮时会重新计算。",
+                        text = tr(
+                            "本轮已完成；完成下一轮时会重新计算。",
+                            "This cycle is complete; the next one is recalculated when you log it.",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )
                 }
                 else -> {
                     Text(
-                        text = "还没有设置周期或完成记录，暂无法计算下次到期。",
+                        text = tr(
+                            "还没有设置周期或完成记录，暂无法计算下次到期。",
+                            "No interval or completion record yet, so the next due date can't be calculated.",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
                     )
@@ -957,11 +1011,16 @@ private fun PlanDetailValue(label: String, value: String) {
 
 /** 进度摘要：已用 90% · 还剩 1,000 公里 / 已超 1,000 公里。 */
 private fun progressSummary(progress: ServiceProgress): String {
-    val unit = if (progress.kind == "km") "公里" else "天"
+    val unit = if (progress.kind == "km") tr("公里", "km") else tr("天", "days")
     val remaining = progress.left?.let {
-        if (it >= 0) "还剩 ${Format.fmt(it)} $unit" else "已超 ${Format.fmt(-it)} $unit"
+        if (it >= 0) {
+            tr("还剩 %s %s", "%s %s left", Format.fmt(it), unit)
+        } else {
+            tr("已超 %s %s", "%s %s overdue", Format.fmt(-it), unit)
+        }
     }
-    return listOfNotNull("已用 ${Format.fmt(progress.percent)}%", remaining).joinToString(" · ")
+    val used = tr("已用 %s%%", "%s%% used", Format.fmt(progress.percent))
+    return listOfNotNull(used, remaining).joinToString(" · ")
 }
 
 @Composable
@@ -998,7 +1057,9 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = projects ?: record.category,
+                text = projects?.let { raw ->
+                    raw.split("、").joinToString(tr("、", ", ")) { DataLabels.serviceItem(it) }
+                } ?: DataLabels.category(record.category),
                 style = MaterialTheme.typography.titleMedium,
                 color = scheme.onSurface,
                 maxLines = 1,
@@ -1021,18 +1082,18 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
             MoneyText(
                 amount = Format.money(record.amount),
                 size = MoneySize.MEDIUM,
-                unit = "元",
+                unit = tr("元", "CNY"),
             )
             Box(
                 modifier = Modifier
                     .size(26.dp)
                     .clip(CircleShape)
-                    .clickable(onClickLabel = "编辑") { onClick() },
+                    .clickable(onClickLabel = tr("编辑", "Edit")) { onClick() },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = MileNoteIcons.Edit,
-                    contentDescription = "编辑",
+                    contentDescription = tr("编辑", "Edit"),
                     modifier = Modifier.size(16.dp),
                     tint = scheme.primary,
                 )

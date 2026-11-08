@@ -67,6 +67,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.icons.MileNoteIcons
@@ -78,25 +80,30 @@ import com.milenote.android.ui.screens.settings.SettingsScreen
 
 private data class BottomTab(
     val route: String,
-    val label: String,
+    val labelZh: String,
+    val labelEn: String,
     val icon: ImageVector,
     val filledIcon: ImageVector,
-)
+) {
+    /** 当前语言下的 tab 名（getter 在组合时求值，语言切换后自动跟随）。 */
+    val label: String
+        get() = com.milenote.android.i18n.tr(labelZh, labelEn)
+}
 
 private val bottomTabs = listOf(
-    BottomTab(Routes.DASHBOARD, "总览", MileNoteIcons.Home, MileNoteIcons.HomeFilled),
-    BottomTab(Routes.RECORDS, "记录", MileNoteIcons.Records, MileNoteIcons.RecordsFilled),
-    BottomTab(Routes.FUEL, "油耗", MileNoteIcons.Fuel, MileNoteIcons.FuelFilled),
-    BottomTab(Routes.MAINTENANCE, "保养", MileNoteIcons.Maintenance, MileNoteIcons.MaintenanceFilled),
+    BottomTab(Routes.DASHBOARD, "总览", "Overview", MileNoteIcons.Home, MileNoteIcons.HomeFilled),
+    BottomTab(Routes.RECORDS, "记录", "Records", MileNoteIcons.Records, MileNoteIcons.RecordsFilled),
+    BottomTab(Routes.FUEL, "油耗", "Fuel", MileNoteIcons.Fuel, MileNoteIcons.FuelFilled),
+    BottomTab(Routes.MAINTENANCE, "保养", "Maintenance", MileNoteIcons.Maintenance, MileNoteIcons.MaintenanceFilled),
 )
 
 private data class TopBarCopy(val title: String, val subtitle: String)
 
 private fun topBarCopy(route: String?): TopBarCopy? = when (route) {
-    Routes.DASHBOARD -> TopBarCopy("用车总览", "")
-    Routes.RECORDS -> TopBarCopy("费用统计", "")
-    Routes.FUEL -> TopBarCopy("油耗分析", "")
-    Routes.MAINTENANCE -> TopBarCopy("维修保养", "")
+    Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
+    Routes.RECORDS -> TopBarCopy(tr("费用统计", "Analytics"), "")
+    Routes.FUEL -> TopBarCopy(tr("油耗分析", "Fuel"), "")
+    Routes.MAINTENANCE -> TopBarCopy(tr("维修保养", "Service"), "")
     else -> null
 }
 
@@ -155,11 +162,14 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     )
                     val vehicle = state.vehicle
                     if (vehicle != null) {
+                        androidx.compose.foundation.layout.Spacer(
+                            modifier = Modifier.width(8.dp),
+                        )
                         AssistChip(
                             onClick = { vm.showVehicleSwitcher(true) },
                             label = {
                                 Text(
-                                    text = vehicle.name.ifBlank { "我的爱车" },
+                                    text = com.milenote.android.i18n.DataLabels.vehicleName(vehicle.name),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -173,7 +183,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                         )
                     }
                     IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "设置")
+                        Icon(Icons.Filled.Settings, contentDescription = tr("设置", "Settings"))
                     }
                 }
             }
@@ -268,7 +278,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(confirm.message)
                     if (confirm.requireText != null) {
-                        Text("请输入「${confirm.requireText}」以确认")
+                        Text(tr("请输入「%s」以确认", "Type \"%s\" to confirm", confirm.requireText))
                         OutlinedTextField(value = input, onValueChange = { input = it }, singleLine = true)
                     }
                 }
@@ -282,7 +292,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     )
                 }
             },
-            dismissButton = { TextButton(onClick = { vm.dismissConfirm() }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { vm.dismissConfirm() }) { Text(tr("取消", "Cancel")) } },
         )
     }
 
@@ -291,25 +301,33 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         val record = pending.record
         AlertDialog(
             onDismissRequest = { vm.cancelRecordDelete() },
-            title = { Text("删除这条记录？") },
+            title = { Text(tr("删除这条记录？", "Delete this record?")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("${Dates.displayDots(record.date)} · ${record.category} · ¥${Format.money(record.amount)}")
                     Text(
-                        "这条记录完成了保养提醒「${pending.reminderTitles.joinToString("、")}」。" +
-                            "删除后是否恢复提醒？",
+                        "${Dates.displayDots(record.date)} · ${com.milenote.android.i18n.DataLabels.category(record.category)}" +
+                            " · ¥${Format.money(record.amount)}",
+                    )
+                    Text(
+                        tr(
+                            "这条记录完成了保养提醒「%s」。删除后是否恢复提醒？",
+                            "This record completed the reminder \"%s\". Restore the reminder after deleting?",
+                            pending.reminderTitles
+                                .map { com.milenote.android.i18n.DataLabels.serviceItem(it) }
+                                .joinToString(if (com.milenote.android.i18n.I18n.english) ", " else "、"),
+                        ),
                     )
                 }
             },
             confirmButton = {
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = { vm.confirmRecordDelete(record, restoreReminders = true) }) {
-                        Text("删除并恢复提醒")
+                        Text(tr("删除并恢复提醒", "Delete and restore reminder"))
                     }
                     TextButton(onClick = { vm.confirmRecordDelete(record, restoreReminders = false) }) {
-                        Text("仅删除记录", color = MaterialTheme.colorScheme.error)
+                        Text(tr("仅删除记录", "Delete record only"), color = MaterialTheme.colorScheme.error)
                     }
-                    TextButton(onClick = { vm.cancelRecordDelete() }) { Text("取消") }
+                    TextButton(onClick = { vm.cancelRecordDelete() }) { Text(tr("取消", "Cancel")) }
                 }
             },
         )
@@ -322,7 +340,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("切换车辆", style = MaterialTheme.typography.headlineSmall)
+                Text(tr("切换车辆", "Switch vehicle"), style = MaterialTheme.typography.headlineSmall)
                 state.garage?.cars?.forEach { car ->
                     val selected = car.id == state.garage?.activeId
                     TextButton(
@@ -333,14 +351,15 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            text = (if (selected) "✓ " else "") + car.vehicle.name.ifBlank { "我的爱车" } +
-                                " · ${car.records.size} 条记录",
+                            text = (if (selected) "✓ " else "") +
+                                com.milenote.android.i18n.DataLabels.vehicleName(car.vehicle.name) + " · " +
+                                tr("%d 条记录", "%d records", car.records.size),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                TextButton(onClick = { vm.showVehicleSwitcher(false) }) { Text("关闭") }
+                TextButton(onClick = { vm.showVehicleSwitcher(false) }) { Text(tr("关闭", "Close")) }
             }
         }
     }
@@ -418,7 +437,7 @@ private fun MileNoteBottomBar(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = MileNoteIcons.Add,
-                            contentDescription = "记一笔",
+                            contentDescription = tr("记一笔", "Add entry"),
                             modifier = Modifier.size(22.dp),
                         )
                     }

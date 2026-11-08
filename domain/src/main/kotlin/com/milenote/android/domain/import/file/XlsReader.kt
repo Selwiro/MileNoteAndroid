@@ -1,5 +1,6 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
 import jxl.BooleanCell
 import jxl.Cell
 import jxl.CellType
@@ -35,7 +36,9 @@ class XlsReader(
     fun read(bytes: ByteArray, fileName: String = ""): SpreadsheetData =
         useWorkbook(bytes) { workbook ->
             val sheet = firstVisibleSheet(workbook)
-                ?: throw SpreadsheetReadException("文件不是有效的 Excel 表格：工作簿里没有工作表")
+                ?: throw SpreadsheetReadException(
+                    tr("文件不是有效的 Excel 表格：工作簿里没有工作表", "Not a valid Excel file: the workbook has no worksheets"),
+                )
             readSheet(workbook, sheet, fileName)
         }
 
@@ -50,7 +53,7 @@ class XlsReader(
             val index = names.indexOfFirst { it == sheetName }
                 .takeIf { it >= 0 }
                 ?: names.indexOfFirst { it.equals(sheetName, ignoreCase = true) }
-            if (index < 0) throw SpreadsheetReadException("找不到工作表「$sheetName」")
+            if (index < 0) throw SpreadsheetReadException(tr("找不到工作表「%s」", "Worksheet '%s' not found", sheetName))
             readSheet(workbook, workbook.getSheet(index), fileName)
         }
 
@@ -62,7 +65,9 @@ class XlsReader(
 
     private fun <T> useWorkbook(bytes: ByteArray, block: (Workbook) -> T): T {
         if (!looksLikeCdf(bytes)) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件已损坏或格式不正确）")
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xls 文件已损坏或格式不正确）", "Not a valid Excel file (.xls is corrupted or has the wrong format)"),
+            )
         }
         val settings = WorkbookSettings().apply {
             setSuppressWarnings(true)
@@ -71,18 +76,30 @@ class XlsReader(
         val workbook = try {
             Workbook.getWorkbook(ByteArrayInputStream(bytes), settings)
         } catch (exception: BiffException) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件已损坏或已加密）", exception)
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xls 文件已损坏或已加密）", "Not a valid Excel file (.xls is corrupted or encrypted)"),
+                exception,
+            )
         } catch (exception: IOException) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件读取失败）", exception)
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xls 文件读取失败）", "Not a valid Excel file (.xls could not be read)"),
+                exception,
+            )
         } catch (exception: RuntimeException) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件已损坏或已加密）", exception)
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xls 文件已损坏或已加密）", "Not a valid Excel file (.xls is corrupted or encrypted)"),
+                exception,
+            )
         }
         return try {
             block(workbook)
         } catch (exception: SpreadsheetReadException) {
             throw exception
         } catch (exception: RuntimeException) {
-            throw SpreadsheetReadException("文件不是有效的 Excel 表格（.xls 文件内容损坏）", exception)
+            throw SpreadsheetReadException(
+                tr("文件不是有效的 Excel 表格（.xls 文件内容损坏）", "Not a valid Excel file (.xls content is corrupted)"),
+                exception,
+            )
         } finally {
             workbook.close()
         }

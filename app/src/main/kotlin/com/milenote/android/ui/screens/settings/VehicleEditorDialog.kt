@@ -68,6 +68,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
@@ -146,31 +147,31 @@ internal fun VehicleEditorDialog(
             result
                 .onSuccess {
                     image = it
-                    hint = "车辆图片已更新（已压缩为本机 WebP）"
+                    hint = tr("车辆图片已更新（已压缩为本机 WebP）", "Vehicle image updated (compressed to WebP on this device)")
                     error = null
                 }
-                .onFailure { notifyError("图片处理失败：${it.message ?: "请换一张图片"}") }
+                .onFailure { notifyError(tr("图片处理失败：%s", "Image processing failed: %s", it.message ?: tr("请换一张图片", "Please try another image"))) }
         }
     }
 
     fun save() {
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) {
-            notifyError("请填写车辆昵称")
+            notifyError(tr("请填写车辆昵称", "Please enter a vehicle name"))
             return
         }
         val km = currentKmText.trim().replace(",", "").replace("，", "").toDoubleOrNull()
         if (currentKmText.isNotBlank() && (km == null || km < 0.0 || !km.isFinite())) {
-            notifyError("当前总里程需为非负数字")
+            notifyError(tr("当前总里程需为非负数字", "Current mileage must be a non-negative number"))
             return
         }
         val startKm = startKmText.trim().replace(",", "").replace("，", "").toDoubleOrNull()
         if (startKmText.isNotBlank() && (startKm == null || startKm < 0.0 || !startKm.isFinite())) {
-            notifyError("记账起始里程需为非负数字")
+            notifyError(tr("记账起始里程需为非负数字", "Start mileage must be a non-negative number"))
             return
         }
         if (km != null && startKm != null && startKm > km) {
-            notifyError("记账起始里程不能大于当前总里程")
+            notifyError(tr("记账起始里程不能大于当前总里程", "Start mileage cannot be greater than current mileage"))
             return
         }
         val next = initial.copy(
@@ -216,7 +217,7 @@ internal fun VehicleEditorDialog(
                     IconButton(onClick = onDismiss, modifier = Modifier.size(MileNoteDimens.TouchTarget)) {
                         Icon(
                             imageVector = MileNoteIcons.Close,
-                            contentDescription = "关闭",
+                            contentDescription = tr("关闭", "Close"),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -231,7 +232,7 @@ internal fun VehicleEditorDialog(
                         onClick = { save() },
                         modifier = Modifier.heightIn(min = MileNoteDimens.TouchTarget),
                     ) {
-                        Text("保存", style = MaterialTheme.typography.labelLarge)
+                        Text(tr("保存", "Save"), style = MaterialTheme.typography.labelLarge)
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -278,7 +279,7 @@ internal fun VehicleEditorDialog(
                             onUrl = { showUrlDialog = true },
                             onReset = {
                                 image = null
-                                hint = "已恢复默认车辆插画"
+                                hint = tr("已恢复默认车辆插画", "Default vehicle illustration restored")
                                 error = null
                             },
                         )
@@ -288,32 +289,32 @@ internal fun VehicleEditorDialog(
                         FormField(
                             value = name,
                             onValueChange = { name = it },
-                            label = "车辆昵称 *",
-                            placeholder = "例如：小蓝",
+                            label = tr("车辆昵称 *", "Vehicle name *"),
+                            placeholder = tr("例如：小蓝", "e.g. Blue"),
                             isError = error != null && name.isBlank(),
-                            supportingText = if (name.length >= 50) "最多 50 个字符" else null,
+                            supportingText = if (name.length >= 50) tr("最多 50 个字符", "At most 50 characters") else null,
                         )
                     }
                     item("plate") {
                         FormField(
                             value = plate,
                             onValueChange = { plate = it.take(20) },
-                            label = "车牌号（选填）",
-                            placeholder = "例如：沪A·12345",
+                            label = tr("车牌号（选填）", "Plate (optional)"),
+                            placeholder = tr("例如：沪A·12345", "e.g. AB·12345"),
                         )
                     }
                     item("model") {
                         FormField(
                             value = model,
                             onValueChange = { model = it.take(80) },
-                            label = "品牌 / 车型（选填）",
-                            placeholder = "例如：比亚迪 海豚",
+                            label = tr("品牌 / 车型（选填）", "Make / model (optional)"),
+                            placeholder = tr("例如：比亚迪 海豚", "e.g. BYD Dolphin"),
                         )
                     }
                     item("fuelGrade") {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "燃油标号",
+                                text = tr("燃油标号", "Fuel grade"),
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -321,12 +322,15 @@ internal fun VehicleEditorDialog(
                                     FilterChip(
                                         selected = fuelGrade == grade,
                                         onClick = { fuelGrade = grade },
-                                        label = { Text(if (grade == "0#") "0# 柴油" else grade) },
+                                        label = { Text(if (grade == "0#") tr("0# 柴油", "0# Diesel") else grade) },
                                     )
                                 }
                             }
                             Text(
-                                text = "用于「今日油价」卡显示的油品；选择柴油显示 0# 价格。",
+                                text = tr(
+                                    "用于「今日油价」卡显示的油品；选择柴油显示 0# 价格。",
+                                    "Fuel type shown on the today's fuel price card; choosing diesel shows the 0# price.",
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -336,32 +340,41 @@ internal fun VehicleEditorDialog(
                         FormField(
                             value = currentKmText,
                             onValueChange = { currentKmText = it },
-                            label = "当前总里程",
-                            suffix = "公里",
+                            label = tr("当前总里程", "Current mileage"),
+                            suffix = tr("公里", "km"),
                             keyboardType = KeyboardType.Decimal,
-                            supportingText = "保存后作为当前里程；记录中的更大里程仍会被采用",
+                            supportingText = tr(
+                                "保存后作为当前里程；记录中的更大里程仍会被采用",
+                                "Used as current mileage after saving; larger mileage in records still wins",
+                            ),
                         )
                     }
                     item("startKm") {
                         FormField(
                             value = startKmText,
                             onValueChange = { startKmText = it },
-                            label = "记账起始里程（选填）",
-                            suffix = "公里",
+                            label = tr("记账起始里程（选填）", "Start mileage (optional)"),
+                            suffix = tr("公里", "km"),
                             keyboardType = KeyboardType.Decimal,
-                            supportingText = "对应记账起点，用于平均每公里成本；留空时取最早记录里程",
+                            supportingText = tr(
+                                "对应记账起点，用于平均每公里成本；留空时取最早记录里程",
+                                "Ledger starting point for average cost per km; empty uses the earliest record mileage",
+                            ),
                         )
                     }
                     item("date") {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             DateField(
-                                label = "提车日期（选填）",
+                                label = tr("提车日期（选填）", "Delivery date (optional)"),
                                 value = companionDate,
                                 onClick = { showDatePicker = true },
                                 onClear = { companionDate = null },
                             )
                             Text(
-                                text = "用于总览的「爱车陪伴天数」，起始日计为第 1 天；留空则不显示。",
+                                text = tr(
+                                    "用于总览的「爱车陪伴天数」，起始日计为第 1 天；留空则不显示。",
+                                    "Shown as days together in Overview, counting the delivery date as day 1; hidden when empty.",
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -370,9 +383,9 @@ internal fun VehicleEditorDialog(
                     if (image != null) {
                         item("fit") {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("图片显示方式", style = MaterialTheme.typography.titleSmall)
+                                Text(tr("图片显示方式", "Image fit"), style = MaterialTheme.typography.titleSmall)
                                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                    listOf("contain" to "完整展示", "cover" to "铺满画框")
+                                    listOf("contain" to tr("完整展示", "Fit"), "cover" to tr("铺满画框", "Fill"))
                                         .forEachIndexed { index, (value, label) ->
                                             SegmentedButton(
                                                 selected = imageFit == value,
@@ -393,9 +406,9 @@ internal fun VehicleEditorDialog(
                                 }
                                 Text(
                                     text = if (imageFit == "cover") {
-                                        "铺满画框：图片裁切填满车辆位，适合照片。"
+                                        tr("铺满画框：图片裁切填满车辆位，适合照片。", "Fill: the image is cropped to fill the vehicle slot; good for photos.")
                                     } else {
-                                        "完整展示：保留整张图片，适合透明底或抠图车辆图。"
+                                        tr("完整展示：保留整张图片，适合透明底或抠图车辆图。", "Fit: keeps the whole image; good for cut-outs on transparent backgrounds.")
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -411,7 +424,7 @@ internal fun VehicleEditorDialog(
                                 shape = MileNoteShapeTokens.full,
                                 modifier = Modifier.fillMaxWidth().height(MileNoteDimens.ButtonMinHeight),
                             ) {
-                                Text(if (onDelete == null) "添加车辆" else "保存车辆信息")
+                                Text(if (onDelete == null) tr("添加车辆", "Add vehicle") else tr("保存车辆信息", "Save vehicle"))
                             }
                             if (onDelete != null) {
                                 OutlinedButton(
@@ -433,13 +446,17 @@ internal fun VehicleEditorDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "删除这辆车",
+                                        text = tr("删除这辆车", "Delete this vehicle"),
                                         color = MaterialTheme.colorScheme.error,
                                         style = MaterialTheme.typography.labelLarge,
                                     )
                                 }
                                 Text(
-                                    text = "将删除该车的 ${recordCount} 条费用、提醒与保养记录；建议先导出完整备份。",
+                                    text = tr(
+                                            "将删除该车的 %d 条费用、提醒与保养记录；建议先导出完整备份。",
+                                            "This will delete %d expenses, reminders and service records of this vehicle; export a backup first.",
+                                            recordCount,
+                                        ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -456,7 +473,7 @@ internal fun VehicleEditorDialog(
             current = image,
             onConfirm = { url ->
                 image = url
-                hint = "已使用图片链接"
+                hint = tr("已使用图片链接", "Image URL applied")
                 error = null
                 showUrlDialog = false
             },
@@ -478,11 +495,11 @@ internal fun VehicleEditorDialog(
                         showDatePicker = false
                     },
                 ) {
-                    Text("确定")
+                    Text(tr("确定", "OK"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                TextButton(onClick = { showDatePicker = false }) { Text(tr("取消", "Cancel")) }
             },
         ) {
             DatePicker(state = pickerState)
@@ -541,21 +558,24 @@ private fun ImageEditor(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("选择图片", maxLines = 1)
+                Text(tr("选择图片", "Choose image"), maxLines = 1)
             }
             OutlinedButton(
                 onClick = onUrl,
                 shape = MileNoteShapeTokens.full,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("图片链接", maxLines = 1)
+                Text(tr("图片链接", "Image URL"), maxLines = 1)
             }
         }
         if (image != null) {
-            TextButton(onClick = onReset) { Text("恢复默认插画") }
+            TextButton(onClick = onReset) { Text(tr("恢复默认插画", "Restore default art")) }
         }
         Text(
-            text = "支持 PNG / JPG / WebP。图片在本机压缩到 1000×700 以内并以 WebP 存入账本，不上传服务器。",
+            text = tr(
+                "支持 PNG / JPG / WebP。图片在本机压缩到 1000×700 以内并以 WebP 存入账本，不上传服务器。",
+                "Supports PNG / JPG / WebP. Images are compressed to fit 1000×700 and stored as WebP in the ledger; nothing is uploaded.",
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -578,7 +598,7 @@ private fun ImageUrlDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = MileNoteShapes.extraLarge,
-        title = { Text("填写图片链接") },
+        title = { Text(tr("填写图片链接", "Enter image URL")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -587,7 +607,7 @@ private fun ImageUrlDialog(
                         text = it
                         urlError = null
                     },
-                    label = { Text("图片地址") },
+                    label = { Text(tr("图片地址", "Image address")) },
                     placeholder = { Text("https://example.com/car.png") },
                     singleLine = true,
                     isError = urlError != null,
@@ -600,7 +620,10 @@ private fun ImageUrlDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    text = "链接需可公开访问；加载失败时自动显示默认插画，不影响账本数据。",
+                    text = tr(
+                        "链接需可公开访问；加载失败时自动显示默认插画，不影响账本数据。",
+                        "The link must be publicly accessible; if it fails to load, the default illustration is shown and ledger data is unaffected.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -611,18 +634,18 @@ private fun ImageUrlDialog(
                 onClick = {
                     val trimmed = text.trim()
                     if (!isRemoteVehicleImage(trimmed)) {
-                        urlError = "请输入以 http:// 或 https:// 开头的地址"
+                        urlError = tr("请输入以 http:// 或 https:// 开头的地址", "Enter an address starting with http:// or https://")
                     } else {
                         onConfirm(trimmed)
                     }
                 },
                 shape = MileNoteShapeTokens.full,
             ) {
-                Text("确定")
+                Text(tr("确定", "OK"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
         },
     )
 }
@@ -656,7 +679,7 @@ private fun DateField(
                     color = scheme.onSurfaceVariant,
                 )
                 Text(
-                    text = value?.let { Format.dateDots(it) } ?: "未填写",
+                    text = value?.let { Format.dateDots(it) } ?: tr("未填写", "Not set"),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (value == null) scheme.onSurfaceVariant else scheme.onSurface,
                 )
@@ -665,7 +688,7 @@ private fun DateField(
                 IconButton(onClick = onClear, modifier = Modifier.size(MileNoteDimens.TouchTarget)) {
                     Icon(
                         imageVector = MileNoteIcons.Close,
-                        contentDescription = "清除提车日期",
+                        contentDescription = tr("清除提车日期", "Clear delivery date"),
                         tint = scheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
                     )

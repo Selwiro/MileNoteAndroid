@@ -1,5 +1,6 @@
 package com.milenote.android.data.fuelprice
 
+import com.milenote.android.i18n.tr
 import java.time.LocalDate
 
 /**
@@ -15,6 +16,11 @@ import java.time.LocalDate
  * @param day 站点文案里的日
  * @param today 当前日期（上海时区），测试可注入
  */
+private val MONTH_EN = arrayOf(
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
 internal fun nextAdjustmentLabel(month: Int, day: Int, today: LocalDate): String? {
     if (month !in 1..12 || day !in 1..31) return null
     val latestAhead = today.plusDays(31)
@@ -23,5 +29,10 @@ internal fun nextAdjustmentLabel(month: Int, day: Int, today: LocalDate): String
         // 24 时属于当天：次日 0 时才生效。
         .firstOrNull { it.plusDays(1).isAfter(today) && !it.isAfter(latestAhead) }
         ?: return null
-    return "${target.monthValue} 月 ${target.dayOfMonth} 日 24 时"
+    // 中文照抄站点原文的「12 日 24 时」；英文没有 24:00 的写法，用等价时刻「次日 00:00」。
+    val effective = target.plusDays(1)
+    return tr(
+        "${target.monthValue} 月 ${target.dayOfMonth} 日 24 时",
+        "${MONTH_EN[effective.monthValue - 1]} ${effective.dayOfMonth}, 00:00",
+    )
 }

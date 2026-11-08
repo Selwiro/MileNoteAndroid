@@ -17,6 +17,8 @@ import com.milenote.android.data.webdav.WebDavAutoSyncEngine
 import com.milenote.android.data.webdav.WebDavFetchResult
 import com.milenote.android.data.webdav.WebDavRemoteMeta
 import com.milenote.android.data.webdav.WebDavRepository
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
@@ -71,7 +73,7 @@ data class PendingRecordDelete(
 data class PendingConfirm(
     val title: String,
     val message: String,
-    val confirmLabel: String = "确定",
+    val confirmLabel: String = tr("确定", "OK"),
     val destructive: Boolean = false,
     val requireText: String? = null,
     val action: () -> Unit,
@@ -275,7 +277,7 @@ class MileNoteViewModel(
                     ledger.copy(records = records)
                 }
             }
-            _state.value = _state.value.copy(editor = null, message = "已保存")
+            _state.value = _state.value.copy(editor = null, message = tr("已保存", "Saved"))
         }
     }
 
@@ -293,16 +295,16 @@ class MileNoteViewModel(
         }
         confirm(
             PendingConfirm(
-                title = "删除这条记录？",
-                message = "${Dates.displayDots(record.date)} · ${record.category} · ¥${Format.money(record.amount)}",
-                confirmLabel = "删除",
+                title = tr("删除这条记录？", "Delete this record?"),
+                message = "${Dates.displayDots(record.date)} · ${DataLabels.category(record.category)} · ¥${Format.money(record.amount)}",
+                confirmLabel = tr("删除", "Delete"),
                 destructive = true,
             ) {
                 viewModelScope.launch {
                     repository.update(syncHistory = true) { garage ->
                         updateActive(garage) { it.copy(records = it.records.filter { r -> r.id != record.id }) }
                     }
-                    _state.value = _state.value.copy(message = "已删除")
+                    _state.value = _state.value.copy(message = tr("已删除", "Deleted"))
                 }
             },
         )
@@ -335,7 +337,7 @@ class MileNoteViewModel(
             _state.value = _state.value.copy(
                 recordDelete = null,
                 editor = _state.value.editor?.takeIf { it.record?.id != record.id },
-                message = if (restoreReminders) "已删除，保养提醒已恢复" else "已删除",
+                message = if (restoreReminders) tr("已删除，保养提醒已恢复", "Deleted — service reminder restored") else tr("已删除", "Deleted"),
             )
         }
     }
@@ -355,7 +357,7 @@ class MileNoteViewModel(
             repository.update(syncHistory = false) { garage ->
                 updateActive(garage) { it.copy(vehicle = vehicle) }
             }
-            _state.value = _state.value.copy(showVehicleEditor = false, message = "车辆信息已保存")
+            _state.value = _state.value.copy(showVehicleEditor = false, message = tr("车辆信息已保存", "Vehicle saved"))
         }
     }
 
@@ -365,39 +367,45 @@ class MileNoteViewModel(
                 val ledger = blankLedger().copy(id = Ids.newId(), vehicle = vehicle)
                 garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
             }
-            _state.value = _state.value.copy(showVehicleEditor = false, vehicleSwitcher = false, message = "已添加车辆")
+            _state.value = _state.value.copy(showVehicleEditor = false, vehicleSwitcher = false, message = tr("已添加车辆", "Vehicle added"))
         }
     }
 
     fun deleteVehicle(id: String) {
-        val name = _state.value.garage?.cars?.firstOrNull { it.id == id }?.vehicle?.name ?: "这辆车"
+        val rawName = _state.value.garage?.cars?.firstOrNull { it.id == id }?.vehicle?.name
+        val name = if (rawName.isNullOrBlank()) tr("这辆车", "this car") else DataLabels.vehicleName(rawName)
         confirm(
             PendingConfirm(
-                title = "删除车辆",
-                message = "将删除「$name」及其全部费用、提醒与保养记录。建议先导出完整备份。",
-                confirmLabel = "删除",
+                title = tr("删除车辆", "Delete vehicle"),
+                message = tr("将删除「%s」及其全部费用、提醒与保养记录。建议先导出完整备份。", "This deletes \"%s\" and all its expenses, reminders and service records. Export a full backup first.", name),
+                confirmLabel = tr("删除", "Delete"),
                 destructive = true,
             ) {
                 viewModelScope.launch {
                     repository.deleteData("one", id)
-                    _state.value = _state.value.copy(message = "已删除车辆")
+                    _state.value = _state.value.copy(message = tr("已删除车辆", "Vehicle deleted"))
                 }
             },
         )
     }
 
     fun deleteAllData() {
+        val confirmWord = tr("删除", "DELETE")
         confirm(
             PendingConfirm(
-                title = "删除全部数据",
-                message = "将删除所有车辆、费用、提醒与保养记录，且不可恢复。请输入「删除」确认。",
-                confirmLabel = "永久删除",
+                title = tr("删除全部数据", "Delete all data"),
+                message = tr(
+                    "将删除所有车辆、费用、提醒与保养记录，且不可恢复。请输入「%s」确认。",
+                    "This deletes all vehicles, expenses, reminders and service records. It cannot be undone. Type \"%s\" to confirm.",
+                    confirmWord,
+                ),
+                confirmLabel = tr("永久删除", "Delete permanently"),
                 destructive = true,
-                requireText = "删除",
+                requireText = confirmWord,
             ) {
                 viewModelScope.launch {
                     repository.deleteData("all")
-                    _state.value = _state.value.copy(message = "已清空数据")
+                    _state.value = _state.value.copy(message = tr("已清空数据", "All data cleared"))
                 }
             },
         )
@@ -475,6 +483,11 @@ class MileNoteViewModel(
         viewModelScope.launch { settingsRepository.setDarkMode(mode) }
     }
 
+    /** 切换界面语言（跟随系统 / 中文 / English）。 */
+    fun setLanguage(language: com.milenote.android.i18n.AppLanguage) {
+        viewModelScope.launch { settingsRepository.setLanguage(language) }
+    }
+
 
     // ---------- 保养 ----------
 
@@ -494,9 +507,9 @@ class MileNoteViewModel(
                         applyServicePlan(ledger, entries, baseDate, baseKm, includeFirst)
                     }
                 }
-                _state.value = _state.value.copy(showServicePlanEditor = false, message = "保养方案已保存")
+                _state.value = _state.value.copy(showServicePlanEditor = false, message = tr("保养方案已保存", "Service plan saved"))
             } catch (e: Exception) {
-                _state.value = _state.value.copy(message = e.message ?: "保存失败")
+                _state.value = _state.value.copy(message = e.message ?: tr("保存失败", "Save failed"))
             }
         }
     }
@@ -513,9 +526,9 @@ class MileNoteViewModel(
                         ledger.copy(reminders = existing + reminders, servicePlanConfigured = true)
                     }
                 }
-                _state.value = _state.value.copy(showServicePlanEditor = false, message = "已启用默认保养方案")
+                _state.value = _state.value.copy(showServicePlanEditor = false, message = tr("已启用默认保养方案", "Default service plan enabled"))
             } catch (e: Exception) {
-                _state.value = _state.value.copy(message = e.message ?: "启用失败")
+                _state.value = _state.value.copy(message = e.message ?: tr("启用失败", "Enable failed"))
             }
         }
     }
@@ -528,7 +541,7 @@ class MileNoteViewModel(
                     ledger.copy(reminders = reminders, records = ledger.records + record)
                 }
             }
-            _state.value = _state.value.copy(message = "已完成并记账")
+            _state.value = _state.value.copy(message = tr("已完成并记账", "Completed and logged"))
         }
     }
 
@@ -545,16 +558,16 @@ class MileNoteViewModel(
                     ledger.copy(reminders = reminders)
                 }
             }
-            _state.value = _state.value.copy(message = "提醒已保存")
+            _state.value = _state.value.copy(message = tr("提醒已保存", "Reminder saved"))
         }
     }
 
     fun deleteReminder(reminder: Reminder) {
         confirm(
             PendingConfirm(
-                title = "删除提醒？",
-                message = reminder.title,
-                confirmLabel = "删除",
+                title = tr("删除提醒？", "Delete reminder?"),
+                message = DataLabels.serviceItem(reminder.title),
+                confirmLabel = tr("删除", "Delete"),
                 destructive = true,
             ) {
                 viewModelScope.launch {
@@ -622,13 +635,17 @@ class MileNoteViewModel(
                         )
                     }
                 }
-                val extra = if (completedServices > 0) " · 自动完成 $completedServices 项保养" else ""
-                val overwriteText = if (overwritten > 0) " · 覆盖 $overwritten" else ""
+                val extra = if (completedServices > 0) tr(" · 自动完成 %d 项保养", " · auto-completed %d service items", completedServices) else ""
+                val overwriteText = if (overwritten > 0) tr(" · 覆盖 %d", " · overwritten %d", overwritten) else ""
                 _state.value = _state.value.copy(
-                    message = "导入完成：新增 $added · 合并 $merged · 跳过 $skipped$overwriteText$extra",
+                    message = tr(
+                        "导入完成：新增 %d · 合并 %d · 跳过 %d%s%s",
+                        "Import complete: %d added · %d merged · %d skipped%s%s",
+                        added, merged, skipped, overwriteText, extra,
+                    ),
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(message = "导入失败：${e.message}")
+                _state.value = _state.value.copy(message = tr("导入失败：%s", "Import failed: %s", e.message))
             }
         }
     }
@@ -642,29 +659,33 @@ class MileNoteViewModel(
             try {
                 val summary = repository.restoreBackup(text)
                 _state.value = _state.value.copy(
-                    message = "已恢复备份：${summary.cars} 辆车 · ${summary.records} 条记录 · ${summary.reminders} 条提醒",
+                    message = tr(
+                        "已恢复备份：%d 辆车 · %d 条记录 · %d 条提醒",
+                        "Backup restored: %d vehicles · %d records · %d reminders",
+                        summary.cars, summary.records, summary.reminders,
+                    ),
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(message = "恢复失败：${e.message}")
+                _state.value = _state.value.copy(message = tr("恢复失败：%s", "Restore failed: %s", e.message))
             }
         }
     }
 
     fun enterDemo() {
         repository.enterDemo()
-        _state.value = _state.value.copy(vehicleSwitcher = false, message = "已进入演示账本（不保存）")
+        _state.value = _state.value.copy(vehicleSwitcher = false, message = tr("已进入演示账本（不保存）", "Demo ledger opened (changes are not saved)"))
     }
 
     fun exitDemo() {
         repository.exitDemo()
-        _state.value = _state.value.copy(message = "已退出演示账本")
+        _state.value = _state.value.copy(message = tr("已退出演示账本", "Demo ledger closed"))
     }
 
     // ---------- WebDAV 同步 ----------
 
     fun saveWebDavConfig(url: String, username: String, password: String, allowHttp: Boolean) {
         if (_state.value.demo) {
-            _state.value = _state.value.copy(webDav = _state.value.webDav.copy(error = "演示账本不支持 WebDAV 同步，请先退出演示"))
+            _state.value = _state.value.copy(webDav = _state.value.webDav.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")))
             return
         }
         viewModelScope.launch {
@@ -675,13 +696,17 @@ class MileNoteViewModel(
                 updateWebDav {
                     it.copy(
                         busy = false,
-                        lastResult = if (meta.exists) "连接成功，远端已有备份（${meta.size} 字节）" else "连接成功，远端文件尚不存在",
+                        lastResult = if (meta.exists) {
+                            tr("连接成功，远端已有备份（%d 字节）", "Connected — a backup exists on the server (%d bytes)", meta.size)
+                        } else {
+                            tr("连接成功，远端文件尚不存在", "Connected — no backup on the server yet")
+                        },
                         remoteExists = meta.exists,
                         remoteSize = meta.size,
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: "WebDAV 配置保存失败") }
+                updateWebDav { it.copy(busy = false, error = t.message ?: tr("WebDAV 配置保存失败", "Could not save WebDAV settings")) }
             }
         }
     }
@@ -694,14 +719,14 @@ class MileNoteViewModel(
                 updateWebDav {
                     it.copy(
                         busy = false,
-                        lastResult = "已清除 WebDAV 连接",
+                        lastResult = tr("已清除 WebDAV 连接", "WebDAV connection cleared"),
                         remoteExists = null,
                         remoteSize = null,
                         conflict = null,
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: "清除失败") }
+                updateWebDav { it.copy(busy = false, error = t.message ?: tr("清除失败", "Clear failed")) }
             }
         }
     }
@@ -714,13 +739,17 @@ class MileNoteViewModel(
                 updateWebDav {
                     it.copy(
                         busy = false,
-                        lastResult = if (meta.exists) "连接成功，远端已有备份" else "连接成功，远端文件尚不存在",
+                        lastResult = if (meta.exists) {
+                            tr("连接成功，远端已有备份", "Connected — a backup exists on the server")
+                        } else {
+                            tr("连接成功，远端文件尚不存在", "Connected — no backup on the server yet")
+                        },
                         remoteExists = meta.exists,
                         remoteSize = meta.size,
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: "连接失败") }
+                updateWebDav { it.copy(busy = false, error = t.message ?: tr("连接失败", "Connection failed")) }
             }
         }
     }
@@ -728,7 +757,7 @@ class MileNoteViewModel(
     /** 智能同步：比较本地与远端，自动上传/下载，冲突时弹选择。 */
     fun webDavSyncNow() {
         if (_state.value.demo) {
-            updateWebDav { it.copy(error = "演示账本不支持 WebDAV 同步，请先退出演示") }
+            updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
             return
         }
         viewModelScope.launch { runWebDavSync() }
@@ -737,7 +766,7 @@ class MileNoteViewModel(
     /** 强制把本地备份覆盖到远端（用户确认后）。 */
     fun webDavUpload() {
         if (_state.value.demo) {
-            updateWebDav { it.copy(error = "演示账本不支持 WebDAV 同步，请先退出演示") }
+            updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
             return
         }
         viewModelScope.launch {
@@ -751,14 +780,14 @@ class MileNoteViewModel(
                 updateWebDav {
                     it.copy(
                         busy = false,
-                        lastResult = "已上传并覆盖远端备份",
+                        lastResult = tr("已上传并覆盖远端备份", "Uploaded and overwrote the remote backup"),
                         remoteExists = true,
                         remoteSize = localBytes.size.toLong(),
                         conflict = null,
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: "上传失败") }
+                updateWebDav { it.copy(busy = false, error = t.message ?: tr("上传失败", "Upload failed")) }
             }
         }
     }
@@ -766,7 +795,7 @@ class MileNoteViewModel(
     /** 从远端恢复：MERGE 只新增；REPLACE 覆盖本地。 */
     fun webDavDownload(mode: WebDavDownloadMode) {
         if (_state.value.demo) {
-            updateWebDav { it.copy(error = "演示账本不支持 WebDAV 同步，请先退出演示") }
+            updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
             return
         }
         viewModelScope.launch {
@@ -774,7 +803,7 @@ class MileNoteViewModel(
             try {
                 when (val fetched = webDavRepository.fetch()) {
                     is WebDavFetchResult.NotFound -> {
-                        updateWebDav { it.copy(busy = false, error = "远端没有备份文件，请先上传") }
+                        updateWebDav { it.copy(busy = false, error = tr("远端没有备份文件，请先上传", "No backup on the server. Upload one first.")) }
                     }
                     is WebDavFetchResult.Found -> {
                         val text = fetched.bytes.toString(Charsets.UTF_8)
@@ -786,7 +815,11 @@ class MileNoteViewModel(
                         updateWebDav {
                             it.copy(
                                 busy = false,
-                                lastResult = if (mode == WebDavDownloadMode.MERGE) "已从远端合并备份" else "已用远端备份覆盖本地",
+                                lastResult = if (mode == WebDavDownloadMode.MERGE) {
+                                    tr("已从远端合并备份", "Merged the remote backup")
+                                } else {
+                                    tr("已用远端备份覆盖本地", "Replaced local data with the remote backup")
+                                },
                                 remoteExists = true,
                                 remoteSize = fetched.bytes.size.toLong(),
                                 conflict = null,
@@ -795,7 +828,7 @@ class MileNoteViewModel(
                     }
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: "下载失败") }
+                updateWebDav { it.copy(busy = false, error = t.message ?: tr("下载失败", "Download failed")) }
             }
         }
     }
@@ -808,7 +841,7 @@ class MileNoteViewModel(
             WebDavConflictChoice.KEEP_REMOTE -> webDavDownload(WebDavDownloadMode.REPLACE)
             WebDavConflictChoice.MERGE -> {
                 if (_state.value.demo) {
-                    updateWebDav { it.copy(error = "演示账本不支持 WebDAV 同步，请先退出演示") }
+                    updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
                     return
                 }
                 viewModelScope.launch {
@@ -816,7 +849,7 @@ class MileNoteViewModel(
                     try {
                         when (val fetched = webDavRepository.fetch()) {
                             is WebDavFetchResult.NotFound -> {
-                                updateWebDav { it.copy(busy = false, error = "远端备份已不存在，请重新同步") }
+                                updateWebDav { it.copy(busy = false, error = tr("远端备份已不存在，请重新同步", "The remote backup no longer exists. Sync again.")) }
                             }
                             is WebDavFetchResult.Found -> {
                                 val text = fetched.bytes.toString(Charsets.UTF_8)
@@ -831,7 +864,7 @@ class MileNoteViewModel(
                                 updateWebDav {
                                     it.copy(
                                         busy = false,
-                                        lastResult = "已合并远端记录并上传合并结果",
+                                        lastResult = tr("已合并远端记录并上传合并结果", "Merged remote records and uploaded the result"),
                                         remoteExists = true,
                                         remoteSize = mergedBytes.size.toLong(),
                                     )
@@ -839,7 +872,7 @@ class MileNoteViewModel(
                             }
                         }
                     } catch (t: Throwable) {
-                        updateWebDav { it.copy(busy = false, error = t.message ?: "合并失败") }
+                        updateWebDav { it.copy(busy = false, error = t.message ?: tr("合并失败", "Merge failed")) }
                     }
                 }
             }
@@ -876,7 +909,7 @@ class MileNoteViewModel(
         if (outcome.kind == AutoSyncOutcome.Kind.SKIPPED) return
         if (outcome.kind == AutoSyncOutcome.Kind.CONFLICT) {
             _state.value = _state.value.copy(
-                message = "自动同步发现冲突，请到 设置 → 数据管理 → WebDAV 手动处理",
+                message = tr("自动同步发现冲突，请到 设置 → 数据管理 → WebDAV 手动处理", "Auto sync found a conflict. Resolve it in Settings → Data management → WebDAV."),
             )
         }
         updateWebDav {

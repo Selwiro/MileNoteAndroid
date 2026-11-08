@@ -6,12 +6,15 @@
 
 ## 现状
 
-- **0.27.0（versionCode 60，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
-  minSdk 26 / targetSdk 37。
+- **0.32.0（versionCode 74，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
+  minSdk 26 / targetSdk 37。界面中英双语（设置 → 外观 → 语言）。
 - Kotlin 2.4.21 + Jetpack Compose（BOM 2026.09.00、material3 1.5.0-beta02）+ Material 3 Expressive；
   AGP 9.5.0 / Gradle 9.6.0。**版本矩阵是实测跑通的，不要随手升级。**
 - `domain/` = 纯 Kotlin 领域层（与 Web 版同源的算法、备份、导入、OCR 解析，JVM 单测）；
   `app/` = Compose 界面、数据层（单文件 JSON 账本快照）、平台能力（OCR/SAF/WebDAV）。
+- **i18n**：用户可见文案用 `tr("中文", "English")`（带占位符用 `tr(zh, en, args)`）；domain 用
+  `com.milenote.android.domain.i18n.tr`。分类名/项目名/皮肤 id/presetKey 等**数据值不翻译**，
+  显示走 `i18n/DataLabels`。约定与术语表在仓库外 [`../docs/i18n-en-guide.md`](../docs/i18n-en-guide.md)。
 
 ## 硬规则
 

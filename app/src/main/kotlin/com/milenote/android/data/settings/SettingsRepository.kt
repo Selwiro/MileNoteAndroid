@@ -16,6 +16,7 @@ class SettingsRepository(private val context: Context) {
     private object Keys {
         val darkMode = stringPreferencesKey("dark_mode")
         val webDavAutoSync = booleanPreferencesKey("webdav_auto_sync")
+        val language = stringPreferencesKey("language")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -23,12 +24,18 @@ class SettingsRepository(private val context: Context) {
             darkMode = prefs[Keys.darkMode]?.let { name -> DarkMode.entries.firstOrNull { it.name == name } }
                 ?: DarkMode.SYSTEM,
             webDavAutoSync = prefs[Keys.webDavAutoSync] ?: false,
+            language = prefs[Keys.language]
+                ?.let { name -> com.milenote.android.i18n.AppLanguage.entries.firstOrNull { it.name == name } }
+                ?: com.milenote.android.i18n.AppLanguage.SYSTEM,
         )
     }
 
     suspend fun setDarkMode(mode: DarkMode) = edit { it[Keys.darkMode] = mode.name }
 
     suspend fun setWebDavAutoSync(enabled: Boolean) = edit { it[Keys.webDavAutoSync] = enabled }
+
+    suspend fun setLanguage(language: com.milenote.android.i18n.AppLanguage) =
+        edit { it[Keys.language] = language.name }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsDataStore.edit { prefs -> block(prefs) }

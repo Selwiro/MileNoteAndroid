@@ -62,6 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.R
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.data.fuelprice.FuelPriceInfo
@@ -93,6 +95,9 @@ import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
 import java.time.Instant
 import java.time.LocalDate
+import java.time.Month
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.launch
 import java.time.ZoneOffset
 
@@ -124,7 +129,7 @@ fun FuelScreen(
     val ledger = state.activeCar
     if (ledger == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            LoadingState(label = "正在加载账本…")
+            LoadingState(label = tr("正在加载账本…", "Loading ledger…"))
         }
         return
     }
@@ -234,7 +239,7 @@ fun FuelScreen(
     // 页签固定在页面顶部（不进 LazyColumn），三页共用 SecondaryTabs 版式。
     Column(modifier = modifier.fillMaxSize()) {
         SecondaryTabs(
-            labels = listOf("统计", "明细"),
+            labels = listOf(tr("统计", "Statistics"), tr("明细", "Records")),
             selected = selectedTab,
             onSelect = { selectedTab = it },
         )
@@ -255,7 +260,11 @@ fun FuelScreen(
                 info = priceInfo,
                 loading = priceLoading,
                 fuelGrade = ledger.vehicle.fuelGrade,
-                locationLabel = if (locationRemembered) fuelLocation.displayName else "获取当前城市油价",
+                locationLabel = if (locationRemembered) {
+                    DataLabels.region(fuelLocation.displayName)
+                } else {
+                    tr("获取当前城市油价", "Get local fuel price")
+                },
                 onGetCurrentCityPrice = {
                     if (LocationResolver.hasPermission(context)) {
                         refreshPrice(reLocate = true)
@@ -268,7 +277,7 @@ fun FuelScreen(
         // ---- 油耗概览（卡内 2×2 指标 + 右上角时间筛选） ----
         item(key = "overview") {
             SectionCard(
-                title = "油耗概览",
+                title = tr("油耗概览", "Fuel overview"),
                 action = {
                     RangeFilterPill(
                         label = rangeLabel(period, customRange),
@@ -278,7 +287,7 @@ fun FuelScreen(
                     ) {
                         val presetSelected = customRange == null
                         DropdownMenuItem(
-                            text = { Text("全部") },
+                            text = { Text(tr("全部", "All")) },
                             trailingIcon = checkIcon(presetSelected && period == Period.ALL),
                             onClick = {
                                 vm.setPeriod(Period.ALL)
@@ -286,7 +295,7 @@ fun FuelScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("本月") },
+                            text = { Text(tr("本月", "This month")) },
                             trailingIcon = checkIcon(presetSelected && period == Period.MONTH),
                             onClick = {
                                 vm.setPeriod(Period.MONTH)
@@ -294,7 +303,7 @@ fun FuelScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("今年") },
+                            text = { Text(tr("今年", "This year")) },
                             trailingIcon = checkIcon(presetSelected && period == Period.YEAR),
                             onClick = {
                                 vm.setPeriod(Period.YEAR)
@@ -302,7 +311,7 @@ fun FuelScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("自定义…") },
+                            text = { Text(tr("自定义…", "Custom…")) },
                             trailingIcon = checkIcon(customRange != null),
                             onClick = {
                                 rangeMenuExpanded = false
@@ -324,7 +333,7 @@ fun FuelScreen(
         // ---- 油耗走势（一张卡） ----
         item(key = "chart") {
             SectionCard(
-                title = "油耗走势",
+                title = tr("油耗走势", "Fuel trend"),
                 action = {
                     RangeFilterPill(
                         label = rangeLabel(chartPeriod, chartCustomRange),
@@ -334,7 +343,7 @@ fun FuelScreen(
                     ) {
                         val presetSelected = chartCustomRange == null
                         DropdownMenuItem(
-                            text = { Text("全部") },
+                            text = { Text(tr("全部", "All")) },
                             trailingIcon = checkIcon(presetSelected && chartPeriod == Period.ALL),
                             onClick = {
                                 chartPeriod = Period.ALL
@@ -343,7 +352,7 @@ fun FuelScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("本月") },
+                            text = { Text(tr("本月", "This month")) },
                             trailingIcon = checkIcon(presetSelected && chartPeriod == Period.MONTH),
                             onClick = {
                                 chartPeriod = Period.MONTH
@@ -352,7 +361,7 @@ fun FuelScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("今年") },
+                            text = { Text(tr("今年", "This year")) },
                             trailingIcon = checkIcon(presetSelected && chartPeriod == Period.YEAR),
                             onClick = {
                                 chartPeriod = Period.YEAR
@@ -361,7 +370,7 @@ fun FuelScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("自定义…") },
+                            text = { Text(tr("自定义…", "Custom…")) },
                             trailingIcon = checkIcon(chartCustomRange != null),
                             onClick = {
                                 chartMenuExpanded = false
@@ -374,8 +383,8 @@ fun FuelScreen(
                 if (intervals.isEmpty()) {
                     EmptyState(
                         illustration = painterResource(R.drawable.ill_empty_fuel),
-                        title = "至少需要两次有里程、加油量的加满记录",
-                        description = "导入加油记录后也会自动计算；导入入口在 设置 → 数据管理。",
+                        title = tr("至少需要两次有里程、加油量的加满记录", "At least two full-tank records with mileage and fuel amount are needed"),
+                        description = tr("导入加油记录后也会自动计算；导入入口在 设置 → 数据管理。", "Imported fuel records are calculated automatically too; import is in Settings → Data management."),
                     )
                 } else {
                     FuelTrendChart(
@@ -402,12 +411,12 @@ fun FuelScreen(
                             onValueChange = { detailQuery = it },
                             modifier = Modifier.weight(1f),
                             placeholder = {
-                                Text("搜索备注 / 日期", style = MaterialTheme.typography.bodyMedium)
+                                Text(tr("搜索备注 / 日期", "Search notes / dates"), style = MaterialTheme.typography.bodyMedium)
                             },
                             leadingIcon = {
                                 Icon(
                                     imageVector = MileNoteIcons.Search,
-                                    contentDescription = "搜索备注或日期",
+                                    contentDescription = tr("搜索备注或日期", "Search notes or dates"),
                                     modifier = Modifier.size(18.dp),
                                 )
                             },
@@ -423,7 +432,7 @@ fun FuelScreen(
                         ) {
                             val presetSelected = detailCustomRange == null
                             DropdownMenuItem(
-                                text = { Text("全部") },
+                                text = { Text(tr("全部", "All")) },
                                 trailingIcon = checkIcon(presetSelected && detailPeriod == Period.ALL),
                                 onClick = {
                                     detailPeriod = Period.ALL
@@ -432,7 +441,7 @@ fun FuelScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("本月") },
+                                text = { Text(tr("本月", "This month")) },
                                 trailingIcon = checkIcon(presetSelected && detailPeriod == Period.MONTH),
                                 onClick = {
                                     detailPeriod = Period.MONTH
@@ -441,7 +450,7 @@ fun FuelScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("今年") },
+                                text = { Text(tr("今年", "This year")) },
                                 trailingIcon = checkIcon(presetSelected && detailPeriod == Period.YEAR),
                                 onClick = {
                                     detailPeriod = Period.YEAR
@@ -450,7 +459,7 @@ fun FuelScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("自定义…") },
+                                text = { Text(tr("自定义…", "Custom…")) },
                                 trailingIcon = checkIcon(detailCustomRange != null),
                                 onClick = {
                                     detailMenuExpanded = false
@@ -464,12 +473,12 @@ fun FuelScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "共 ${detailRecords.size} 条记录",
+                            text = tr("共 %d 条记录", "%d records", detailRecords.size),
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            text = "筛选合计 ${Format.fmt(detailLiters)} 升 · ¥ ${Format.money(detailAmount)}",
+                            text = tr("筛选合计 %s 升 · ¥ %s", "Filtered total %s L · ¥ %s", Format.fmt(detailLiters), Format.money(detailAmount)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -480,11 +489,15 @@ fun FuelScreen(
                 item(key = "detailEmpty") {
                     EmptyState(
                         icon = MileNoteIcons.Fuel,
-                        title = if (detailQuery.isBlank()) "还没有加油记录" else "没有匹配的加油记录",
-                        description = if (detailQuery.isBlank()) {
-                            "可在底栏中间「记一笔」记录加油；导入入口在 设置 → 数据管理。"
+                        title = if (detailQuery.isBlank()) {
+                            tr("还没有加油记录", "No fuel records yet")
                         } else {
-                            "试试清空搜索关键词或调整时间范围。"
+                            tr("没有匹配的加油记录", "No matching fuel records")
+                        },
+                        description = if (detailQuery.isBlank()) {
+                            tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 数据管理。", "Add fuel from Add entry in the bottom bar; import is in Settings → Data management.")
+                        } else {
+                            tr("试试清空搜索关键词或调整时间范围。", "Try clearing the search keyword or changing the date range.")
                         },
                     )
                 }
@@ -568,7 +581,7 @@ private fun FuelPriceCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard(
-        title = "今日油价",
+        title = tr("今日油价", "Today's fuel price"),
         action = {
             TextButton(
                 onClick = onGetCurrentCityPrice,
@@ -596,11 +609,11 @@ private fun FuelPriceCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("正在获取当地油价…", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Text(tr("正在获取当地油价…", "Getting local fuel prices…"), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
             }
             info == null -> Text(
-                text = "暂时无法获取油价，请检查网络后刷新",
+                text = tr("暂时无法获取油价，请检查网络后刷新", "Fuel prices are unavailable. Check your connection and refresh."),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.error,
             )
@@ -633,7 +646,7 @@ private fun FuelPriceCard(
                                 color = scheme.onSurface,
                             )
                             Text(
-                                text = " 元/升",
+                                text = tr(" 元/升", " CNY/L"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = scheme.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 4.dp),
@@ -646,8 +659,11 @@ private fun FuelPriceCard(
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                             Text(
-                                text = info.nextAdjustmentText?.let { "下次调价：${it.replace(" ", "")}" }
-                                    ?: "下次调价：时间待公布",
+                                text = info.nextAdjustmentText?.let { raw ->
+                                    // 仓库层已按语言生成日期，只有中文文案里的空格需要去掉。
+                                    val clean = if (com.milenote.android.i18n.I18n.english) raw else raw.replace(" ", "")
+                                    tr("下次调价：%s", "Next price change: %s", clean)
+                                } ?: tr("下次调价：时间待公布", "Next price change: date to be announced"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = scheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -655,6 +671,11 @@ private fun FuelPriceCard(
                             info.trend?.let { trend ->
                                 val up = trend.contains("上")
                                 val trendColor = if (up) scheme.error else Color(0xFF2E7D32)
+                                val trendLabel = when {
+                                    trend.contains("上") -> tr("上调", "up")
+                                    trend.contains("下") -> tr("下调", "down")
+                                    else -> tr("搁浅", "unchanged")
+                                }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -666,7 +687,7 @@ private fun FuelPriceCard(
                                             .background(trendColor, CircleShape),
                                     )
                                     Text(
-                                        text = "预计$trend",
+                                        text = tr("预计%s", "Expected: %s", trendLabel),
                                         style = MaterialTheme.typography.labelLarge,
                                         color = trendColor,
                                     )
@@ -676,7 +697,7 @@ private fun FuelPriceCard(
                 }
                 if (info.isFallback) {
                     Text(
-                        text = "离线参考价，联网后点刷新获取当地实时油价",
+                        text = tr("离线参考价，联网后点刷新获取当地实时油价", "Offline reference price. Refresh while online for real-time local prices."),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.error,
                         modifier = Modifier.padding(top = 8.dp),
@@ -704,15 +725,15 @@ private fun FuelMetrics(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             StatCell(
-                label = "平均油耗",
+                label = tr("平均油耗", "Fuel economy"),
                 value = fuelRate?.let { Format.money(it) } ?: "—",
-                unit = if (fuelRate != null) "升/百公里" else null,
+                unit = if (fuelRate != null) tr("升/百公里", "L/100km") else null,
                 modifier = Modifier.weight(1f),
             )
             StatCell(
-                label = "油费支出",
+                label = tr("油费支出", "Fuel expense"),
                 value = Format.money(fuelCost),
-                unit = "元",
+                unit = tr("元", "CNY"),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -721,15 +742,15 @@ private fun FuelMetrics(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             StatCell(
-                label = "平均油费",
+                label = tr("平均油费", "Cost per km"),
                 value = perKmFuel?.let { Format.money(it) } ?: "—",
-                unit = if (perKmFuel != null) "元/公里" else null,
+                unit = if (perKmFuel != null) tr("元/公里", "CNY/km") else null,
                 modifier = Modifier.weight(1f),
             )
             StatCell(
-                label = "行驶里程",
+                label = tr("行驶里程", "Distance"),
                 value = Format.fmt(distance),
-                unit = "公里",
+                unit = tr("公里", "km"),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -806,7 +827,7 @@ private fun RangeFilterPill(
                 Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 Icon(
                     imageVector = MileNoteIcons.ChevronDown,
-                    contentDescription = "选择统计范围",
+                    contentDescription = tr("选择统计范围", "Select date range"),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -843,9 +864,9 @@ private fun rangeLabel(period: Period, customRange: DateRange?): String {
         }
     }
     return when (period) {
-        Period.ALL -> "全部"
-        Period.MONTH -> "本月"
-        Period.YEAR -> "今年"
+        Period.ALL -> tr("全部", "All")
+        Period.MONTH -> tr("本月", "This month")
+        Period.YEAR -> tr("今年", "This year")
     }
 }
 
@@ -857,7 +878,14 @@ private fun yearMonthDay(date: LocalDate): String = "${date.year}.${monthDay(dat
 /** `2026-10-18` → `10 月 18 日`（记录卡 / 详情统一，不显示年份与星期）。 */
 private fun monthDayLabel(isoDate: String): String {
     val date = Dates.parse(isoDate)
-    return if (date != null) "${date.monthValue} 月 ${date.dayOfMonth} 日" else Format.dateDots(isoDate)
+    return if (date != null) {
+        tr(
+            "${date.monthValue} 月 ${date.dayOfMonth} 日",
+            "${Month.of(date.monthValue).getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} ${date.dayOfMonth}",
+        )
+    } else {
+        Format.dateDots(isoDate)
+    }
 }
 
 /** 自定义统计范围：M3 DateRangePicker（闭区间，ISO 日期）。 */
@@ -888,11 +916,11 @@ private fun CustomRangePickerDialog(
                     }
                 },
             ) {
-                Text("确定")
+                Text(tr("确定", "OK"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
         },
     ) {
         DateRangePicker(
@@ -903,7 +931,7 @@ private fun CustomRangePickerDialog(
                 .padding(horizontal = 8.dp),
             title = {
                 Text(
-                    text = "选择统计范围",
+                    text = tr("选择统计范围", "Select date range"),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(start = 16.dp, top = 16.dp),
                 )
@@ -936,7 +964,14 @@ private fun monthKey(date: String): String =
 private fun FuelMonthTitle(month: String) {
     val year = month.take(4)
     val monthNumber = month.drop(5).trimStart('0').ifEmpty { "0" }
-    val title = if (month.length >= 7 && month[4] == '-') "$year 年 $monthNumber 月" else "其他记录"
+    val title = if (month.length >= 7 && month[4] == '-') {
+        val monthEn = monthNumber.toIntOrNull()
+            ?.let { Month.of(it).getDisplayName(TextStyle.SHORT, Locale.ENGLISH) }
+            ?: monthNumber
+        tr("$year 年 $monthNumber 月", "$monthEn $year")
+    } else {
+        tr("其他记录", "Other records")
+    }
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
@@ -994,21 +1029,21 @@ private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
                     color = scheme.onSurface,
                 )
                 Text(
-                    text = " 升/百公里",
+                    text = tr(" 升/百公里", " L/100km"),
                     style = MaterialTheme.typography.labelMedium,
                     color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 3.dp),
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = record.odometer?.let { "${Format.fmt(it)} 公里" } ?: "— 公里",
+                    text = record.odometer?.let { tr("%s 公里", "%s km", Format.fmt(it)) } ?: tr("— 公里", "— km"),
                     style = MaterialTheme.typography.titleMedium,
                     color = scheme.onSurface,
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = record.liters?.let { "+${Format.fmt(it)} 升" } ?: "— 升",
+                    text = record.liters?.let { tr("+%s 升", "+%s L", Format.fmt(it)) } ?: tr("— 升", "— L"),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
@@ -1040,10 +1075,10 @@ private fun fuelDot(
 
 /** 加油记录状态：已加满 / 未加满 / 漏记后重置 / 手填油耗。 */
 private fun fuelStatus(record: Record): Pair<String, StatusKind> = when {
-    record.missed -> "漏记后重置" to StatusKind.SOON
-    record.kind == "manual" -> "手填油耗" to StatusKind.NORMAL
-    record.full -> "已加满" to StatusKind.DONE
-    else -> "未加满" to StatusKind.NORMAL
+    record.missed -> tr("漏记后重置", "Baseline reset after a missed entry") to StatusKind.SOON
+    record.kind == "manual" -> tr("手填油耗", "Manual fuel entry") to StatusKind.NORMAL
+    record.full -> tr("已加满", "Filled up") to StatusKind.DONE
+    else -> tr("未加满", "Not filled up") to StatusKind.NORMAL
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1072,7 +1107,7 @@ private fun FuelRecordDetailDialog(
         shape = MaterialTheme.shapes.extraLarge,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(text = "加油详情", style = MaterialTheme.typography.headlineSmall)
+                Text(text = tr("加油详情", "Fuel entry details"), style = MaterialTheme.typography.headlineSmall)
                 Text(
                     text = monthDayLabel(record.date),
                     style = MaterialTheme.typography.bodySmall,
@@ -1087,22 +1122,29 @@ private fun FuelRecordDetailDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                DetailRow("来源", record.source.ifBlank { "手动记录" })
-                DetailRow("实付金额", "¥ ${Format.money(record.amount)}")
-                DetailRow("加油量", record.liters?.let { "${Format.fmt(it)}升" } ?: "—")
+                DetailRow(
+                    tr("来源", "Source"),
+                    if (record.source.isBlank() || record.source == "手动记录") {
+                        tr("手动记录", "Manual entry")
+                    } else {
+                        record.source
+                    },
+                )
+                DetailRow(tr("实付金额", "Amount paid"), "¥ ${Format.money(record.amount)}")
+                DetailRow(tr("加油量", "Fuel amount"), record.liters?.let { tr("%s升", "%s L", Format.fmt(it)) } ?: "—")
                 record.fuelGrade?.takeIf { it.isNotBlank() }?.let { grade ->
-                    DetailRow("燃油标号", if (grade == "0#") "0# 柴油" else grade)
+                    DetailRow(tr("燃油标号", "Fuel grade"), if (grade == "0#") tr("0# 柴油", "0# diesel") else grade)
                 }
-                DetailRow("总里程", record.odometer?.let { "${Format.fmt(it)}公里" } ?: "—")
-                DetailRow("加满状态", buildString {
-                    append(if (record.full) "已加满" else "未加满")
+                DetailRow(tr("总里程", "Odometer"), record.odometer?.let { tr("%s公里", "%s km", Format.fmt(it)) } ?: "—")
+                DetailRow(tr("加满状态", "Full tank"), buildString {
+                    append(if (record.full) tr("已加满", "Filled up") else tr("未加满", "Not filled up"))
                     append(" · ")
-                    append(if (record.missed) "有漏记" else "无漏记")
+                    append(if (record.missed) tr("有漏记", "Missed entry") else tr("无漏记", "No missed entry"))
                 })
-                DetailRow("百公里油耗", rate?.let { "${Format.money(it)}升/百公里" } ?: "—")
+                DetailRow(tr("百公里油耗", "Fuel economy"), rate?.let { tr("%s升/百公里", "%s L/100km", Format.money(it)) } ?: "—")
                 val (statusLabel, _) = fuelStatus(record)
-                DetailRow("状态", statusLabel)
-                DetailRow("备注", record.note.ifBlank { "—" })
+                DetailRow(tr("状态", "Status"), statusLabel)
+                DetailRow(tr("备注", "Note"), record.note.ifBlank { "—" })
             }
         },
         confirmButton = {
@@ -1110,11 +1152,11 @@ private fun FuelRecordDetailDialog(
                 onClick = onEdit,
                 shape = MaterialTheme.shapes.large,
             ) {
-                Text("编辑")
+                Text(tr("编辑", "Edit"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) }
         },
     )
 }
@@ -1169,20 +1211,23 @@ private fun FuelFootnote() {
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(text = "满箱法说明", style = MaterialTheme.typography.labelLarge)
+                Text(text = tr("满箱法说明", "Full-tank method"), style = MaterialTheme.typography.labelLarge)
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
                     imageVector = if (expanded) MileNoteIcons.ChevronDown else MileNoteIcons.ChevronRight,
-                    contentDescription = if (expanded) "收起" else "展开",
+                    contentDescription = if (expanded) tr("收起", "Collapse") else tr("展开", "Expand"),
                     modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (expanded) {
                 Text(
-                    text = "满箱法：两次加满之间的累计加油量 ÷ 里程差 × 100。第一次加满仅建立基准；" +
-                        "未加满的加油量累计到下次加满，漏记会重新建立基准。" +
-                        "历史油耗记录保留，并沿用原有统计口径。",
+                    text = tr(
+                        "满箱法：两次加满之间的累计加油量 ÷ 里程差 × 100。第一次加满仅建立基准；" +
+                            "未加满的加油量累计到下次加满，漏记会重新建立基准。" +
+                            "历史油耗记录保留，并沿用原有统计口径。",
+                        "Full-tank method: total fuel between two full tanks ÷ distance × 100. The first fill-up only sets the baseline; partial fill-ups accumulate until the next full tank, and a missed entry resets the baseline. Historical fuel records are kept under the original calculation.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 12.dp),

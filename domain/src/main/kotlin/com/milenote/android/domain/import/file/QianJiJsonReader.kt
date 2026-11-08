@@ -1,5 +1,6 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -37,27 +38,27 @@ class QianJiJsonReader(
      */
     fun read(bytes: ByteArray, fileName: String = ""): SpreadsheetData {
         if (bytes.isEmpty()) {
-            throw SpreadsheetReadException("文件是空的，请选择有效的钱迹导出文件")
+            throw SpreadsheetReadException(tr("文件是空的，请选择有效的钱迹导出文件", "The file is empty — choose a valid Qianji export file"))
         }
         if (bytes.size.toLong() > SpreadsheetLimits.MAX_FILE_BYTES) {
-            throw SpreadsheetReadException("文件超过 10 MB，请拆分后再导入")
+            throw SpreadsheetReadException(tr("文件超过 10 MB，请拆分后再导入", "File exceeds 10 MB — split it and import again"))
         }
         val text = TextDecoder.decode(bytes).trim()
         if (text.isEmpty()) {
-            throw SpreadsheetReadException("文件是空的，请选择有效的钱迹导出文件")
+            throw SpreadsheetReadException(tr("文件是空的，请选择有效的钱迹导出文件", "The file is empty — choose a valid Qianji export file"))
         }
 
         val root = try {
             JSON.parseToJsonElement(text)
         } catch (exception: SerializationException) {
-            throw SpreadsheetReadException("钱迹 JSON 格式不正确，无法解析", exception)
+            throw SpreadsheetReadException(tr("钱迹 JSON 格式不正确，无法解析", "Invalid Qianji JSON format — cannot parse"), exception)
         } catch (exception: IllegalArgumentException) {
-            throw SpreadsheetReadException("钱迹 JSON 格式不正确，无法解析", exception)
+            throw SpreadsheetReadException(tr("钱迹 JSON 格式不正确，无法解析", "Invalid Qianji JSON format — cannot parse"), exception)
         }
 
         val records = extractRecords(root)
         if (records.isEmpty()) {
-            throw SpreadsheetReadException("钱迹 JSON 里没有可导入的账单数据")
+            throw SpreadsheetReadException(tr("钱迹 JSON 里没有可导入的账单数据", "The Qianji JSON contains no bill data to import"))
         }
         if (records.size > maxDataRows) {
             throw SpreadsheetLimits.tooManyRows(maxDataRows, records.size)
@@ -65,12 +66,18 @@ class QianJiJsonReader(
 
         val objects = records.mapIndexed { index, element ->
             element as? JsonObject
-                ?: throw SpreadsheetReadException("钱迹 JSON 格式不正确：第 ${index + 1} 条记录不是对象")
+                ?: throw SpreadsheetReadException(
+                    tr(
+                        "钱迹 JSON 格式不正确：第 %d 条记录不是对象",
+                        "Invalid Qianji JSON: record %d is not an object",
+                        index + 1,
+                    ),
+                )
         }
         val headers = LinkedHashSet<String>()
         objects.forEach { record -> headers.addAll(record.keys) }
         if (headers.isEmpty()) {
-            throw SpreadsheetReadException("钱迹 JSON 里没有可识别的字段")
+            throw SpreadsheetReadException(tr("钱迹 JSON 里没有可识别的字段", "The Qianji JSON has no recognizable fields"))
         }
         val headerList = headers.toList()
         val rows = objects.map { record ->
@@ -95,7 +102,7 @@ class QianJiJsonReader(
         }
 
         JsonNull -> emptyList()
-        else -> throw SpreadsheetReadException("钱迹 JSON 格式不正确：顶层不是数组或对象")
+        else -> throw SpreadsheetReadException(tr("钱迹 JSON 格式不正确：顶层不是数组或对象", "Invalid Qianji JSON: top level is not an array or object"))
     }
 
     /** 在包裹对象里递归找第一个账单数组，例如 `{"data":{"list":[...]}}`。 */

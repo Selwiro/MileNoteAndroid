@@ -2,6 +2,7 @@ package com.milenote.android.domain.format
 
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.ReminderState
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Reminder
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -13,6 +14,9 @@ import java.time.LocalDate
  * 不依赖系统 Locale，保证单测在任何设备上稳定。
  */
 object Format {
+
+    /** 英文星期缩写，索引与 [LocalDate.dayOfWeek] 同序（周日在前）。 */
+    private val WEEKDAY_EN = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 
     /** 金额：两位小数 + 千分位，如 `10,511.00`（Web `money`）。 */
     fun money(value: Double?): String = group(scale(value, 2))
@@ -26,8 +30,9 @@ object Format {
     /** 日期显示：`2026-11-04` → `2026.11.04`（Web 顶栏 / 记录日期）。 */
     fun dateDots(date: String): String = date.replace('-', '.')
 
-    /** 中文星期几，如 `星期三`。 */
-    fun weekday(date: LocalDate): String = Dates.weekday(date)
+    /** 星期几，如中文 `星期三` / 英文 `Wed`。 */
+    fun weekday(date: LocalDate): String =
+        tr(Dates.weekday(date), WEEKDAY_EN[date.dayOfWeek.value % 7])
 
     /** 顶栏日期文案：`2026.11.04 &nbsp; 星期三` 的纯文本版。 */
     fun todayLabel(date: LocalDate): String = "${dateDots(Dates.iso(date))} ${weekday(date)}"
@@ -38,11 +43,20 @@ object Format {
      */
     fun cycleText(intervalKm: Double?, intervalMonths: Int?): String {
         val parts = mutableListOf<String>()
-        if (intervalKm != null && intervalKm != 0.0) parts.add("${fmt(intervalKm)} 公里")
+        if (intervalKm != null && intervalKm != 0.0) parts.add(tr("%s 公里", "%s km", fmt(intervalKm)))
         if (intervalMonths != null && intervalMonths != 0) {
-            parts.add(if (intervalMonths % 12 == 0) "${intervalMonths / 12} 年" else "$intervalMonths 个月")
+            parts.add(
+                if (intervalMonths % 12 == 0) {
+                    val years = intervalMonths / 12
+                    if (years == 1) tr("1 年", "1 year") else tr("%d 年", "%d years", years)
+                } else if (intervalMonths == 1) {
+                    tr("1 个月", "1 month")
+                } else {
+                    tr("%d 个月", "%d months", intervalMonths)
+                },
+            )
         }
-        return if (parts.isEmpty()) "单次事项" else parts.joinToString(" 或 ")
+        return if (parts.isEmpty()) tr("单次事项", "One-off") else parts.joinToString(tr(" 或 ", " or "))
     }
 
     /**
@@ -58,9 +72,9 @@ object Format {
                 if (days == null) {
                     dueDate
                 } else if (days >= 0) {
-                    "$dueDate · 还有 $days 天"
+                    tr("%s · 还有 %d 天", "%s · %d days left", dueDate, days)
                 } else {
-                    "$dueDate · 已过 ${-days} 天"
+                    tr("%s · 已过 %d 天", "%s · %d days overdue", dueDate, -days)
                 },
             )
         }
@@ -69,9 +83,9 @@ object Format {
             val left = state.left
             parts.add(
                 when {
-                    left == null -> "${fmt(dueKm)} 公里"
-                    left >= 0 -> "${fmt(dueKm)} 公里 · 还可行驶 ${fmt(left)} 公里"
-                    else -> "${fmt(dueKm)} 公里 · 已超出 ${fmt(-left)} 公里"
+                    left == null -> tr("%s 公里", "%s km", fmt(dueKm))
+                    left >= 0 -> tr("%s 公里 · 还可行驶 %s 公里", "%s km · %s km left", fmt(dueKm), fmt(left))
+                    else -> tr("%s 公里 · 已超出 %s 公里", "%s km · over by %s km", fmt(dueKm), fmt(-left))
                 },
             )
         }
@@ -79,7 +93,7 @@ object Format {
     }
 
     /** 里程行：`42,000 公里`。 */
-    fun km(value: Double?): String = "${fmt(value)} 公里"
+    fun km(value: Double?): String = tr("%s 公里", "%s km", fmt(value))
 
     private fun scale(value: Double?, digits: Int): BigDecimal {
         val v = value ?: 0.0

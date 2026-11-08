@@ -78,6 +78,9 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankVehicle
+import com.milenote.android.i18n.AppLanguage
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.platform.FileExporter
 import com.milenote.android.platform.LedgerExports
 import com.milenote.android.ui.MileNoteViewModel
@@ -133,15 +136,29 @@ private data class VehicleEditTarget(
  * 一级按性质分三组：车辆/外观/记账、数据（外部导入 / 备份与还原 / WebDAV 同步）、关于。
  * 全部子页都从设置首页一层进入，不再有三级页。
  */
-private enum class SettingsPage(val title: String) {
-    ROOT("设置"),
-    VEHICLES("我的车辆"),
-    APPEARANCE("外观"),
-    CATEGORIES("费用分类与项目"),
-    IMPORT("外部导入"),
-    BACKUP("备份与还原"),
-    WEBDAV("WebDAV 同步"),
-    ABOUT("关于"),
+private enum class SettingsPage {
+    ROOT,
+    VEHICLES,
+    APPEARANCE,
+    CATEGORIES,
+    IMPORT,
+    BACKUP,
+    WEBDAV,
+    ABOUT,
+    ;
+
+    /** 顶栏标题（随语言切换；不要放进枚举构造参数，那样会固定在类加载时的语言）。 */
+    val title: String
+        get() = when (this) {
+            ROOT -> tr("设置", "Settings")
+            VEHICLES -> tr("我的车辆", "My vehicles")
+            APPEARANCE -> tr("外观", "Appearance")
+            CATEGORIES -> tr("费用分类与项目", "Categories & items")
+            IMPORT -> tr("外部导入", "Import from other apps")
+            BACKUP -> tr("备份与还原", "Backup & restore")
+            WEBDAV -> tr("WebDAV 同步", "WebDAV sync")
+            ABOUT -> tr("关于", "About")
+        }
 }
 
 /**
@@ -182,7 +199,7 @@ fun SettingsScreen(
     val cars = garage?.cars.orEmpty()
     val activeId = garage?.activeCar?.id
     val activeCar = garage?.activeCar
-    val activeName = activeCar?.vehicle?.name?.ifBlank { "我的爱车" } ?: "—"
+    val activeName = activeCar?.let { DataLabels.vehicleName(it.vehicle.name) } ?: "—"
     val appTheme = AppTheme.fromId(garage?.theme)
     val themeId = garage?.theme ?: "blue"
     val customCategoryCount = activeCar?.customCategories.orEmpty()
@@ -220,7 +237,14 @@ fun SettingsScreen(
                     bytes = text.toByteArray(Charsets.UTF_8),
                 )
             } catch (t: Throwable) {
-                notify("分享失败：${t.message ?: "无法生成备份"}", MessageKind.ERROR)
+                notify(
+                    tr(
+                        "分享失败：%s",
+                        "Share failed: %s",
+                        t.message ?: tr("无法生成备份", "Could not create backup"),
+                    ),
+                    MessageKind.ERROR,
+                )
             } finally {
                 busy = false
             }
@@ -236,13 +260,22 @@ fun SettingsScreen(
             runCatching { FileExporter.writeTo(context, uri, text.toByteArray(Charsets.UTF_8)) }
                 .onSuccess {
                     notify(
-                        text = "完整备份已导出",
+                        text = tr("完整备份已导出", "Full backup exported"),
                         kind = MessageKind.SUCCESS,
-                        actionLabel = "分享",
+                        actionLabel = tr("分享", "Share"),
                         onAction = { shareBackup(text) },
                     )
                 }
-                .onFailure { notify("导出失败：${it.message ?: "无法写入所选文件"}", MessageKind.ERROR) }
+                .onFailure {
+                    notify(
+                        tr(
+                            "导出失败：%s",
+                            "Export failed: %s",
+                            it.message ?: tr("无法写入所选文件", "Could not write the selected file"),
+                        ),
+                        MessageKind.ERROR,
+                    )
+                }
         }
     }
 
@@ -253,8 +286,17 @@ fun SettingsScreen(
         pendingCsv = null
         if (uri != null && bytes != null) {
             runCatching { FileExporter.writeTo(context, uri, bytes) }
-                .onSuccess { notify("费用 CSV 已导出", MessageKind.SUCCESS) }
-                .onFailure { notify("导出失败：${it.message ?: "无法写入所选文件"}", MessageKind.ERROR) }
+                .onSuccess { notify(tr("费用 CSV 已导出", "Expense CSV exported"), MessageKind.SUCCESS) }
+                .onFailure {
+                    notify(
+                        tr(
+                            "导出失败：%s",
+                            "Export failed: %s",
+                            it.message ?: tr("无法写入所选文件", "Could not write the selected file"),
+                        ),
+                        MessageKind.ERROR,
+                    )
+                }
         }
     }
 
@@ -267,15 +309,22 @@ fun SettingsScreen(
             try {
                 val text = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                        ?: throw IllegalStateException("无法读取所选文件")
+                        ?: throw IllegalStateException(tr("无法读取所选文件", "Could not read the selected file"))
                 }
                 if (text.length > 30_000_000) {
-                    throw IllegalStateException("备份文件超过 30 MB，已取消导入")
+                    throw IllegalStateException(tr("备份文件超过 30 MB，已取消导入", "Backup file is larger than 30 MB; import cancelled"))
                 }
                 // 合并规则与提示由 VM/仓库统一处理（结果走全局 Snackbar）。
                 vm.restoreBackup(text)
             } catch (t: Throwable) {
-                notify("导入备份失败：${t.message ?: "文件格式不正确"}", MessageKind.ERROR)
+                notify(
+                    tr(
+                        "导入备份失败：%s",
+                        "Import failed: %s",
+                        t.message ?: tr("文件格式不正确", "Invalid file format"),
+                    ),
+                    MessageKind.ERROR,
+                )
             } finally {
                 busy = false
             }
@@ -289,7 +338,14 @@ fun SettingsScreen(
                 pendingBackup = vm.exportBackup()
                 createBackup.launch(LedgerExports.backupFileName())
             } catch (t: Throwable) {
-                notify("导出失败：${t.message ?: "无法生成备份"}", MessageKind.ERROR)
+                notify(
+                    tr(
+                        "导出失败：%s",
+                        "Export failed: %s",
+                        t.message ?: tr("无法生成备份", "Could not create backup"),
+                    ),
+                    MessageKind.ERROR,
+                )
             } finally {
                 busy = false
             }
@@ -299,7 +355,7 @@ fun SettingsScreen(
     fun exportCsvFile() {
         val ledger = activeCar
         if (ledger == null) {
-            notify("当前没有可导出的车辆", MessageKind.WARNING)
+            notify(tr("当前没有可导出的车辆", "No vehicle available to export"), MessageKind.WARNING)
             return
         }
         pendingCsv = LedgerExports.csv(ledger)
@@ -344,7 +400,7 @@ fun SettingsScreen(
                     ) {
                         Icon(
                             imageVector = MileNoteIcons.Back,
-                            contentDescription = if (page == SettingsPage.ROOT) "返回" else "返回设置",
+                            contentDescription = if (page == SettingsPage.ROOT) tr("返回", "Back") else tr("返回设置", "Back to settings"),
                         )
                     }
                 },
@@ -364,7 +420,7 @@ fun SettingsScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                LoadingState(label = "正在读取本机账本…")
+                LoadingState(label = tr("正在读取本机账本…", "Loading local ledger…"))
             }
             return@Scaffold
         }
@@ -393,11 +449,11 @@ fun SettingsScreen(
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Car,
-                                    title = "我的车辆",
+                                    title = tr("我的车辆", "My vehicles"),
                                     subtitle = if (cars.isEmpty()) {
-                                        "还没有车辆，点按添加"
+                                        tr("还没有车辆，点按添加", "No vehicles yet — tap to add")
                                     } else {
-                                        "${cars.size} 辆 · 当前：$activeName"
+                                        tr("%d 辆 · 当前：%s", "%d vehicles · Current: %s", cars.size, activeName)
                                     },
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -406,7 +462,7 @@ fun SettingsScreen(
                                 SectionDivider()
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Sparkle,
-                                    title = "外观",
+                                    title = tr("外观", "Appearance"),
                                     subtitle = appearanceSummary(appTheme, settings),
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -415,8 +471,13 @@ fun SettingsScreen(
                                 SectionDivider()
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Wallet,
-                                    title = "费用分类与项目",
-                                    subtitle = "${Categories.ALL.size} 类 · 自定义 $customCategoryCount 项 · 按车辆",
+                                    title = tr("费用分类与项目", "Categories & items"),
+                                    subtitle = tr(
+                                        "%d 类 · 自定义 %d 项 · 按车辆",
+                                        "%d categories · %d custom · per vehicle",
+                                        Categories.ALL.size,
+                                        customCategoryCount,
+                                    ),
                                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                                     onClick = { pageName = SettingsPage.CATEGORIES.name },
@@ -430,8 +491,8 @@ fun SettingsScreen(
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Import,
-                                    title = "外部导入",
-                                    subtitle = "小熊油耗 / 钱迹记账 / 其他 App",
+                                    title = tr("外部导入", "Import from other apps"),
+                                    subtitle = tr("小熊油耗 / 钱迹记账 / 其他 App", "Bear / Qianji / Other apps"),
                                     containerColor = LocalMileNoteSemanticColors.current.info.container,
                                     contentColor = LocalMileNoteSemanticColors.current.info.content,
                                     onClick = { pageName = SettingsPage.IMPORT.name },
@@ -439,8 +500,13 @@ fun SettingsScreen(
                                 SectionDivider()
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Export,
-                                    title = "备份与还原",
-                                    subtitle = "${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录",
+                                    title = tr("备份与还原", "Backup & restore"),
+                                    subtitle = tr(
+                                        "%d 辆 · %d 条记录",
+                                        "%d vehicles · %d records",
+                                        cars.size,
+                                        cars.sumOf { it.records.size },
+                                    ),
                                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     onClick = { pageName = SettingsPage.BACKUP.name },
@@ -448,7 +514,7 @@ fun SettingsScreen(
                                 SectionDivider()
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Download,
-                                    title = "WebDAV 同步",
+                                    title = tr("WebDAV 同步", "WebDAV sync"),
                                     subtitle = webDavStatusSummary(state.webDav),
                                     containerColor = LocalMileNoteSemanticColors.current.info.container,
                                     contentColor = LocalMileNoteSemanticColors.current.info.content,
@@ -463,7 +529,7 @@ fun SettingsScreen(
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Info,
-                                    title = "关于",
+                                    title = tr("关于", "About"),
                                     subtitle = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -488,9 +554,14 @@ fun SettingsScreen(
 
                         item("vehicles-header") {
                             SectionHeader(
-                                title = "车辆列表",
-                                subtitle = "共 ${cars.size} 辆 · ${cars.sumOf { it.records.size }} 条记录 · 点按卡片进入编辑",
-                                actionLabel = "添加车辆",
+                                title = tr("车辆列表", "Vehicles"),
+                                subtitle = tr(
+                                    "共 %d 辆 · %d 条记录 · 点按卡片进入编辑",
+                                    "%d vehicles · %d records · Tap a card to edit",
+                                    cars.size,
+                                    cars.sumOf { it.records.size },
+                                ),
+                                actionLabel = tr("添加车辆", "Add vehicle"),
                                 actionIcon = MileNoteIcons.Add,
                                 onAction = { openVehicleEditor(null) },
                             )
@@ -499,10 +570,10 @@ fun SettingsScreen(
                         item("vehicles") {
                             if (cars.isEmpty()) {
                                 EmptyState(
-                                    title = "还没有车辆",
-                                    description = "添加第一辆车，开始记录每一公里的花费。",
+                                    title = tr("还没有车辆", "No vehicles yet"),
+                                    description = tr("添加第一辆车，开始记录每一公里的花费。", "Add your first car and start tracking the cost of every kilometer."),
                                     icon = MileNoteIcons.Car,
-                                    actionLabel = "添加车辆",
+                                    actionLabel = tr("添加车辆", "Add vehicle"),
                                     onAction = { openVehicleEditor(null) },
                                 )
                             } else {
@@ -522,8 +593,12 @@ fun SettingsScreen(
 
                         item("vehicles-hint") {
                             Text(
-                                text = "点按车辆卡片进入编辑；可修改昵称、里程、提车日期与图片，也可删除车辆。" +
-                                    "删除车辆会一并移除该车的费用、提醒与保养记录。",
+                                text = tr(
+                                    "点按车辆卡片进入编辑；可修改昵称、里程、提车日期与图片，也可删除车辆。" +
+                                        "删除车辆会一并移除该车的费用、提醒与保养记录。",
+                                    "Tap a vehicle card to edit its name, mileage, delivery date and image, or to delete it. " +
+                                        "Deleting a vehicle also removes its expenses, reminders and service records.",
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -537,6 +612,8 @@ fun SettingsScreen(
                                 appTheme = appTheme,
                                 onThemeChange = { theme -> vm.setTheme(theme.name.lowercase()) },
                                 onDarkModeChange = { mode -> vm.setDarkMode(mode) },
+                                language = settings.language,
+                                onLanguageChange = { language -> vm.setLanguage(language) },
                             )
                         }
                     }
@@ -551,9 +628,13 @@ fun SettingsScreen(
                         onRemoveCategory = { name ->
                             vm.confirm(
                                 PendingConfirm(
-                                    title = "删除自定义分类？",
-                                    message = "「$name」将从记账的可选分类中移除；已有记录的分类与金额不受影响。",
-                                    confirmLabel = "删除",
+                                    title = tr("删除自定义分类？", "Delete custom category?"),
+                                    message = tr(
+                                        "「%s」将从记账的可选分类中移除；已有记录的分类与金额不受影响。",
+                                        "“%s” will be removed from the category picker; existing records and amounts are unchanged.",
+                                        name,
+                                    ),
+                                    confirmLabel = tr("删除", "Delete"),
                                     destructive = true,
                                 ) { vm.removeCustomCategory(name) },
                             )
@@ -619,7 +700,7 @@ fun SettingsScreen(
     editing?.let { target ->
         VehicleEditorDialog(
             initial = target.vehicle,
-            title = if (target.id == null) "添加车辆" else "编辑车辆",
+            title = if (target.id == null) tr("添加车辆", "Add vehicle") else tr("编辑车辆", "Edit vehicle"),
             recordCount = target.recordCount,
             onDismiss = { editing = null },
             onSave = { vehicle ->
@@ -735,9 +816,9 @@ private fun SettingsMessageArea(
         loadError?.let { MessageBar(message = it, kind = MessageKind.ERROR) }
         if (demo) {
             MessageBar(
-                message = "演示账本 · 修改不会保存到真实账本",
+                message = tr("演示账本 · 修改不会保存到真实账本", "Demo ledger · Changes are not saved to your real ledger"),
                 kind = MessageKind.DEMO,
-                actionLabel = "退出演示",
+                actionLabel = tr("退出演示", "Exit demo"),
                 onAction = onExitDemo,
             )
         }
@@ -756,11 +837,11 @@ private fun SettingsMessageArea(
 /** 外观菜单摘要，如「里程蓝 · 跟随系统」。 */
 private fun appearanceSummary(appTheme: AppTheme, settings: AppSettings): String {
     val darkLabel = when (settings.darkMode) {
-        DarkMode.SYSTEM -> "跟随系统"
-        DarkMode.LIGHT -> "浅色"
-        DarkMode.DARK -> "深色"
+        DarkMode.SYSTEM -> tr("跟随系统", "System")
+        DarkMode.LIGHT -> tr("浅色", "Light")
+        DarkMode.DARK -> tr("深色", "Dark")
     }
-    return "${appTheme.label} · $darkLabel"
+    return "${appTheme.displayName} · $darkLabel"
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -779,7 +860,7 @@ private fun VehicleCard(
     val secondary = listOf(vehicle.plate, vehicle.model)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
-        .ifBlank { "未填写车牌 / 车型" }
+        .ifBlank { tr("未填写车牌 / 车型", "No plate / model") }
 
     Surface(
         onClick = onClick,
@@ -806,7 +887,7 @@ private fun VehicleCard(
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = vehicle.name.ifBlank { "我的爱车" },
+                        text = DataLabels.vehicleName(vehicle.name),
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -830,12 +911,12 @@ private fun VehicleCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "${Format.fmt(currentKm(ledger))} 公里",
+                    text = tr("%s 公里", "%s km", Format.fmt(currentKm(ledger))),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                 )
                 Text(
-                    text = "· ${ledger.records.size} 条记录",
+                    text = tr("· %d 条记录", "· %d records", ledger.records.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (selected) {
                         scheme.onPrimaryContainer.copy(alpha = 0.78f)
@@ -852,7 +933,7 @@ private fun VehicleCard(
                         contentColor = scheme.onPrimary,
                     ) {
                         Text(
-                            text = "当前",
+                            text = tr("当前", "Current"),
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         )
@@ -867,10 +948,17 @@ private fun VehicleCard(
 // 外观
 // ---------------------------------------------------------------------------------------------
 
-private val darkModeOptions = listOf(
-    DarkMode.SYSTEM to "跟随系统",
-    DarkMode.LIGHT to "浅色",
-    DarkMode.DARK to "深色",
+private fun darkModeOptions(): List<Pair<DarkMode, String>> = listOf(
+    DarkMode.SYSTEM to tr("跟随系统", "System"),
+    DarkMode.LIGHT to tr("浅色", "Light"),
+    DarkMode.DARK to tr("深色", "Dark"),
+)
+
+/** 语言选择项：跟随系统 / 中文 / English（后两项原样显示）。 */
+private fun languageOptions(): List<Pair<AppLanguage, String>> = listOf(
+    AppLanguage.SYSTEM to tr("跟随系统", "System"),
+    AppLanguage.ZH to "中文",
+    AppLanguage.EN to "English",
 )
 
 @Composable
@@ -879,33 +967,49 @@ private fun AppearanceSection(
     appTheme: AppTheme,
     onThemeChange: (AppTheme) -> Unit,
     onDarkModeChange: (DarkMode) -> Unit,
+    language: AppLanguage,
+    onLanguageChange: (AppLanguage) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard {
         Text(
-            text = "只改变配色与显示方式，不影响账本记录。",
+            text = tr("只改变配色与显示方式，不影响账本记录。", "Only changes colors and display; ledger records are not affected."),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.size(8.dp))
-        Text("界面皮肤", style = MaterialTheme.typography.titleSmall)
+        Text(tr("界面皮肤", "Theme"), style = MaterialTheme.typography.titleSmall)
         Spacer(modifier = Modifier.size(8.dp))
         ThemeSwatchRow(selected = appTheme, onSelect = onThemeChange)
 
         SectionDivider()
 
-        Text("深浅色", style = MaterialTheme.typography.titleSmall)
+        Text(tr("深浅色", "Light / dark"), style = MaterialTheme.typography.titleSmall)
         Spacer(modifier = Modifier.size(8.dp))
         SegmentedChoiceRow(
-            options = darkModeOptions,
+            options = darkModeOptions(),
             selected = settings.darkMode,
             onSelect = onDarkModeChange,
         )
 
         SectionDivider()
 
+        // 语言：切换后立即生效（tr 读的是 Compose 快照状态，组合会自动重组）。
+        Text(tr("语言", "Language"), style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(8.dp))
+        SegmentedChoiceRow(
+            options = languageOptions(),
+            selected = language,
+            onSelect = onLanguageChange,
+        )
+
+        SectionDivider()
+
         Text(
-            text = "皮肤随账本备份；深浅色只存本机，不随备份恢复。",
+            text = tr(
+                "皮肤随账本备份；深浅色只存本机，不随备份恢复。",
+                "Theme is kept in the ledger backup; light/dark mode stays on this device and is not restored from backups.",
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -957,7 +1061,7 @@ private fun ThemeSwatchRow(
                     }
                 }
                 Text(
-                    text = theme.label,
+                    text = theme.displayName,
                     style = MaterialTheme.typography.labelMedium,
                     color = if (isSelected) scheme.primary else scheme.onSurfaceVariant,
                     maxLines = 1,
@@ -1013,7 +1117,7 @@ private fun CategoryTabsPage(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
-            text = "当前车辆：${vehicleName.ifBlank { "我的爱车" }}",
+            text = tr("当前车辆：%s", "Current vehicle: %s", DataLabels.vehicleName(vehicleName)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(
@@ -1024,7 +1128,7 @@ private fun CategoryTabsPage(
             ),
         )
         SecondaryTabs(
-            labels = listOf("费用分类", "项目库"),
+            labels = listOf(tr("费用分类", "Categories"), tr("项目库", "Item library")),
             selected = tab,
             onSelect = onTabChange,
         )
@@ -1055,17 +1159,20 @@ private fun ExternalImportPage(
     SettingsPageList {
         item("intro") {
             SectionCard(
-                title = "从其他 App 导入",
-                subtitle = "只新增记录，不覆盖现有数据",
+                title = tr("从其他 App 导入", "Import from other apps"),
+                subtitle = tr("只新增记录，不覆盖现有数据", "Only adds records; existing data is kept"),
             ) {
                 Text(
-                    text = "支持小熊油耗、钱迹记账导出的文件；导入前建议先做一次完整备份。",
+                    text = tr(
+                        "支持小熊油耗、钱迹记账导出的文件；导入前建议先做一次完整备份。",
+                        "Supports files exported from Bear and Qianji. Export a full backup before importing.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.size(8.dp))
                 TextButton(onClick = onGoBackup) {
-                    Text("先去备份")
+                    Text(tr("先去备份", "Back up first"))
                 }
             }
         }
@@ -1076,8 +1183,8 @@ private fun ExternalImportPage(
             ) {
                 SettingsMenuRow(
                     icon = MileNoteIcons.CategoryFuel,
-                    title = "小熊油耗",
-                    subtitle = "XLS / XLSX · 加油记录转油费，按满箱法统计",
+                    title = tr("小熊油耗", "Bear"),
+                    subtitle = tr("XLS / XLSX · 加油记录转油费，按满箱法统计", "XLS / XLSX · Refuel records become fuel expenses, counted with the full-tank method"),
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     onClick = { onOpenImporter("bear") },
@@ -1086,8 +1193,8 @@ private fun ExternalImportPage(
                 SectionDivider()
                 SettingsMenuRow(
                     icon = MileNoteIcons.Wallet,
-                    title = "钱迹记账",
-                    subtitle = "TXT / JSON / CSV · 支出记录转费用，可自动完成保养待办",
+                    title = tr("钱迹记账", "Qianji"),
+                    subtitle = tr("TXT / JSON / CSV · 支出记录转费用，可自动完成保养待办", "TXT / JSON / CSV · Expense records become entries and can complete service to-dos"),
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     onClick = { onOpenImporter("qianji") },
@@ -1096,8 +1203,8 @@ private fun ExternalImportPage(
                 SectionDivider()
                 SettingsMenuRow(
                     icon = MileNoteIcons.Share,
-                    title = "从其他 App 分享",
-                    subtitle = "在钱迹等 App 里选「分享到里程志」，会自动识别并预览",
+                    title = tr("从其他 App 分享", "Share from other apps"),
+                    subtitle = tr("在钱迹等 App 里选「分享到里程志」，会自动识别并预览", "Choose “Share to MileNote” in Qianji and other apps to detect and preview a file"),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = null,
@@ -1108,8 +1215,12 @@ private fun ExternalImportPage(
 
         item("note") {
             Text(
-                text = "导入的记录会标记来源；重复记录按现有合并规则处理（合并或跳过）；" +
-                    "表格文件上限 10 MB，只在本机解析，不会上传。",
+                text = tr(
+                    "导入的记录会标记来源；重复记录按现有合并规则处理（合并或跳过）；" +
+                        "表格文件上限 10 MB，只在本机解析，不会上传。",
+                    "Imported records keep their source label; duplicates follow the usual merge rules (merge or skip). " +
+                        "Spreadsheets are limited to 10 MB and are parsed on this device only — nothing is uploaded.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1151,13 +1262,16 @@ private fun BackupRestorePage(
         }
 
         item("status") {
-            SectionCard(title = "账本") {
+            SectionCard(title = tr("账本", "Ledger")) {
                 Text(
-                    text = "$carsCount 辆车 · $recordsCount 条记录",
+                    text = tr("%d 辆车 · %d 条记录", "%d vehicles · %d records", carsCount, recordsCount),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "数据只保存在本机；JSON 备份包含全部车辆、图片与提醒，可跨设备还原。",
+                    text = tr(
+                        "数据只保存在本机；JSON 备份包含全部车辆、图片与提醒，可跨设备还原。",
+                        "Data is stored on this device only; a JSON backup includes all vehicles, images and reminders and can be restored on another device.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1165,11 +1279,11 @@ private fun BackupRestorePage(
         }
 
         item("export") {
-            SectionCard(title = "导出") {
+            SectionCard(title = tr("导出", "Export")) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Export,
-                    title = "导出完整备份（JSON）",
-                    subtitle = "全部车辆、图片、费用与保养提醒；可跨设备还原",
+                    title = tr("导出完整备份（JSON）", "Export full backup (JSON)"),
+                    subtitle = tr("全部车辆、图片、费用与保养提醒；可跨设备还原", "All vehicles, images, expenses and reminders; restorable on another device"),
                     enabled = !busy,
                     onClick = onExportBackup,
                     trailing = {
@@ -1184,8 +1298,8 @@ private fun BackupRestorePage(
                 SectionDivider()
                 SettingsActionRow(
                     icon = MileNoteIcons.Download,
-                    title = "导出费用 CSV",
-                    subtitle = "当前车辆全部记录 · UTF-8，可用 Excel 打开；仅查看，不能还原",
+                    title = tr("导出费用 CSV", "Export expense CSV"),
+                    subtitle = tr("当前车辆全部记录 · UTF-8，可用 Excel 打开；仅查看，不能还原", "All records of the current vehicle · UTF-8, opens in Excel; for viewing only, cannot be restored"),
                     enabled = !busy,
                     onClick = onExportCsv,
                 )
@@ -1193,11 +1307,11 @@ private fun BackupRestorePage(
         }
 
         item("restore") {
-            SectionCard(title = "还原") {
+            SectionCard(title = tr("还原", "Restore")) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Import,
-                    title = "从 JSON 备份还原",
-                    subtitle = "只合并新增记录，不覆盖现有数据；单个文件 ≤ 30 MB",
+                    title = tr("从 JSON 备份还原", "Restore from JSON backup"),
+                    subtitle = tr("只合并新增记录，不覆盖现有数据；单个文件 ≤ 30 MB", "Merges new records only, never overwrites existing data; single file ≤ 30 MB"),
                     enabled = !busy,
                     onClick = onImportBackup,
                 )
@@ -1205,11 +1319,11 @@ private fun BackupRestorePage(
         }
 
         item("danger") {
-            SectionCard(title = "危险区") {
+            SectionCard(title = tr("危险区", "Danger zone")) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Delete,
-                    title = "删除全部数据",
-                    subtitle = "清空所有车辆与记录，需输入「删除」确认；建议先导出备份",
+                    title = tr("删除全部数据", "Delete all data"),
+                    subtitle = tr("清空所有车辆与记录，需输入「删除」确认；建议先导出备份", "Removes all vehicles and records; type “删除” to confirm. Export a backup first"),
                     danger = true,
                     onClick = onDeleteAll,
                 )
@@ -1218,7 +1332,10 @@ private fun BackupRestorePage(
 
         item("note") {
             Text(
-                text = "JSON 是备份，可以还原；CSV 是报表，只用于查看和对账，不能还原。",
+                text = tr(
+                    "JSON 是备份，可以还原；CSV 是报表，只用于查看和对账，不能还原。",
+                    "JSON is a backup and can be restored; CSV is a report for viewing and reconciling only, and cannot be restored.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1252,25 +1369,30 @@ private fun AboutPage(
             checkingUpdate = false
             updateDialog = when (result) {
                 is UpdateCheckResult.Available -> UpdateDialogState(
-                    title = "发现新版本 ${result.info.version}",
+                    title = tr("发现新版本 %s", "Version %s available", result.info.version),
                     message = buildString {
                         if (result.info.notes.isNotBlank()) {
                             append(result.info.notes.trim())
                             append("\n\n")
                         }
-                        append("是否前往 GitHub 下载最新 APK？")
+                        append(tr("是否前往 GitHub 下载最新 APK？", "Open GitHub to download the latest APK?"))
                     },
                     link = result.info.apkUrl ?: result.info.pageUrl,
                 )
 
                 UpdateCheckResult.UpToDate -> UpdateDialogState(
-                    title = "已是最新版本",
-                    message = "当前版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) 已是最新。",
+                    title = tr("已是最新版本", "You're up to date"),
+                    message = tr(
+                        "当前版本 %s (%s) 已是最新。",
+                        "Version %s (%s) is up to date.",
+                        BuildConfig.VERSION_NAME,
+                        BuildConfig.VERSION_CODE,
+                    ),
                     link = null,
                 )
 
                 is UpdateCheckResult.Failed -> UpdateDialogState(
-                    title = "检查更新失败",
+                    title = tr("检查更新失败", "Update check failed"),
                     message = result.message,
                     link = null,
                 )
@@ -1300,9 +1422,9 @@ private fun AboutPage(
                         )
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("里程志", style = MaterialTheme.typography.titleLarge)
+                        Text(tr("里程志", "MileNote"), style = MaterialTheme.typography.titleLarge)
                         Text(
-                            text = "MileNote · 汽车助手",
+                            text = tr("MileNote · 汽车助手", "MileNote · Car assistant"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1310,17 +1432,22 @@ private fun AboutPage(
                 }
                 Spacer(modifier = Modifier.size(12.dp))
                 AboutRow(
-                    label = "版本",
+                    label = tr("版本", "Version"),
                     value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                 )
                 Spacer(modifier = Modifier.size(8.dp))
                 SettingsActionRow(
                     icon = MileNoteIcons.Download,
-                    title = "检查更新",
+                    title = tr("检查更新", "Check for updates"),
                     subtitle = if (checkingUpdate) {
-                        "正在检查 GitHub…"
+                        tr("正在检查 GitHub…", "Checking GitHub…")
                     } else {
-                        "当前 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+                        tr(
+                            "当前 %s (%s)",
+                            "Current %s (%s)",
+                            BuildConfig.VERSION_NAME,
+                            BuildConfig.VERSION_CODE,
+                        )
                     },
                     enabled = !checkingUpdate,
                     onClick = { checkForUpdates() },
@@ -1340,7 +1467,7 @@ private fun AboutPage(
             SectionCard {
                 SettingsMenuRow(
                     icon = MileNoteIcons.Forward,
-                    title = "官网",
+                    title = tr("官网", "Website"),
                     subtitle = "selwiro.github.io/MileNoteAndroid",
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1350,7 +1477,7 @@ private fun AboutPage(
                 SectionDivider()
                 SettingsMenuRow(
                     icon = MileNoteIcons.Forward,
-                    title = "GitHub 仓库",
+                    title = tr("GitHub 仓库", "GitHub repository"),
                     subtitle = "github.com/Selwiro/MileNoteAndroid",
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1364,11 +1491,11 @@ private fun AboutPage(
             SectionCard {
                 SettingsActionRow(
                     icon = MileNoteIcons.Sparkle,
-                    title = if (demo) "退出演示账本" else "体验演示账本",
+                    title = if (demo) tr("退出演示账本", "Exit demo ledger") else tr("体验演示账本", "Try the demo ledger"),
                     subtitle = if (demo) {
-                        "当前为内置样例数据，修改不会保存；返回你的真实车库"
+                        tr("当前为内置样例数据，修改不会保存；返回你的真实车库", "Showing built-in sample data; changes are not saved. Return to your real garage.")
                     } else {
-                        "用内置样例体验多车、换肤与导入（不写入真实账本）"
+                        tr("用内置样例体验多车、换肤与导入（不写入真实账本）", "Try multiple vehicles, themes and import with built-in samples (nothing is written to your real ledger)")
                     },
                     onClick = onToggleDemo,
                 )
@@ -1376,11 +1503,16 @@ private fun AboutPage(
         }
 
         item("note") {
-            SectionCard(title = "本机数据说明") {
+            SectionCard(title = tr("本机数据说明", "Local data")) {
                 Text(
-                    text = "账本只保存在本机应用存储中；导入导出的文件由你自行选择存放位置，不会上传服务器。" +
-                        "里程、油耗与成本口径与 Web 版一致（满箱法、区间归属、油费来源冲突处理）。" +
-                        "界面基于 Material 3 Expressive，图标为里程志自绘线描集。",
+                    text = tr(
+                        "账本只保存在本机应用存储中；导入导出的文件由你自行选择存放位置，不会上传服务器。" +
+                            "里程、油耗与成本口径与 Web 版一致（满箱法、区间归属、油费来源冲突处理）。" +
+                            "界面基于 Material 3 Expressive，图标为里程志自绘线描集。",
+                        "The ledger lives only in this app's local storage; you choose where imported and exported files go, and nothing is uploaded. " +
+                            "Mileage, fuel economy and cost follow the same rules as the web version (full-tank method, interval attribution, fuel-source conflicts). " +
+                            "The interface uses Material 3 Expressive with hand-drawn MileNote icons.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1401,18 +1533,18 @@ private fun AboutPage(
                             updateDialog = null
                         },
                     ) {
-                        Text("去下载")
+                        Text(tr("去下载", "Download"))
                     }
                 } else {
                     TextButton(onClick = { updateDialog = null }) {
-                        Text("关闭")
+                        Text(tr("关闭", "Close"))
                     }
                 }
             },
             dismissButton = if (dialog.link != null) {
                 {
                     TextButton(onClick = { updateDialog = null }) {
-                        Text("稍后")
+                        Text(tr("稍后", "Later"))
                     }
                 }
             } else {

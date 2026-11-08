@@ -73,6 +73,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.domain.ocr.FuelReceiptParser
+import com.milenote.android.i18n.tr
 import com.milenote.android.platform.ocr.MlKitLatinOcrRecognizer
 import com.milenote.android.platform.ocr.MlKitOcrRecognizer
 import com.milenote.android.platform.ocr.OcrException
@@ -189,7 +190,7 @@ fun OcrCaptureScreen(
             try {
                 val (bitmap, rotation) = withContext(Dispatchers.IO) { load() }
                 if (bitmap == null) {
-                    fail("无法读取图片，请换一张或重新拍摄")
+                    fail(tr("无法读取图片，请换一张或重新拍摄", "Could not read the image — try another photo or retake"))
                     return@launch
                 }
                 prepared = withContext(Dispatchers.Default) { prepareForOcr(bitmap, rotation) }
@@ -240,8 +241,12 @@ fun OcrCaptureScreen(
                             unitPrice = pump.unitPrice ?: bestParsed.unitPrice,
                             warnings = (
                                 bestParsed.warnings.filterNot { warning ->
-                                    (pump.amount != null && warning.contains("实付金额")) ||
-                                        (pump.liters != null && warning.contains("加油量"))
+                                    // domain 解析器的警告文案随语言切换（中文「实付金额/加油量」/
+                                    // 英文 "Paid amount/Fuel amount"），两种都匹配以保持过滤有效。
+                                    (pump.amount != null &&
+                                        (warning.contains("实付金额") || warning.contains("Paid amount"))) ||
+                                        (pump.liters != null &&
+                                            (warning.contains("加油量") || warning.contains("Fuel amount")))
                                 } + pump.warnings
                             ).distinct(),
                         )
@@ -258,9 +263,15 @@ fun OcrCaptureScreen(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: OcrException) {
-                fail(e.message ?: "小票识别失败，请重拍")
+                fail(e.message ?: tr("小票识别失败，请重拍", "Receipt recognition failed — retake the photo"))
             } catch (e: Exception) {
-                fail("小票识别失败：${e.message ?: "请检查光线和清晰度后重试"}")
+                fail(
+                    tr(
+                        "小票识别失败：%s",
+                        "Receipt recognition failed: %s",
+                        e.message ?: tr("请检查光线和清晰度后重试", "check lighting and focus, then retry"),
+                    ),
+                )
             } finally {
                 withContext(Dispatchers.Default) {
                     prepared?.takeIf { !it.isRecycled }?.recycle()
@@ -274,7 +285,10 @@ fun OcrCaptureScreen(
     ) { granted ->
         hasCameraPermission = granted
         if (!granted) {
-            errorMessage = "未授予相机权限，可以改用「从相册选择」"
+            errorMessage = tr(
+                "未授予相机权限，可以改用「从相册选择」",
+                "Camera permission not granted — you can pick from the gallery instead",
+            )
             stage = OcrStage.Error
         } else {
             errorMessage = null
@@ -298,7 +312,15 @@ fun OcrCaptureScreen(
             pickImageLauncher.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
             )
-        }.onFailure { fail("无法打开相册：${it.message ?: "请重试"}") }
+        }.onFailure {
+            fail(
+                tr(
+                    "无法打开相册：%s",
+                    "Could not open the gallery: %s",
+                    it.message ?: tr("请重试", "try again"),
+                ),
+            )
+        }
     }
 
     /** 请求相机权限（已拒绝过会走系统二次确认；被永久拒绝时提示改用相册）。 */
@@ -323,18 +345,18 @@ fun OcrCaptureScreen(
                     val bitmap = runCatching { image.toBitmap() }.getOrNull()
                     runCatching { image.close() }
                     if (bitmap == null) {
-                        fail("拍照结果无法解析，请重试")
+                        fail(tr("拍照结果无法解析，请重试", "Could not process the photo — try again"))
                     } else {
                         launchRecognition { bitmap to rotation }
                     }
                 }
 
                 override fun onError(exception: ImageCaptureException) {
-                    fail("拍照失败：${exception.message ?: "请重试"}")
+                    fail(tr("拍照失败：%s", "Photo capture failed: %s", exception.message ?: tr("请重试", "try again")))
                 }
             })
         } catch (e: Exception) {
-            fail("拍照失败：${e.message ?: "相机未就绪，请重试"}")
+            fail(tr("拍照失败：%s", "Photo capture failed: %s", e.message ?: tr("相机未就绪，请重试", "camera not ready — try again")))
         }
     }
 
@@ -382,7 +404,7 @@ fun OcrCaptureScreen(
                         onRetake = { resetToIdle() },
                     )
                     OcrStage.Error -> ErrorOverlay(
-                        message = errorMessage ?: "识别失败，请重试",
+                        message = errorMessage ?: tr("识别失败，请重试", "Recognition failed — try again"),
                         onRetake = { resetToIdle() },
                         onPickGallery = { pickFromGallery() },
                     )
@@ -413,14 +435,17 @@ private fun OcrHeader(onClose: () -> Unit) {
         IconButton(onClick = onClose, modifier = Modifier.size(MileNoteDimens.TouchTarget)) {
             Icon(
                 imageVector = MileNoteIcons.Close,
-                contentDescription = "关闭",
+                contentDescription = tr("关闭", "Close"),
                 modifier = Modifier.size(24.dp),
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text("拍照识别小票", style = MaterialTheme.typography.titleLarge)
+            Text(tr("拍照识别小票", "Scan receipt"), style = MaterialTheme.typography.titleLarge)
             Text(
-                "自动识别金额、油量、支付日期与总里程",
+                tr(
+                    "自动识别金额、油量、支付日期与总里程",
+                    "Detects amount, fuel, payment date, and odometer automatically",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -476,11 +501,23 @@ private fun bindCamera(
                     imageCapture,
                 )
             } catch (t: Throwable) {
-                onError("相机启动失败：${t.message ?: "可能被其他应用占用"}")
+                onError(
+                    tr(
+                        "相机启动失败：%s",
+                        "Camera failed to start: %s",
+                        t.message ?: tr("可能被其他应用占用", "it may be in use by another app"),
+                    ),
+                )
             }
         }, ContextCompat.getMainExecutor(context))
     } catch (t: Throwable) {
-        onError("相机初始化失败：${t.message ?: "未知错误"}")
+        onError(
+            tr(
+                "相机初始化失败：%s",
+                "Camera initialization failed: %s",
+                t.message ?: tr("未知错误", "unknown error"),
+            ),
+        )
     }
 }
 
@@ -515,9 +552,9 @@ private fun CameraPlaceholder(
             Spacer(Modifier.height(12.dp))
             Text(
                 text = when {
-                    cameraError != null -> "相机不可用"
-                    !hasPermission -> "需要相机权限才能拍照识别"
-                    else -> "正在准备相机…"
+                    cameraError != null -> tr("相机不可用", "Camera unavailable")
+                    !hasPermission -> tr("需要相机权限才能拍照识别", "Camera permission is needed to scan")
+                    else -> tr("正在准备相机…", "Preparing camera…")
                 },
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
@@ -526,9 +563,16 @@ private fun CameraPlaceholder(
             Text(
                 text = cameraError
                     ?: if (!hasPermission) {
-                        "我们只在你拍照时使用相机，图片不会上传或保存。"
+                        tr(
+                            "我们只在你拍照时使用相机，图片不会上传或保存。",
+                            "The camera is only used while you take a photo; images are never " +
+                                "uploaded or saved.",
+                        )
                     } else {
-                        "若长时间无画面，可直接从相册选择小票。"
+                        tr(
+                            "若长时间无画面，可直接从相册选择小票。",
+                            "If the preview stays blank, pick a receipt from the gallery instead.",
+                        )
                     },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -536,10 +580,10 @@ private fun CameraPlaceholder(
             )
             Spacer(Modifier.height(16.dp))
             if (!hasPermission) {
-                Button(onClick = onRequestPermission) { Text("允许使用相机") }
+                Button(onClick = onRequestPermission) { Text(tr("允许使用相机", "Allow camera access")) }
                 Spacer(Modifier.height(4.dp))
             }
-            TextButton(onClick = onPickGallery) { Text("从相册选择") }
+            TextButton(onClick = onPickGallery) { Text(tr("从相册选择", "Choose from gallery")) }
         }
     }
 }
@@ -559,7 +603,7 @@ private fun RecognizingOverlay() {
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 3.dp,
         ) {
-            LoadingState(label = "正在识别小票…")
+            LoadingState(label = tr("正在识别小票…", "Reading receipt…"))
         }
     }
 }
@@ -589,9 +633,13 @@ private fun ResultOverlay(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("识别结果", style = MaterialTheme.typography.titleLarge)
+            Text(tr("识别结果", "Scan result"), style = MaterialTheme.typography.titleLarge)
             Text(
-                if (hasUsefulField) "请核对以下字段，确认后填入记账表单" else "没有识别到有效字段，可重拍或改用手动填写",
+                if (hasUsefulField) {
+                    tr("请核对以下字段，确认后填入记账表单", "Check the fields below before filling the entry form")
+                } else {
+                    tr("没有识别到有效字段，可重拍或改用手动填写", "No valid fields detected — retake the photo or fill in manually")
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -604,25 +652,50 @@ private fun ResultOverlay(
                 ),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    ReceiptField("实付金额", parsed?.amount?.let { money(it) } ?: "未识别")
+                    ReceiptField(
+                        tr("实付金额", "Amount paid"),
+                        parsed?.amount?.let { money(it) } ?: tr("未识别", "Not detected"),
+                    )
                     HorizontalDivider()
-                    ReceiptField("加油量", parsed?.liters?.let { "${number(it)} 升" } ?: "未识别")
+                    ReceiptField(
+                        tr("加油量", "Fuel amount"),
+                        parsed?.liters?.let { tr("%s 升", "%s L", number(it)) }
+                            ?: tr("未识别", "Not detected"),
+                    )
                     HorizontalDivider()
-                    ReceiptField("油价", parsed?.unitPrice?.let { "${money(it)} 元/升" } ?: "未识别")
+                    ReceiptField(
+                        tr("油价", "Unit price"),
+                        parsed?.unitPrice?.let { tr("%s 元/升", "%s CNY/L", money(it)) }
+                            ?: tr("未识别", "Not detected"),
+                    )
                     HorizontalDivider()
-                    ReceiptField("应付金额", parsed?.payable?.let { money(it) } ?: "未识别")
+                    ReceiptField(
+                        tr("应付金额", "Amount due"),
+                        parsed?.payable?.let { money(it) } ?: tr("未识别", "Not detected"),
+                    )
                     HorizontalDivider()
-                    ReceiptField("优惠金额", parsed?.discount?.let { money(it) } ?: "未识别")
+                    ReceiptField(
+                        tr("优惠金额", "Discount"),
+                        parsed?.discount?.let { money(it) } ?: tr("未识别", "Not detected"),
+                    )
                     HorizontalDivider()
-                    ReceiptField("支付日期", parsed?.date?.ifBlank { "未识别" } ?: "未识别")
+                    ReceiptField(
+                        tr("支付日期", "Payment date"),
+                        parsed?.date?.ifBlank { tr("未识别", "Not detected") }
+                            ?: tr("未识别", "Not detected"),
+                    )
                     HorizontalDivider()
-                    ReceiptField("总里程", parsed?.odometer?.let { "${number(it)} 公里" } ?: "未识别")
+                    ReceiptField(
+                        tr("总里程", "Odometer"),
+                        parsed?.odometer?.let { tr("%s 公里", "%s km", number(it)) }
+                            ?: tr("未识别", "Not detected"),
+                    )
                 }
             }
 
             parsed?.warnings?.takeIf { it.isNotEmpty() }?.let { warnings ->
                 MessageBar(
-                    message = warnings.joinToString("；"),
+                    message = warnings.joinToString(tr("；", "; ")),
                     kind = MessageKind.WARNING,
                 )
             }
@@ -637,7 +710,7 @@ private fun ResultOverlay(
                         .weight(1f)
                         .height(MileNoteDimens.ButtonMinHeight),
                 ) {
-                    Text(if (hasUsefulField) "使用结果" else "手动填写")
+                    Text(if (hasUsefulField) tr("使用结果", "Use result") else tr("手动填写", "Fill in manually"))
                 }
                 OutlinedButton(
                     onClick = onRetake,
@@ -645,7 +718,7 @@ private fun ResultOverlay(
                         .weight(1f)
                         .height(MileNoteDimens.ButtonMinHeight),
                 ) {
-                    Text("重拍 / 换一张")
+                    Text(tr("重拍 / 换一张", "Retake / change photo"))
                 }
             }
 
@@ -661,7 +734,7 @@ private fun ResultOverlay(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        "识别原文（可修改后重新解析）",
+                        tr("识别原文（可修改后重新解析）", "Raw text (edit and re-parse)"),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -672,7 +745,9 @@ private fun ResultOverlay(
                             .fillMaxWidth()
                             .heightIn(min = 160.dp, max = 320.dp),
                         textStyle = MaterialTheme.typography.bodySmall,
-                        placeholder = { Text("未识别到文字，可手动粘贴/输入小票文字") },
+                        placeholder = {
+                            Text(tr("未识别到文字，可手动粘贴/输入小票文字", "No text detected — paste or type the receipt text"))
+                        },
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -681,7 +756,7 @@ private fun ResultOverlay(
                         TextButton(
                             onClick = { parsed = FuelReceiptParser.parse(rawText) },
                         ) {
-                            Text("重新解析")
+                            Text(tr("重新解析", "Re-parse"))
                         }
                     }
                 }
@@ -712,7 +787,10 @@ private fun ErrorOverlay(
             Spacer(Modifier.weight(1f))
             MessageBar(message = message, kind = MessageKind.ERROR)
             Text(
-                "拍摄时请让整张小票进入画面、保持光线充足且文字清晰。",
+                tr(
+                    "拍摄时请让整张小票进入画面、保持光线充足且文字清晰。",
+                    "Keep the whole receipt in frame with good lighting and sharp text.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -724,7 +802,7 @@ private fun ErrorOverlay(
                     .fillMaxWidth()
                     .height(MileNoteDimens.ButtonMinHeight),
             ) {
-                Text("重试")
+                Text(tr("重试", "Retry"))
             }
             OutlinedButton(
                 onClick = onPickGallery,
@@ -732,7 +810,7 @@ private fun ErrorOverlay(
                     .fillMaxWidth()
                     .height(MileNoteDimens.ButtonMinHeight),
             ) {
-                Text("从相册选择")
+                Text(tr("从相册选择", "Choose from gallery"))
             }
             Spacer(Modifier.weight(1f))
         }
@@ -764,7 +842,7 @@ private fun OcrBottomActions(
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
             )
-            Text("相册", modifier = Modifier.padding(start = 6.dp))
+            Text(tr("相册", "Gallery"), modifier = Modifier.padding(start = 6.dp))
         }
         Button(
             onClick = if (enabled) onCapture else onRequestPermission,
@@ -778,7 +856,7 @@ private fun OcrBottomActions(
                 modifier = Modifier.size(20.dp),
             )
             Text(
-                text = if (enabled) "拍照识别" else "启用相机",
+                text = if (enabled) tr("拍照识别", "Scan") else tr("启用相机", "Enable camera"),
                 modifier = Modifier.padding(start = 8.dp),
             )
         }

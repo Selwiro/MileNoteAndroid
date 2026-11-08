@@ -8,6 +8,7 @@ import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.demo.DemoData
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.i18n.tr
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,11 +66,15 @@ class GarageRepository(
                 try {
                     BackupCodec.decode(raw)
                 } catch (e: BackupException) {
-                    _loadError.value = "本地账本读取失败：${e.message}（原始数据已另存）"
+                    _loadError.value = tr(
+                        "本地账本读取失败：%s（原始数据已另存）",
+                        "Failed to read the local ledger: %s (original data has been saved separately)",
+                        e.message,
+                    )
                     store.quarantine()
                     GarageOps.normalizeGarage(null)
                 } catch (e: Exception) {
-                    _loadError.value = "本地账本读取失败：${e.message}"
+                    _loadError.value = tr("本地账本读取失败：%s", "Failed to read the local ledger: %s", e.message)
                     store.quarantine()
                     GarageOps.normalizeGarage(null)
                 }

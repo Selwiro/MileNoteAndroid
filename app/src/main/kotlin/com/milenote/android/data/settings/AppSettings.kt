@@ -11,4 +11,6 @@ data class AppSettings(
     val darkMode: DarkMode = DarkMode.SYSTEM,
     /** WebDAV 自动同步：应用打开期间同步（前台，退出即结束）。 */
     val webDavAutoSync: Boolean = false,
+    /** 界面语言：跟随系统 / 中文 / English。 */
+    val language: com.milenote.android.i18n.AppLanguage = com.milenote.android.i18n.AppLanguage.SYSTEM,
 )

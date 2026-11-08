@@ -42,6 +42,8 @@ import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.PROJECT_CATEGORIES
 import com.milenote.android.domain.calc.SERVICE_PROJECT_GROUPS
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.icons.MileNoteIcons
@@ -68,8 +70,11 @@ private fun builtinProjects(category: String): List<String> =
         ?: if (category == "保险") FallbackInsuranceProjects else emptyList()
 
 /** 项目库说明（页面底部注释统一口径）。 */
-private const val PROJECT_LIBRARY_NOTE =
-    "项目用于记账时快速多选；删除项目不会修改已有记录，历史记录里的项目文字保持原样。"
+private fun projectLibraryNote(): String =
+    tr(
+        "项目用于记账时快速多选；删除项目不会修改已有记录，历史记录里的项目文字保持原样。",
+        "Items are quick multi-select choices when adding an entry; deleting one never changes existing records.",
+    )
 
 /**
  * 费用分类与项目（设置 → 该子页的页签内容）。
@@ -153,7 +158,11 @@ private fun CategoriesCard(
     val scheme = MaterialTheme.colorScheme
     SectionCard {
         Text(
-            text = "内置 ${Categories.ALL.size} 类固定不变；自定义分类只影响记账时的可选项。",
+            text = tr(
+                "内置 %d 类固定不变；自定义分类只影响记账时的可选项。",
+                "%d built-in categories are fixed; custom categories only add choices when recording.",
+                Categories.ALL.size,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -181,9 +190,9 @@ private fun CategoriesCard(
             onClick = {
                 onRequestAdd(
                     AddNameTarget(
-                        title = "新增费用分类",
-                        label = "分类名称",
-                        placeholder = "例如：充电费、洗车卡",
+                        title = tr("新增费用分类", "Add category"),
+                        label = tr("分类名称", "Category name"),
+                        placeholder = tr("例如：充电费、洗车卡", "e.g. Charging, Car wash card"),
                         existing = (Categories.ALL + customCategories).toSet(),
                         onAdd = { value -> onAddCategory(value) },
                     ),
@@ -198,11 +207,14 @@ private fun CategoriesCard(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.size(8.dp))
-            Text("新增费用分类")
+            Text(tr("新增费用分类", "Add category"))
         }
         Spacer(modifier = Modifier.size(8.dp))
         Text(
-            text = "内置分类不可删除；自定义分类删除后，已有记录的分类与金额不受影响。",
+            text = tr(
+                "内置分类不可删除；自定义分类删除后，已有记录的分类与金额不受影响。",
+                "Built-in categories cannot be deleted; deleting a custom category never changes existing records or amounts.",
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -220,7 +232,10 @@ private fun ProjectsCard(
     val scheme = MaterialTheme.colorScheme
     SectionCard {
         Text(
-            text = "记账时按分类快速多选，新增只影响当前车辆。",
+            text = tr(
+                "记账时按分类快速多选，新增只影响当前车辆。",
+                "Quick multi-select choices per category when recording; additions affect only this vehicle.",
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -241,13 +256,13 @@ private fun ProjectsCard(
                         .toSet()
                     onRequestAdd(
                         AddNameTarget(
-                            title = "新增${category}项目",
-                            label = "项目名称",
+                            title = tr("新增%s项目", "Add %s item", DataLabels.category(category)),
+                            label = tr("项目名称", "Item name"),
                             placeholder = when (category) {
-                                "保险" -> "例如：划痕险、玻璃险"
-                                "维修" -> "例如：四轮定位"
-                                "汽车美容" -> "例如：内饰消毒"
-                                else -> "例如：正时皮带检查"
+                                "保险" -> tr("例如：划痕险、玻璃险", "e.g. Scratch coverage, Glass coverage")
+                                "维修" -> tr("例如：四轮定位", "e.g. Wheel alignment")
+                                "汽车美容" -> tr("例如：内饰消毒", "e.g. Interior sanitizing")
+                                else -> tr("例如：正时皮带检查", "e.g. Timing belt inspection")
                             },
                             existing = existing,
                             onAdd = { value -> onAddProject(category, value) },
@@ -259,7 +274,7 @@ private fun ProjectsCard(
         }
         Spacer(modifier = Modifier.size(8.dp))
         Text(
-            text = PROJECT_LIBRARY_NOTE,
+            text = projectLibraryNote(),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -312,14 +327,14 @@ private fun BuiltinCategoryRow(
                     .background(color),
             )
             Text(
-                text = name,
+                text = DataLabels.category(name),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         Text(
-            text = "内置",
+            text = tr("内置", "Built-in"),
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
             modifier = Modifier
@@ -384,7 +399,7 @@ private fun CustomCategoryRow(
         ) {
             Icon(
                 imageVector = MileNoteIcons.Close,
-                contentDescription = "删除分类 $name",
+                contentDescription = tr("删除分类 %s", "Delete category %s", name),
                 tint = scheme.error,
                 modifier = Modifier.size(20.dp),
             )
@@ -413,12 +428,12 @@ private fun ProjectGroupBlock(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = category,
+                text = DataLabels.category(category),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "内置 ${builtin.size} · 自定义 ${custom.size}",
+                text = tr("内置 %d · 自定义 %d", "%d built-in · %d custom", builtin.size, custom.size),
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
             )
@@ -426,7 +441,7 @@ private fun ProjectGroupBlock(
 
         if (builtin.isEmpty() && custom.isEmpty()) {
             Text(
-                text = "暂无项目，可点击下方新增。",
+                text = tr("暂无项目，可点击下方新增。", "No items yet — add one below."),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
@@ -458,7 +473,7 @@ private fun ProjectGroupBlock(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.size(6.dp))
-            Text("新增项目", style = MaterialTheme.typography.labelLarge)
+            Text(tr("新增项目", "Add item"), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -491,7 +506,7 @@ private fun ProjectChip(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = label,
+                text = DataLabels.serviceItem(label),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 modifier = Modifier.padding(vertical = 6.dp),
@@ -503,7 +518,7 @@ private fun ProjectChip(
                 ) {
                     Icon(
                         imageVector = MileNoteIcons.Close,
-                        contentDescription = "删除项目 $label",
+                        contentDescription = tr("删除项目 %s", "Delete item %s", label),
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -552,7 +567,10 @@ private fun AddNameDialog(
                     supportingText = error,
                 )
                 Text(
-                    text = "最多 30 个字符；仅影响记账时的可选项，已有记录不会被修改。",
+                    text = tr(
+                        "最多 30 个字符；仅影响记账时的可选项，已有记录不会被修改。",
+                        "At most 30 characters; only affects choices when recording, existing records are not changed.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -563,8 +581,8 @@ private fun AddNameDialog(
                 onClick = {
                     val trimmed = value.trim()
                     when {
-                        trimmed.isEmpty() -> error = "请填写名称"
-                        trimmed in target.existing -> error = "已存在同名项"
+                        trimmed.isEmpty() -> error = tr("请填写名称", "Please enter a name")
+                        trimmed in target.existing -> error = tr("已存在同名项", "An item with this name already exists")
                         else -> {
                             target.onAdd(trimmed)
                             onDismiss()
@@ -573,11 +591,11 @@ private fun AddNameDialog(
                 },
                 shape = MileNoteShapeTokens.full,
             ) {
-                Text("添加")
+                Text(tr("添加", "Add"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
         },
     )
 }

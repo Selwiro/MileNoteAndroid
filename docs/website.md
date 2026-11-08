@@ -11,6 +11,7 @@
 ```
 gh-pages/
 ├─ index.html            # 单页：Hero / 数据约定 / 为什么 / 界面巡览 / 外观 / 功能清单 / 隐私 / 下载 / FAQ
+├─ en/index.html         # 同一页的英文版（见下文「英文版」）
 ├─ 404.html              # GitHub Pages 根目录 404 页（同样跟随深浅色）
 ├─ site.webmanifest      # PWA manifest（图标、主题色）
 ├─ sitemap.xml / robots.txt
@@ -19,8 +20,10 @@ gh-pages/
    ├─ style.css          # 设计系统 + 布局（深浅色用 data-theme）
    ├─ app.js             # 主题 / 菜单 / 进场 / 巡览切换 / 灯箱 / 复制 SHA-256 / FAQ / 最新版本自动读取
    ├─ og.png             # 社交分享卡（1200×630）
+   ├─ og-en.png          # 英文社交分享卡（1200×630）
    ├─ favicon-16.png、favicon-32.png、apple-touch-icon.png
-   └─ screens/*.webp     # 9 张演示账本截图（720×1600，WebP q82，共约 325 KB）
+   ├─ screens/*.webp     # 9 张演示账本截图（720×1600，WebP q82，共约 325 KB）
+   └─ screens-en/*.webp  # 9 张英文界面截图（同规格）
 ```
 
 页面结构（2026-11-07 重设计后）：
@@ -33,6 +36,33 @@ gh-pages/
 7. **数据与隐私**：深色区 + 「数据流向」示意卡（手机 → 私有目录 → 可选 WebDAV，开发者服务器划掉）；
 8. **下载**：渐变卡 + 规格表 + SHA-256 复制 + 三步安装；
 9. **FAQ**：手风琴 + 右侧反馈卡；页脚。
+
+## 英文版（`/en/`，2026-11-08 起）
+
+```
+gh-pages/
+├─ en/index.html          # 与中文页同版式、同区块，文案全英文
+└─ assets/
+   ├─ screens-en/*.webp   # 英文界面截图（9 张，720 宽 WebP，文件名同 screens/）
+   └─ og-en.png           # 英文社交分享卡（1200×630）
+```
+
+- **同一套样式与脚本**：英文页里所有资源都是 `../assets/...`（`../assets/style.css`、`../assets/app.js`、
+  `../assets/img/...`、`../site.webmanifest`），不复制第二份 CSS/JS；改样式或交互两页同时生效。
+  `app.js` 里少量由脚本写入的文案（主题按钮 aria-label、复制成功提示、巡览舞台 aria-label、
+  灯箱计数、包大小）按 `<html lang>` 前缀判断中英；中文页行为与文案保持原样。
+- **语言切换**：两页头部都有胶囊链接（中文页 `EN`、英文页 `中文`），移动端收进汉堡菜单；
+  两页 `<head>` 都写了 `hreflang` 互指（`zh-CN` / `en` / `x-default`），`sitemap.xml` 里也带
+  `xhtml:link` alternates。`404.html` 加了一句英文说明并链到 `/en/`。
+- **截图**：英文页固定引用 `assets/screens-en/<名称>.webp`（dashboard / records / analytics / fuel /
+  maintenance / editor / settings / skin-forest / dark），由英文版 APK 的演示账本实拍后按同一规格转换；
+  **不要**用中文截图顶替。截图缺失时页面会自动隐藏破图（`.phone img.is-missing`），版面不变形。
+- **英文 OG 卡**：`assets/og-en.png`，与中文 `og.png` 同风格（品牌块 + 英文标题 + 手机示意），
+  由临时 HTML 在浏览器里以 1200×630 渲染后截图生成，临时文件不入库；换文案时重画，
+  并确认 `en/index.html` 的 `og:image` / `twitter:image` 仍为绝对 URL。
+- **维护**：改文案时中英两页一起改（版本号、包大小、SHA-256 仍由 `initRelease()` 自动读取，不用手改）；
+  新增区块时两页结构保持一一对应，英文文案按 `docs/i18n-en-guide.md` 的术语表（MileNote / ledger /
+  vehicle / fuel economy / maintenance …）。
 
 ## 本地预览
 

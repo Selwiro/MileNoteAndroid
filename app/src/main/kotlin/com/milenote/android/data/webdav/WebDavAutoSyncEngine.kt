@@ -2,6 +2,7 @@ package com.milenote.android.data.webdav
 
 import com.milenote.android.data.garage.GarageRepository
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.i18n.tr
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -29,10 +30,16 @@ class WebDavAutoSyncEngine(
 
     suspend fun sync(recordAutoResult: Boolean = true): AutoSyncOutcome = mutex.withLock {
         if (!webDav.canSync()) {
-            return@withLock AutoSyncOutcome(AutoSyncOutcome.Kind.SKIPPED, "未配置 WebDAV，跳过自动同步")
+            return@withLock AutoSyncOutcome(
+                AutoSyncOutcome.Kind.SKIPPED,
+                tr("未配置 WebDAV，跳过自动同步", "WebDAV not configured — skipping auto sync"),
+            )
         }
         if (garage.demoMode.value) {
-            return@withLock AutoSyncOutcome(AutoSyncOutcome.Kind.SKIPPED, "演示账本不自动同步")
+            return@withLock AutoSyncOutcome(
+                AutoSyncOutcome.Kind.SKIPPED,
+                tr("演示账本不自动同步", "The demo ledger is not auto-synced"),
+            )
         }
         try {
             garage.load()
@@ -46,9 +53,12 @@ class WebDavAutoSyncEngine(
                     if (plan == Plan.UPLOAD) {
                         val meta = webDav.upload(localBytes)
                         webDav.markSynced(meta.etag, localHash, localHash)
-                        AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, "远端无备份，已上传本地账本")
+                        AutoSyncOutcome(
+                            AutoSyncOutcome.Kind.SUCCESS,
+                            tr("远端无备份，已上传本地账本", "No remote backup — uploaded the local ledger"),
+                        )
                     } else {
-                        AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, "已是最新")
+                        AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, tr("已是最新", "Already up to date"))
                     }
                 }
                 is WebDavFetchResult.Found -> {
@@ -63,7 +73,10 @@ class WebDavAutoSyncEngine(
                         Plan.UPLOAD -> {
                             val meta = webDav.upload(localBytes)
                             webDav.markSynced(meta.etag, localHash, localHash)
-                            AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, "已自动上传本地修改")
+                            AutoSyncOutcome(
+                                AutoSyncOutcome.Kind.SUCCESS,
+                                tr("已自动上传本地修改", "Local changes uploaded automatically"),
+                            )
                         }
                         Plan.DOWNLOAD -> {
                             val text = fetched.bytes.toString(Charsets.UTF_8)
@@ -71,20 +84,30 @@ class WebDavAutoSyncEngine(
                             val newLocal = garage.exportBackup()
                             val newHash = webDav.sha256(newLocal.toByteArray(Charsets.UTF_8))
                             webDav.markSynced(fetched.meta.etag, newHash, remoteHash)
-                            AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, "已自动下载远端更新")
+                            AutoSyncOutcome(
+                                AutoSyncOutcome.Kind.SUCCESS,
+                                tr("已自动下载远端更新", "Remote updates downloaded automatically"),
+                            )
                         }
                         Plan.CONFLICT -> AutoSyncOutcome(
                             AutoSyncOutcome.Kind.CONFLICT,
-                            "本地与远端都有修改，已暂停自动同步，请手动处理冲突",
+                            tr(
+                                "本地与远端都有修改，已暂停自动同步，请手动处理冲突",
+                                "Both local and remote changed — auto sync paused, resolve the conflict manually",
+                            ),
                         )
-                        Plan.NONE -> AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, "已是最新")
+                        Plan.NONE -> AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, tr("已是最新", "Already up to date"))
                     }
                 }
             }
             if (recordAutoResult) webDav.markAutoSyncResult(outcome.message)
             outcome
         } catch (t: Throwable) {
-            val message = "自动同步失败：${t.message ?: "网络或服务器错误"}"
+            val message = tr(
+                "自动同步失败：%s",
+                "Auto sync failed: %s",
+                t.message ?: tr("网络或服务器错误", "Network or server error"),
+            )
             if (recordAutoResult) runCatching { webDav.markAutoSyncResult(message) }
             AutoSyncOutcome(AutoSyncOutcome.Kind.ERROR, message)
         }

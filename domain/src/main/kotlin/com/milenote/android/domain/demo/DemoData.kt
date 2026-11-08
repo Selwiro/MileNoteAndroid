@@ -6,6 +6,7 @@ import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.applyServicePlan
 import com.milenote.android.domain.calc.completeService
 import com.milenote.android.domain.calc.syncServiceHistory
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanEntry
@@ -33,6 +34,7 @@ object DemoData {
 
     private class ServiceCompletion(
         val title: String,
+        val titleEn: String,
         val months: Int,
         val odometer: Int,
         val amount: Double,
@@ -47,9 +49,9 @@ object DemoData {
         var ledger = blankLedger().copy(
             id = if (secondary) "demo-city" else "demo-weekend",
             vehicle = Vehicle(
-                name = if (secondary) "城市通勤 · 演示" else "周末出逃 · 演示",
+                name = if (secondary) tr("城市通勤 · 演示", "City commute · Demo") else tr("周末出逃 · 演示", "Weekend escape · Demo"),
                 model = if (secondary) "Toyota · Corolla" else "Volkswagen · Golf",
-                plate = if (secondary) "演示 B 号车" else "演示 A 号车",
+                plate = if (secondary) tr("演示 B 号车", "Demo car B") else tr("演示 A 号车", "Demo car A"),
                 companionDate = Dates.iso(companionDate),
                 startKm = offset,
                 currentKm = km(42000),
@@ -110,8 +112,8 @@ object DemoData {
             Dates.addMonths(dateText, -23),
             odometer = km(5000),
             projects = "机油机滤",
-            location = "品牌服务中心",
-            note = "首保免费 · 机油机滤",
+            location = tr("品牌服务中心", "Authorized service center"),
+            note = tr("首保免费 · 机油机滤", "Free first service · Oil & filter"),
         )
         ledger.reminders.firstOrNull { it.firstOnly == true }?.let {
             reminders = completeService(reminders, it, first)
@@ -119,10 +121,10 @@ object DemoData {
 
         // 4 条已完成的常规保养
         val completions = listOf(
-            ServiceCompletion("机油机滤", -8, 33000, 480.0),
-            ServiceCompletion("空气滤芯", -11, 30000, 90.0),
-            ServiceCompletion("空调滤芯", -6, 34000, 120.0),
-            ServiceCompletion("制动液", -12, 28000, 280.0),
+            ServiceCompletion("机油机滤", "Oil & filter", -8, 33000, 480.0),
+            ServiceCompletion("空气滤芯", "Air filter", -11, 30000, 90.0),
+            ServiceCompletion("空调滤芯", "Cabin filter", -6, 34000, 120.0),
+            ServiceCompletion("制动液", "Brake fluid", -12, 28000, 280.0),
         )
         for (spec in completions) {
             val record = add(
@@ -131,8 +133,8 @@ object DemoData {
                 Dates.addMonths(dateText, spec.months),
                 odometer = km(spec.odometer),
                 projects = spec.title,
-                location = "安心养车服务站",
-                note = "已完成 ${spec.title}",
+                location = tr("安心养车服务站", "Trusty car care station"),
+                note = tr("已完成 ${spec.title}", "Completed ${spec.titleEn}"),
             )
             reminders.firstOrNull { it.title == spec.title && !it.done }?.let {
                 reminders = completeService(reminders, it, record)
@@ -164,36 +166,48 @@ object DemoData {
                     sourceId = "demo-bear-${ledger.id}-$fuelIndex",
                     fuelCounted = true,
                     note = when {
-                        partial -> "中途未加满，累计到下次满箱计算"
-                        fuelIndex == 6 -> "此前漏记，本次满箱重新建立油耗基准"
-                        else -> "92# 汽油 · 实付金额"
+                        partial -> tr("中途未加满，累计到下次满箱计算", "Partial fill — carried over to the next full tank")
+                        fuelIndex == 6 -> tr("此前漏记，本次满箱重新建立油耗基准", "Previously missed — this full tank re-establishes the fuel-economy baseline")
+                        else -> tr("92# 汽油 · 实付金额", "92# gasoline · paid amount")
                     },
                 )
                 odometer += if (partial) 300 else 650
                 fuelIndex++
             }
-            add("停车费", if (secondary) 220.0 else 180.0 + (m % 3) * 20, "$key-01", note = "月度停车")
-            add("过路费", if (secondary) 35.0 else 66.0 + m * 12, "$key-01", note = "周末出行")
-            add("汽车美容", if (secondary) 35.0 else 45.0, "$key-01", projects = "洗车", location = "街角洗车店", note = "外观清洗")
+            add("停车费", if (secondary) 220.0 else 180.0 + (m % 3) * 20, "$key-01", note = tr("月度停车", "Monthly parking"))
+            add("过路费", if (secondary) 35.0 else 66.0 + m * 12, "$key-01", note = tr("周末出行", "Weekend trip"))
+            add(
+                "汽车美容",
+                if (secondary) 35.0 else 45.0,
+                "$key-01",
+                projects = "洗车",
+                location = tr("街角洗车店", "Corner car wash"),
+                note = tr("外观清洗", "Exterior wash"),
+            )
         }
 
-        add("保险", if (secondary) 2650.0 else 3280.0, Dates.addMonths(dateText, -2), note = "交强险及商业险")
+        add(
+            "保险",
+            if (secondary) 2650.0 else 3280.0,
+            Dates.addMonths(dateText, -2),
+            note = tr("交强险及商业险", "Compulsory insurance & commercial insurance"),
+        )
         add(
             "维修",
             80.0,
             Dates.addMonths(dateText, -1),
             projects = "补胎",
             odometer = km(40200),
-            location = "轮胎服务中心",
-            note = "右后轮补胎",
+            location = tr("轮胎服务中心", "Tire service center"),
+            note = tr("右后轮补胎", "Rear-right tire repair"),
         )
         add(
             "汽车美容",
             360.0,
             Dates.addMonths(dateText, -1),
             projects = "打蜡、内饰清洁",
-            location = "亮洁汽车美容",
-            note = "车身打蜡与内饰清洁",
+            location = tr("亮洁汽车美容", "Bright & clean detailing"),
+            note = tr("车身打蜡与内饰清洁", "Body waxing & interior cleaning"),
         )
         add(
             "保养",
@@ -201,18 +215,18 @@ object DemoData {
             Dates.addMonths(dateText, -2),
             projects = "天窗轨道润滑",
             odometer = km(39000),
-            location = "安心养车服务站",
-            note = "自定义保养项目",
+            location = tr("安心养车服务站", "Trusty car care station"),
+            note = tr("自定义保养项目", "Custom service item"),
         )
-        add("罚单", 100.0, Dates.addMonths(dateText, -3), note = "停车罚单（虚构示例）")
-        add("汽车用品", 168.0, dateText, note = "后备箱收纳箱")
+        add("罚单", 100.0, Dates.addMonths(dateText, -3), note = tr("停车罚单（虚构示例）", "Parking ticket (fictional sample)"))
+        add("汽车用品", 168.0, dateText, note = tr("后备箱收纳箱", "Trunk organizer"))
         add(
             "维修",
             240.0,
             dateText,
             projects = "车窗异响处理",
-            location = "安心养车服务站",
-            note = "自定义维修项目",
+            location = tr("安心养车服务站", "Trusty car care station"),
+            note = tr("自定义维修项目", "Custom repair item"),
         )
 
         reminders = reminders + Reminder(
@@ -223,14 +237,14 @@ object DemoData {
             intervalMonths = 1,
             baseDate = dateText,
             done = false,
-            note = "自定义汽车美容提醒",
+            note = tr("自定义汽车美容提醒", "Custom detailing reminder"),
         )
         reminders = reminders + Reminder(
             id = Ids.newId(),
             title = "检查轮胎",
             dueKm = km(45000),
             done = false,
-            note = "仅按里程管理",
+            note = tr("仅按里程管理", "Mileage-based only"),
         )
 
         ledger = ledger.copy(
@@ -258,16 +272,20 @@ object DemoData {
         val dateText = Dates.iso(date)
         return listOf(
             listOf("日期", "分类", "金额", "备注", "key"),
-            listOf(fuel.date, "油费", 200, "加油付款 · 与小熊同日金额冲突", "demo-q-fuel-1"),
-            listOf(fuel.date, "油费", 100, "加油拆分付款", "demo-q-fuel-2"),
+            listOf(fuel.date, "油费", 200, tr("加油付款 · 与小熊同日金额冲突", "Fuel payment · same-day amount conflict with Bear"), "demo-q-fuel-1"),
+            listOf(fuel.date, "油费", 100, tr("加油拆分付款", "Split fuel payment"), "demo-q-fuel-2"),
             listOf(
                 dateText,
                 "维修保养",
                 520,
-                "总里程${Numbers.jsString(ledger.vehicle.currentKm)}km，更换机油机滤、空气滤芯",
+                tr(
+                    "总里程%skm，更换机油机滤、空气滤芯",
+                    "Odometer %s km — replaced oil & filter, air filter",
+                    Numbers.jsString(ledger.vehicle.currentKm),
+                ),
                 "demo-q-service",
             ),
-            listOf(dateText, "汽车美容", 68, "洗车、打蜡", "demo-q-beauty"),
+            listOf(dateText, "汽车美容", 68, tr("洗车、打蜡", "Car wash, waxing"), "demo-q-beauty"),
         )
     }
 }

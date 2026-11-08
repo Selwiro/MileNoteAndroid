@@ -1,5 +1,6 @@
 package com.milenote.android.domain.backup
 
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -39,7 +40,7 @@ object BackupCodec {
     fun encode(garage: Garage): String = try {
         json.encodeToString(Garage.serializer(), garage)
     } catch (e: SerializationException) {
-        throw BackupException("备份编码失败", e)
+        throw BackupException(tr("备份编码失败", "Failed to encode the backup"), e)
     }
 
     /**
@@ -65,7 +66,7 @@ object BackupCodec {
                 val garage = decodeAs<Garage>(text, Garage.serializer())
                 BackupPayload.MulticarGarage(garage)
             }
-            else -> throw BackupException("不是有效的账本备份（缺少版本号）")
+            else -> throw BackupException(tr("不是有效的账本备份（缺少版本号）", "Not a valid ledger backup (missing version)"))
         }
     }
 
@@ -82,9 +83,9 @@ object BackupCodec {
         val element = try {
             json.parseToJsonElement(text)
         } catch (e: Exception) {
-            throw BackupException("备份文件不是有效的 JSON", e)
+            throw BackupException(tr("备份文件不是有效的 JSON", "Backup file is not valid JSON"), e)
         }
-        return element as? JsonObject ?: throw BackupException("不是有效的账本备份")
+        return element as? JsonObject ?: throw BackupException(tr("不是有效的账本备份", "Not a valid ledger backup"))
     }
 
     private fun <T> decodeAs(text: String, serializer: kotlinx.serialization.KSerializer<T>): T = try {
@@ -92,6 +93,6 @@ object BackupCodec {
     } catch (e: BackupException) {
         throw e
     } catch (e: Exception) {
-        throw BackupException("账本格式无效", e)
+        throw BackupException(tr("账本格式无效", "Invalid ledger format"), e)
     }
 }

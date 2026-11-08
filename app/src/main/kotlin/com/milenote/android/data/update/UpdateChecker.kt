@@ -1,6 +1,7 @@
 package com.milenote.android.data.update
 
 import com.milenote.android.domain.update.isNewerVersion
+import com.milenote.android.i18n.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -55,16 +56,18 @@ object UpdateChecker {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val message = when (response.code) {
-                        403, 429 -> "GitHub 暂时限制了访问，请稍后再试"
-                        404 -> "GitHub 上还没有发布版本"
-                        else -> "检查失败（HTTP ${response.code}）"
+                        403, 429 -> tr("GitHub 暂时限制了访问，请稍后再试", "GitHub rate limit reached — try again later")
+                        404 -> tr("GitHub 上还没有发布版本", "No releases published yet")
+                        else -> tr("检查失败（HTTP %d）", "Check failed (HTTP %d)", response.code)
                     }
                     return@withContext UpdateCheckResult.Failed(message)
                 }
                 val body = response.body?.string().orEmpty()
                 val releases = parseReleases(body)
                 if (releases.isEmpty()) {
-                    return@withContext UpdateCheckResult.Failed("GitHub 上还没有发布版本")
+                    return@withContext UpdateCheckResult.Failed(
+                        tr("GitHub 上还没有发布版本", "No releases published yet"),
+                    )
                 }
                 val info = releases.fold(releases.first()) { best, next ->
                     if (isNewerVersion(next.version, best.version)) next else best
@@ -76,7 +79,13 @@ object UpdateChecker {
                 }
             }
         } catch (t: Throwable) {
-            UpdateCheckResult.Failed("网络不可用或无法访问 GitHub：${t.message ?: "未知错误"}")
+            UpdateCheckResult.Failed(
+                tr(
+                    "网络不可用或无法访问 GitHub：%s",
+                    "Network unavailable or GitHub unreachable: %s",
+                    t.message ?: tr("未知错误", "Unknown error"),
+                ),
+            )
         }
     }
 

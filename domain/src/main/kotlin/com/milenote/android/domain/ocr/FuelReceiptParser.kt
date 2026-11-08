@@ -1,6 +1,7 @@
 package com.milenote.android.domain.ocr
 
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.i18n.tr
 import java.text.Normalizer
 
 /**
@@ -79,7 +80,7 @@ object FuelReceiptParser {
         val normalized = Normalizer.normalize(text, Normalizer.Form.NFKC)
         val sourceLines = buildSourceLines(normalized, ocrLines)
         if (sourceLines.isEmpty()) {
-            return FuelReceipt(warnings = listOf("未识别到文字，请重拍或手动填写"))
+            return FuelReceipt(warnings = listOf(tr("未识别到文字，请重拍或手动填写", "No text recognized — retake the photo or enter it manually")))
         }
         val rows = buildVisualRows(sourceLines)
         return parseRows(rows, sourceLines)
@@ -170,22 +171,27 @@ object FuelReceiptParser {
 
         fun pick(candidates: List<Double>, label: String): Double? {
             val unique = candidates.distinct()
-            if (unique.size > 1) warnings.add("${label}有多个候选值，请对照原图填写")
+            if (unique.size > 1) warnings.add(tr("%s有多个候选值，请对照原图填写", "Multiple candidate values for %s — check against the original photo", label))
             return if (unique.size == 1) unique[0] else null
         }
 
         // 1) 行列配对兜底：只对“标签整体在数值整体上方”的列布局启用。
         val columns = pairLabelColumns(sourceLines)
 
-        var amount = pick(values(PAID_LABEL, NUMERIC), "实付金额")
+        var amount = pick(values(PAID_LABEL, NUMERIC), tr("实付金额", "Paid amount"))
         if (amount == null && columns.paid != null) {
             amount = columns.paid
         }
         if (amount == null) {
-            amount = pick(values(TOTAL_LABEL, NUMERIC), "订单金额")
+            amount = pick(values(TOTAL_LABEL, NUMERIC), tr("订单金额", "Order amount"))
             if (amount == null) amount = columns.total
             if (amount != null) {
-                warnings.add("未找到明确实付金额，暂用应付/订单金额，请核对优惠和实际付款")
+                warnings.add(
+                    tr(
+                        "未找到明确实付金额，暂用应付/订单金额，请核对优惠和实际付款",
+                        "No explicit paid amount found — using payable/order amount, check the discount and actual payment",
+                    ),
+                )
             }
         }
 
@@ -213,7 +219,7 @@ object FuelReceiptParser {
         if (isPumpDisplay && litersCandidates.isEmpty()) {
             pumpNumberAfterLabel("油量")?.takeIf { it in 0.1..2000.0 }?.let { litersCandidates.add(it) }
         }
-        val liters = pick(litersCandidates.filter { it > 0 && it <= 2000 }, "加油量")
+        val liters = pick(litersCandidates.filter { it > 0 && it <= 2000 }, tr("加油量", "Fuel amount"))
 
         // 3) 日期：优先支付/交易时间；否则全文唯一日期。
         fun validDate(line: String): String? {
@@ -234,23 +240,23 @@ object FuelReceiptParser {
         }
         val dates = (if (paidDates.isNotEmpty()) paidDates else lines.mapNotNull { validDate(it) }).distinct()
         val date = if (dates.size == 1) dates[0] else ""
-        if (dates.size > 1) warnings.add("识别到多个日期，请选择实际支付日期")
+        if (dates.size > 1) warnings.add(tr("识别到多个日期，请选择实际支付日期", "Multiple dates detected — choose the actual payment date"))
 
         val unitPrice = pick(
             rows.mapNotNull { line ->
                 UNIT_PRICE_LABEL.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
                     ?.takeIf { it > 0.1 && it < 100.0 }
             },
-            "油价",
+            tr("油价", "Unit price"),
         ) ?: if (isPumpDisplay) {
             pumpNumberAfterLabel("单价")?.takeIf { it > 0.1 && it < 100.0 }
         } else {
             null
         }
-        val payable = pick(values(PAYABLE_LABEL, NUMERIC), "应付金额")
+        val payable = pick(values(PAYABLE_LABEL, NUMERIC), tr("应付金额", "Payable amount"))
             ?.takeIf { it > 0.0 && it < 100_000.0 }
             ?: columns.total
-        val discountLabelValue = pick(values(DISCOUNT_LABEL, NUMERIC), "优惠金额")
+        val discountLabelValue = pick(values(DISCOUNT_LABEL, NUMERIC), tr("优惠金额", "Discount"))
             ?.takeIf { it >= 0.0 && it < 100_000.0 }
         // 应付 - 实付 = 优惠；OCR 把“优惠金额”标签和数值拆开时用这个关系补全。
         val discount = discountLabelValue ?: if (
@@ -261,11 +267,11 @@ object FuelReceiptParser {
             null
         }
 
-        val odometer = pick(values(ODOMETER_LABEL, ODOMETER_VALUE), "总里程")
+        val odometer = pick(values(ODOMETER_LABEL, ODOMETER_VALUE), tr("总里程", "Odometer"))
 
-        if (amount == null || amount <= 0.0) warnings.add("未确定实付金额，请手动核对")
-        if (liters == null) warnings.add("未确定加油量，请手动核对")
-        if (date.isEmpty()) warnings.add("未确定支付日期，请手动核对")
+        if (amount == null || amount <= 0.0) warnings.add(tr("未确定实付金额，请手动核对", "Paid amount not detected — check manually"))
+        if (liters == null) warnings.add(tr("未确定加油量，请手动核对", "Fuel amount not detected — check manually"))
+        if (date.isEmpty()) warnings.add(tr("未确定支付日期，请手动核对", "Payment date not detected — check manually"))
 
         return FuelReceipt(
             amount = amount?.takeIf { it > 0.0 && it < 100_000.0 },
@@ -389,11 +395,17 @@ object FuelReceiptParser {
             if (paid != null) {
                 amount = paid
                 if (payable != null && kotlin.math.abs(payable - paid) > 0.01) {
-                    warn("加油机默认无优惠，应付金额已按实付 ¥${moneyText(paid)} 修正")
+                    warn(
+                        tr(
+                            "加油机默认无优惠，应付金额已按实付 ¥%s 修正",
+                            "Pump display has no discount — payable adjusted to paid ¥%s",
+                            moneyText(paid),
+                        ),
+                    )
                 }
                 payable = paid
                 if (discount != null && discount > 0.01) {
-                    warn("加油机默认无优惠，已忽略优惠金额")
+                    warn(tr("加油机默认无优惠，已忽略优惠金额", "Pump display has no discount — discount ignored"))
                 }
                 discount = 0.0
             }
@@ -404,7 +416,13 @@ object FuelReceiptParser {
                 val expected = amount + discount
                 if (payable == null || kotlin.math.abs(payable - expected) > 0.01) {
                     if (payable != null) {
-                        warn("校验修正：应付金额已按「实付 + 优惠」调整为 ¥${moneyText(expected)}")
+                        warn(
+                            tr(
+                                "校验修正：应付金额已按「实付 + 优惠」调整为 ¥%s",
+                                "Check fix: payable adjusted to paid + discount, ¥%s",
+                                moneyText(expected),
+                            ),
+                        )
                     }
                     payable = expected
                 }
@@ -414,7 +432,7 @@ object FuelReceiptParser {
                 if (diff >= -0.01) {
                     discount = diff.coerceAtLeast(0.0)
                 } else {
-                    warn("校验修正：应付金额低于实付，已按实付重算")
+                    warn(tr("校验修正：应付金额低于实付，已按实付重算", "Check fix: payable was below paid — recalculated from paid amount"))
                     payable = amount + (discount ?: 0.0)
                 }
             }
@@ -436,8 +454,14 @@ object FuelReceiptParser {
             val tolerance = maxOf(0.10, payable * 0.005)
             if (kotlin.math.abs(calculated - payable) > tolerance) {
                 warn(
-                    "校验未通过：${decimalText(liters)}升 × ${moneyText(unitPrice)}元/升 " +
-                        "≈ ¥${moneyText(calculated)}，与应付 ¥${moneyText(payable)} 不一致，请核对",
+                    tr(
+                        "校验未通过：%s升 × %s元/升 ≈ ¥%s，与应付 ¥%s 不一致，请核对",
+                        "Check failed: %s L × %s CNY/L ≈ ¥%s, does not match payable ¥%s — please verify",
+                        decimalText(liters),
+                        moneyText(unitPrice),
+                        moneyText(calculated),
+                        moneyText(payable),
+                    ),
                 )
             }
         }
@@ -529,7 +553,12 @@ object FuelReceiptParser {
             amount = amount,
             liters = liters,
             unitPrice = unitPrice,
-            warnings = listOf("已按加油机读数自动换算（22878→228.78、3L47→31.47），请核对"),
+            warnings = listOf(
+                tr(
+                    "已按加油机读数自动换算（22878→228.78、3L47→31.47），请核对",
+                    "Auto-converted from the pump display (22878→228.78, 3L47→31.47) — please verify",
+                ),
+            ),
         )
     }
 }

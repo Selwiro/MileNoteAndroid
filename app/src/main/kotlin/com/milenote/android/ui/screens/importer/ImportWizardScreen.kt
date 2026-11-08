@@ -58,6 +58,8 @@ import kotlinx.coroutines.cancel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.ListRowCard
@@ -150,7 +152,13 @@ fun ImportWizardScreen(
             wizard.selectSource(initial)
             runCatching { picker.launch(arrayOf("*/*")) }
                 .onFailure {
-                    wizard.updateError("无法打开文件选择器：${it.message ?: "请点来源卡片重试"}")
+                    wizard.updateError(
+                    tr(
+                        "无法打开文件选择器：%s",
+                        "Could not open the file picker: %s",
+                        it.message ?: tr("请点来源卡片重试", "tap a source card to try again"),
+                    ),
+                )
                 }
         }
     }
@@ -161,10 +169,10 @@ fun ImportWizardScreen(
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text(text = "导入数据", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(text = tr("导入数据", "Import data"), style = MaterialTheme.typography.titleLarge) },
             navigationIcon = {
                 IconButton(onClick = { wizard.goBack(closeWizard) }) {
-                    Icon(imageVector = MileNoteIcons.Back, contentDescription = "返回")
+                    Icon(imageVector = MileNoteIcons.Back, contentDescription = tr("返回", "Back"))
                 }
             },
             windowInsets = WindowInsets(0, 0, 0, 0),
@@ -198,17 +206,20 @@ fun ImportWizardScreen(
 // 步骤条 / 底部按钮
 // ---------------------------------------------------------------------------------------------
 
-private val STEP_LABELS = listOf("选择来源", "读取与预览", "完成")
-
 @Composable
 private fun WizardStepBar(currentStep: Int) {
+    val stepLabels = listOf(
+        tr("选择来源", "Choose source"),
+        tr("读取与预览", "Read & preview"),
+        tr("完成", "Done"),
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        STEP_LABELS.forEachIndexed { index, label ->
+        stepLabels.forEachIndexed { index, label ->
             val done = index < currentStep
             val active = index == currentStep
             val circleColor = when {
@@ -254,7 +265,7 @@ private fun WizardStepBar(currentStep: Int) {
                     },
                 )
             }
-            if (index < STEP_LABELS.lastIndex) {
+            if (index < stepLabels.lastIndex) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -294,7 +305,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                             .weight(1f)
                             .heightIn(min = MileNoteDimens.ButtonMinHeight),
                     ) {
-                        Text("取消")
+                        Text(tr("取消", "Cancel"))
                     }
 
                     1 -> {
@@ -305,7 +316,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                                 .heightIn(min = MileNoteDimens.ButtonMinHeight),
                             enabled = !wizard.busy,
                         ) {
-                            Text("上一步")
+                            Text(tr("上一步", "Back"))
                         }
                         Button(
                             onClick = {
@@ -322,7 +333,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                                 .heightIn(min = MileNoteDimens.ButtonMinHeight),
                             enabled = wizard.canConfirm(),
                         ) {
-                            Text(if (wizard.busy) "处理中…" else wizard.confirmLabel())
+                            Text(if (wizard.busy) tr("处理中…", "Working…") else wizard.confirmLabel())
                         }
                     }
 
@@ -332,7 +343,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                             .fillMaxWidth()
                             .heightIn(min = MileNoteDimens.ButtonMinHeight),
                     ) {
-                        Text("完成")
+                        Text(tr("完成", "Done"))
                     }
                 }
             }
@@ -342,11 +353,15 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
     if (showDuplicatePrompt) {
         AlertDialog(
             onDismissRequest = { showDuplicatePrompt = false },
-            title = { Text("发现重复记录") },
+            title = { Text(tr("发现重复记录", "Duplicate records found")) },
             text = {
                 Text(
-                    "有 ${wizard.duplicateTableCount()} 条记录与现有账本重复：忽略会跳过这些行，" +
-                        "覆盖会用导入数据替换原记录。",
+                    tr(
+                        "有 %d 条记录与现有账本重复：忽略会跳过这些行，覆盖会用导入数据替换原记录。",
+                        "%d records duplicate the current ledger: ignoring skips them, overwriting " +
+                            "replaces the original records with the imported data.",
+                        wizard.duplicateTableCount(),
+                    ),
                 )
             },
             confirmButton = {
@@ -356,7 +371,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                         wizard.confirm(overwriteDuplicates = true)
                     },
                 ) {
-                    Text("覆盖原记录")
+                    Text(tr("覆盖原记录", "Overwrite"))
                 }
             },
             dismissButton = {
@@ -366,7 +381,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                         wizard.confirm(overwriteDuplicates = false)
                     },
                 ) {
-                    Text("忽略重复")
+                    Text(tr("忽略重复", "Ignore duplicates"))
                 }
             },
         )
@@ -386,8 +401,12 @@ private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
     ) {
         item {
             SectionHeader(
-                title = "选择导入来源",
-                subtitle = "文件只在本机解析，不会上传；表格文件 ≤10 MB，备份 ≤20 MB",
+                title = tr("选择导入来源", "Choose import source"),
+                subtitle = tr(
+                    "文件只在本机解析，不会上传；表格文件 ≤10 MB，备份 ≤20 MB",
+                    "Files are parsed on this device and never uploaded; spreadsheets ≤10 MB, " +
+                        "backups ≤20 MB",
+                ),
             )
         }
         if (wizard.fromShare) {
@@ -404,14 +423,14 @@ private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
                 MessageBar(
                     message = message,
                     kind = MessageKind.ERROR,
-                    actionLabel = if (wizard.picked != null) "重试" else null,
+                    actionLabel = if (wizard.picked != null) tr("重试", "Retry") else null,
                     onAction = if (wizard.picked != null) ({ wizard.retry() }) else null,
                     onDismiss = { wizard.updateError(null) },
                 )
             }
         }
         if (wizard.busy) {
-            item { LoadingState(label = wizard.busyMessage ?: "正在处理…") }
+            item { LoadingState(label = wizard.busyMessage ?: tr("正在处理…", "Working…")) }
         }
         MANUAL_IMPORT_SOURCES.forEach { source ->
             item(key = source.key) {
@@ -426,8 +445,12 @@ private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
         }
         item {
             Text(
-                text = "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；" +
-                    "账本备份 JSON（version 2 多车或旧版单车）仅在系统分享导入时自动识别。",
+                text = tr(
+                    "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；账本备份 JSON（version 2 多车或旧版单车）" +
+                        "仅在系统分享导入时自动识别。",
+                    "Bear: XLS / XLSX; Qianji: TXT / JSON / CSV. Ledger backup JSON (version 2 multi-car " +
+                        "or legacy single-car) is only auto-detected when imported via system share.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -480,11 +503,16 @@ private fun SharedImportBanner(
     sourceTitle: String?,
     onChooseAnotherSource: () -> Unit,
 ) {
+    val shownFileName = fileName.ifBlank { tr("分享导入", "Shared import") }
+    val detected = if (sourceTitle != null) {
+        tr("（已识别为 %s）", " (detected as %s)", sourceTitle)
+    } else {
+        ""
+    }
     MessageBar(
-        message = "来自分享：${fileName.ifBlank { "分享导入" }}" +
-            if (sourceTitle != null) "（已识别为 $sourceTitle）" else "",
+        message = tr("来自分享：%s", "From share: %s", shownFileName) + detected,
         kind = MessageKind.INFO,
-        actionLabel = "重新选择来源",
+        actionLabel = tr("重新选择来源", "Choose another source"),
         onAction = onChooseAnotherSource,
     )
 }
@@ -509,7 +537,7 @@ private fun PreviewStep(
                 MessageBar(
                     message = message,
                     kind = MessageKind.ERROR,
-                    actionLabel = if (wizard.picked != null) "重试" else null,
+                    actionLabel = if (wizard.picked != null) tr("重试", "Retry") else null,
                     onAction = if (wizard.picked != null) ({ wizard.retry() }) else null,
                     onDismiss = { wizard.updateError(null) },
                 )
@@ -537,8 +565,8 @@ private fun PreviewStep(
                     MappingCard(
                         wizard = wizard,
                         fields = IMPORT_FIELD_ORDER,
-                        labels = IMPORT_FIELD_LABELS,
-                        requiredHint = "日期与实付金额是导入的必填字段。",
+                        labels = importFieldLabels(),
+                        requiredHint = tr("日期与实付金额是导入的必填字段。", "Date and amount paid are required."),
                     )
                 }
                 item { TableStatsCard(wizard = wizard) }
@@ -554,8 +582,8 @@ private fun PreviewStep(
             null -> {
                 item {
                     EmptyState(
-                        title = "还没有选择来源",
-                        description = "返回上一步选择要导入的文件类型。",
+                        title = tr("还没有选择来源", "No source selected"),
+                        description = tr("返回上一步选择要导入的文件类型。", "Go back and choose the file type to import."),
                         icon = MileNoteIcons.Import,
                     )
                 }
@@ -563,7 +591,7 @@ private fun PreviewStep(
         }
 
         if (wizard.busy) {
-            item { LoadingState(label = wizard.busyMessage ?: "正在处理…") }
+            item { LoadingState(label = wizard.busyMessage ?: tr("正在处理…", "Working…")) }
         }
     }
 }
@@ -572,10 +600,10 @@ private fun PreviewStep(
 private fun FileSummaryCard(wizard: ImportWizardState, onPick: () -> Unit) {
     val file = wizard.picked
     SectionCard(
-        title = "已选文件",
+        title = tr("已选文件", "Selected file"),
         action = {
             TextButton(onClick = onPick) {
-                Text("重新选择")
+                Text(tr("重新选择", "Choose another"))
             }
         },
     ) {
@@ -587,14 +615,26 @@ private fun FileSummaryCard(wizard: ImportWizardState, onPick: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = if (file != null) "大小 ${displaySize(file.sizeBytes)}" else "尚未选择文件",
+            text = if (file != null) {
+                tr("大小 %s", "Size %s", displaySize(file.sizeBytes))
+            } else {
+                tr("尚未选择文件", "No file selected")
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         wizard.sheetData?.let { data ->
             Text(
-                text = "表头 ${data.headers.size} 列 · 数据 ${data.rows.size} 行" +
-                    if (data.activeSheet.isNotBlank()) " · 工作表 ${data.activeSheet}" else "",
+                text = tr(
+                    "表头 %d 列 · 数据 %d 行",
+                    "%d header columns · %d data rows",
+                    data.headers.size,
+                    data.rows.size,
+                ) + if (data.activeSheet.isNotBlank()) {
+                    tr(" · 工作表 %s", " · Sheet %s", data.activeSheet)
+                } else {
+                    ""
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -602,7 +642,7 @@ private fun FileSummaryCard(wizard: ImportWizardState, onPick: () -> Unit) {
         if (wizard.sheetNames.size > 1) {
             Spacer(modifier = Modifier.height(12.dp))
             WizardDropdown(
-                label = "工作表",
+                label = tr("工作表", "Worksheet"),
                 selected = wizard.sheetData?.activeSheet.orEmpty(),
                 options = wizard.sheetNames.map { it to it },
                 onSelect = { name -> if (name != null) wizard.switchSheet(name) },
@@ -613,18 +653,25 @@ private fun FileSummaryCard(wizard: ImportWizardState, onPick: () -> Unit) {
 
 @Composable
 private fun BackupSummaryCard(wizard: ImportWizardState) {
-    SectionCard(title = "备份摘要", subtitle = "确认后在现有账本上合并") {
+    SectionCard(
+        title = tr("备份摘要", "Backup summary"),
+        subtitle = tr("确认后在现有账本上合并", "Merged into the current ledger after confirmation"),
+    ) {
         val preview = wizard.backupPreview
         if (preview == null) {
-            LoadingState(label = "正在解析备份…")
+            LoadingState(label = tr("正在解析备份…", "Parsing backup…"))
         } else {
-            InfoRow("备份版本", "version ${preview.version}")
-            InfoRow("车辆", "${preview.cars} 辆")
-            InfoRow("费用记录", "${preview.records} 条")
-            InfoRow("提醒", "${preview.reminders} 条")
+            InfoRow(tr("备份版本", "Backup version"), tr("version %d", "version %d", preview.version))
+            InfoRow(tr("车辆", "Vehicles"), tr("%d 辆", "%d vehicles", preview.cars))
+            InfoRow(tr("费用记录", "Expense records"), tr("%d 条", "%d records", preview.records))
+            InfoRow(tr("提醒", "Reminders"), tr("%d 条", "%d reminders", preview.reminders))
             Spacer(modifier = Modifier.height(8.dp))
             MessageBar(
-                message = "按车辆编号合并：已有记录保留、新增记录追加；旧版单车备份会合并到当前车辆。",
+                message = tr(
+                    "按车辆编号合并：已有记录保留、新增记录追加；旧版单车备份会合并到当前车辆。",
+                    "Merged by vehicle ID: existing records are kept and new ones appended; legacy " +
+                        "single-car backups merge into the current vehicle.",
+                ),
                 kind = MessageKind.INFO,
             )
         }
@@ -636,10 +683,10 @@ private fun TableOptionsCard(
     wizard: ImportWizardState,
     ledger: com.milenote.android.domain.model.Ledger?,
 ) {
-    SectionCard(title = "导入选项") {
+    SectionCard(title = tr("导入选项", "Import options")) {
         if (wizard.source == ImportSource.QIANJI) {
             WizardDropdown(
-                label = "无法识别的分类统一归入",
+                label = tr("无法识别的分类统一归入", "Group unrecognized categories as"),
                 selected = wizard.defaultCategory,
                 options = defaultCategoryOptions(ledger),
                 onSelect = { value -> wizard.changeDefaultCategory(value ?: "") },
@@ -649,23 +696,35 @@ private fun TableOptionsCard(
         val conflict = wizard.fuelConflict
         if (conflict == null) {
             Text(
-                text = "本次未检测到跨来源油费冲突，油费默认按小熊实付计入成本。",
+                text = tr(
+                    "本次未检测到跨来源油费冲突，油费默认按小熊实付计入成本。",
+                    "No cross-source fuel conflict detected; fuel costs use Bear's amount paid by default.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
             MessageBar(
-                message = "两个来源都含油费，请选择统计方式（只影响成本统计，原始记录全部保留）。",
+                message = tr(
+                    "两个来源都含油费，请选择统计方式（只影响成本统计，原始记录全部保留）。",
+                    "Both sources contain fuel expenses. Choose how to count costs (this only affects " +
+                        "cost analytics; all original records are kept).",
+                ),
                 kind = MessageKind.WARNING,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "小熊实付 ¥${Format.money(conflict.bear)} · 钱迹 ¥${Format.money(conflict.qianji)}",
+                text = tr(
+                    "小熊实付 ¥%s · 钱迹 ¥%s",
+                    "Bear paid ¥%s · Qianji ¥%s",
+                    Format.money(conflict.bear),
+                    Format.money(conflict.qianji),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            FuelBasisOption("bear", "以小熊实付为准（默认）", wizard)
-            FuelBasisOption("qianji", "以钱迹金额为准", wizard)
-            FuelBasisOption("both", "两个来源都计入", wizard)
+            FuelBasisOption("bear", tr("以小熊实付为准（默认）", "Use Bear's amount paid (default)"), wizard)
+            FuelBasisOption("qianji", tr("以钱迹金额为准", "Use Qianji's amount"), wizard)
+            FuelBasisOption("both", tr("两个来源都计入", "Count both sources"), wizard)
         }
     }
 }
@@ -697,18 +756,24 @@ private fun MappingCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     SectionCard(
-        title = "字段匹配",
-        subtitle = "空选项表示该字段不导入",
+        title = tr("字段匹配", "Field mapping"),
+        subtitle = tr("空选项表示该字段不导入", "An empty choice means the field is not imported"),
         action = {
             TextButton(onClick = { expanded = !expanded }) {
-                Text(if (expanded) "收起" else "调整字段匹配")
+                Text(if (expanded) tr("收起", "Collapse") else tr("调整字段匹配", "Edit field mapping"))
             }
         },
     ) {
         if (!expanded) {
             val mapped = fields.count { wizard.mapping[it] != null }
             Text(
-                text = "已匹配 $mapped / ${fields.size} 个字段；$requiredHint",
+                text = tr(
+                    "已匹配 %d / %d 个字段；%s",
+                    "%d of %d fields mapped; %s",
+                    mapped,
+                    fields.size,
+                    requiredHint,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -730,31 +795,57 @@ private fun MappingCard(
 
 @Composable
 private fun TableStatsCard(wizard: ImportWizardState) {
-    SectionCard(title = "预览", subtitle = "共 ${wizard.tableItems.size} 行") {
+    SectionCard(
+        title = tr("预览", "Preview"),
+        subtitle = tr("共 %d 行", "%d rows", wizard.tableItems.size),
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusPill(text = "有效 ${wizard.validTableCount()}", status = StatusKind.DONE)
+            StatusPill(
+                text = tr("有效 %d", "%d valid", wizard.validTableCount()),
+                status = StatusKind.DONE,
+            )
             if (wizard.invalidTableCount() > 0) {
-                StatusPill(text = "错误 ${wizard.invalidTableCount()}", status = StatusKind.OVERDUE)
+                StatusPill(
+                    text = tr("错误 %d", "%d errors", wizard.invalidTableCount()),
+                    status = StatusKind.OVERDUE,
+                )
             }
             if (wizard.excludedTableCount() > 0) {
-                StatusPill(text = "已排除 ${wizard.excludedTableCount()}", status = StatusKind.NORMAL)
+                StatusPill(
+                    text = tr("已排除 %d", "%d excluded", wizard.excludedTableCount()),
+                    status = StatusKind.NORMAL,
+                )
             }
             if (wizard.duplicateTableCount() > 0) {
-                StatusPill(text = "重复 ${wizard.duplicateTableCount()}", status = StatusKind.SOON)
+                StatusPill(
+                    text = tr("重复 %d", "%d duplicates", wizard.duplicateTableCount()),
+                    status = StatusKind.SOON,
+                )
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "勾选要导入的行；带错误的行不可导入。「有效」包含重复行，确认时可选择忽略或覆盖；" +
-                "确认后的结果以「导入完成」提示为准；仅显示前 $PREVIEW_ROW_LIMIT 行。",
+            text = tr(
+                "勾选要导入的行；带错误的行不可导入。「有效」包含重复行，确认时可选择忽略或覆盖；" +
+                    "确认后的结果以「导入完成」提示为准；仅显示前 %d 行。",
+                "Tick the rows to import; rows with errors can't be imported. \"Valid\" includes " +
+                    "duplicates — ignore or overwrite them on confirmation. The final result follows " +
+                    "the \"import submitted\" summary; only the first %d rows are shown.",
+                PREVIEW_ROW_LIMIT,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (wizard.tableItems.isNotEmpty() && wizard.validTableCount() == 0) {
             Spacer(modifier = Modifier.height(8.dp))
             MessageBar(
-                message = "没有可导入的行：请检查「日期 / 实付金额」字段匹配；" +
-                    "钱迹可在「导入选项」设置默认分类，或在「调整字段匹配」里把分类指向「二级分类」。",
+                message = tr(
+                    "没有可导入的行：请检查「日期 / 实付金额」字段匹配；钱迹可在「导入选项」设置默认分类，" +
+                        "或在「调整字段匹配」里把分类指向「二级分类」。",
+                    "No importable rows: check the Date / Amount paid mapping. For Qianji, set a default " +
+                        "category under Import options, or map Category to Secondary category in Edit " +
+                        "field mapping.",
+                ),
                 kind = MessageKind.WARNING,
             )
         }
@@ -770,21 +861,29 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
     val checked = canSelect && !item.exclude
     val note = when {
         hasError -> item.error
-        duplicate -> "与现有账本重复，确认时选择忽略或覆盖"
+        duplicate -> tr("与现有账本重复，确认时选择忽略或覆盖", "Duplicate of the current ledger — ignore or overwrite on confirmation")
         !item.record.note.isNullOrBlank() -> item.record.note.orEmpty()
-        else -> "可导入"
+        else -> tr("可导入", "Ready to import")
     }
     ListRowCard(
-        title = "${item.record.date.ifBlank { "日期无效" }} · " +
-            item.record.category.ifBlank { item.rawCategory.ifBlank { "未知分类" } },
-        subtitle = "第 ${item.row} 行 · ${item.record.source}" +
-            (item.record.odometer?.let { " · ${Format.fmt(it)} 公里" } ?: ""),
+        title = tr(
+            "%s · %s",
+            "%s · %s",
+            item.record.date.ifBlank { tr("日期无效", "Invalid date") },
+            DataLabels.category(
+                item.record.category.ifBlank {
+                    item.rawCategory.ifBlank { tr("未知分类", "Unknown category") }
+                },
+            ),
+        ),
+        subtitle = tr("第 %d 行 · %s", "Row %d · %s", item.row, importSourceLabel(item.record.source)) +
+            (item.record.odometer?.let { tr(" · %s 公里", " · %s km", Format.fmt(it)) } ?: ""),
         supporting = note,
         leading = {
             if (hasError) {
                 Icon(
                     imageVector = MileNoteIcons.Warning,
-                    contentDescription = "错误",
+                    contentDescription = tr("错误", "Error"),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(24.dp),
                 )
@@ -797,12 +896,12 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
         },
         trailing = {
             if (hasError) {
-                StatusPill(text = "错误", status = StatusKind.OVERDUE)
+                StatusPill(text = tr("错误", "Error"), status = StatusKind.OVERDUE)
             } else {
                 MoneyText(
                     amount = Format.money(item.record.amount),
                     size = MoneySize.SMALL,
-                    unit = "元",
+                    unit = tr("元", "CNY"),
                 )
             }
         },
@@ -838,7 +937,7 @@ private fun ResultStep(wizard: ImportWizardState) {
         item {
             SectionCard {
                 if (result == null) {
-                    Text(text = "没有可展示的导入结果", style = MaterialTheme.typography.bodyMedium)
+                    Text(text = tr("没有可展示的导入结果", "No import result to show"), style = MaterialTheme.typography.bodyMedium)
                 } else {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -869,7 +968,11 @@ private fun ResultStep(wizard: ImportWizardState) {
         }
         item {
             MessageBar(
-                message = "导入已提交到账本。若数量与预览不同，以费用记录 / 保养计划表为准。",
+                message = tr(
+                    "导入已提交到账本。若数量与预览不同，以费用记录 / 保养计划表为准。",
+                    "Import submitted to the ledger. If counts differ from the preview, trust the " +
+                        "records and service plan.",
+                ),
                 kind = MessageKind.INFO,
             )
         }
@@ -909,7 +1012,12 @@ private fun InfoRow(label: String, value: String) {
 @Composable
 private fun PreviewLimitNote(total: Int, shown: Int) {
     Text(
-        text = "仅显示前 $shown 行，共 $total 行；确认后全部有效行都会导入。",
+        text = tr(
+            "仅显示前 %d 行，共 %d 行；确认后全部有效行都会导入。",
+            "Showing the first %d of %d rows; all valid rows are imported once confirmed.",
+            shown,
+            total,
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
@@ -941,7 +1049,7 @@ private fun WizardDropdown(
             ) {
                 Text(
                     text = options.firstOrNull { it.first == selected }?.second
-                        ?: selected.ifBlank { "不导入" },
+                        ?: selected.ifBlank { tr("不导入", "Do not import") },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -979,7 +1087,7 @@ private fun MappingDropdown(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = selectedIndex?.let { headerLabel(headers, it) } ?: "不导入"
+    val selectedLabel = selectedIndex?.let { headerLabel(headers, it) } ?: tr("不导入", "Do not import")
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
@@ -1007,7 +1115,7 @@ private fun MappingDropdown(
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
-                    text = { Text("不导入") },
+                    text = { Text(tr("不导入", "Do not import")) },
                     onClick = {
                         expanded = false
                         onSelect(null)

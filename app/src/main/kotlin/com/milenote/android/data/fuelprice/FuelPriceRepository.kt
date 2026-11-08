@@ -1,5 +1,7 @@
 package com.milenote.android.data.fuelprice
 
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.tr
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
@@ -119,7 +121,7 @@ class FuelPriceRepository {
             } else {
                 provinceHtml
             }
-            parse(location.displayName, html)
+            parse(DataLabels.region(location.displayName), html)
         } catch (t: Throwable) {
             offlineFallback(location)
         }
@@ -243,14 +245,17 @@ class FuelPriceRepository {
     }
 
     private fun offlineFallback(location: FuelLocation): FuelPriceInfo = FuelPriceInfo(
-        regionName = "${location.displayName}（参考）",
+        regionName = tr("%s（参考）", "%s (reference)", DataLabels.region(location.displayName)),
         price92 = 7.45,
         price95 = 7.93,
         price98 = 8.66,
         price0 = 7.11,
         nextAdjustmentText = null,
         trend = null,
-        forecast = "实时油价获取失败，当前显示参考价（需联网后刷新）",
+        forecast = tr(
+            "实时油价获取失败，当前显示参考价（需联网后刷新）",
+            "Live fuel prices unavailable — showing reference prices (refresh when online)",
+        ),
         isFallback = true,
     )
 
