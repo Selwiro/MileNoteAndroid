@@ -836,14 +836,14 @@ private fun CategoryLegend(
 }
 
 /**
- * 图表气泡提示：surfaceContainerHigh 底、medium 圆角、2dp 阴影、bodySmall、最多两行。
+ * 图表气泡提示：surfaceContainerHigh 底、medium 圆角、1dp 轻阴影、bodySmall、最多两行。
  *
  * 由调用方用 `offset` 定位到柱段 / 扇区旁边，并夹取在卡片范围内。
  */
 @Composable
 private fun ChartBubble(text: String, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.shadow(elevation = 2.dp, shape = MileNoteShapes.medium),
+        modifier = modifier.shadow(elevation = 1.dp, shape = MileNoteShapes.medium),
         shape = MileNoteShapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,

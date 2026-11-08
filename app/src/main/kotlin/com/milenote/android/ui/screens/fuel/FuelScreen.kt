@@ -91,6 +91,7 @@ import com.milenote.android.ui.components.StatusKind
 import com.milenote.android.ui.components.StatusPill
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
+import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
 import java.time.Instant
@@ -996,6 +997,7 @@ private fun matchesDetailQuery(record: Record, query: String): Boolean {
 @Composable
 private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val dark = LocalMileNoteDarkTheme.current
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -1003,7 +1005,7 @@ private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
         color = scheme.surfaceContainerLowest,
         contentColor = scheme.onSurface,
         border = null,
-        shadowElevation = 2.dp,
+        shadowElevation = if (dark) 0.dp else 1.dp,
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),

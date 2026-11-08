@@ -26,8 +26,8 @@ import com.milenote.android.ui.theme.MileNoteTheme
 /**
  * 标准卡片容器（M3 tonal surface，16dp 圆角）。
  *
- * - 浅色：白色底 + 3dp 阴影，不描边（卡片比页面背景更亮，靠阴影分层）。
- * - 深色：使用 `surfaceContainerLow`，弱阴影、不描边。
+ * - 浅色：白色底 + 1dp 轻阴影，不描边（卡片比页面背景更亮，靠浅阴影分层）。
+ * - 深色：使用 `surfaceContainerLow`，无阴影、不描边。
  * - 可选标题 / 副标题 / 尾部动作；内容通过 [content] 传入。
  *
  * ```kotlin
@@ -68,7 +68,7 @@ fun SectionCard(
         color = actualContainer,
         contentColor = scheme.onSurface,
         border = actualBorder,
-        shadowElevation = if (dark) 1.dp else 3.dp,
+        shadowElevation = if (dark) 0.dp else 1.dp,
     ) {
         Column(modifier = Modifier.padding(contentPadding)) {
             if (title != null) {

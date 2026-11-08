@@ -89,7 +89,6 @@ import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.LocalMileNoteHeroGradient
-import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapeTokens
 import com.milenote.android.ui.theme.MileNoteShapes
@@ -410,7 +409,7 @@ private fun HeroVehicleArt(vehicle: Vehicle, modifier: Modifier = Modifier) {
                     bitmap = bitmap,
                     contentDescription = DataLabels.vehicleName(vehicle.name),
                     modifier = modifier
-                        .shadow(elevation = 4.dp, shape = shape, clip = false)
+                        .shadow(elevation = 2.dp, shape = shape, clip = false)
                         .border(width = 2.dp, color = Color.White.copy(alpha = 0.82f), shape = shape)
                         .clip(shape),
                     contentScale = contentScale,
@@ -424,7 +423,7 @@ private fun HeroVehicleArt(vehicle: Vehicle, modifier: Modifier = Modifier) {
                 model = image,
                 contentDescription = DataLabels.vehicleName(vehicle.name),
                 modifier = modifier
-                    .shadow(elevation = 4.dp, shape = shape, clip = false)
+                    .shadow(elevation = 2.dp, shape = shape, clip = false)
                     .border(width = 2.dp, color = Color.White.copy(alpha = 0.82f), shape = shape)
                     .clip(shape),
                 placeholder = painterResource(R.drawable.milenote_car_hero),
@@ -491,8 +490,6 @@ private fun VehicleStatsCard(
     onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val semantic = LocalMileNoteSemanticColors.current
     var menuExpanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
 
@@ -528,16 +525,12 @@ private fun VehicleStatsCard(
                     label = tr("用车支出", "Expenses"),
                     value = Format.money(statsResult.total),
                     unit = tr("元", "CNY"),
-                    icon = MileNoteIcons.Wallet,
-                    accent = scheme.primary,
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
                     label = tr("行驶里程", "Distance"),
                     value = Format.fmt(statsResult.distance),
                     unit = tr("公里", "km"),
-                    icon = MileNoteIcons.Road,
-                    accent = semantic.info.content,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -549,16 +542,12 @@ private fun VehicleStatsCard(
                     label = tr("用车成本", "Cost"),
                     value = statsResult.perKm?.let { Format.money(it) } ?: "—",
                     unit = if (statsResult.perKm == null) null else tr("元/公里", "CNY/km"),
-                    icon = MileNoteIcons.Chart,
-                    accent = scheme.tertiary,
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
                     label = tr("平均油耗", "Fuel economy"),
                     value = statsResult.fuelRate?.let { Numbers.toFixed2(it) } ?: "—",
                     unit = if (statsResult.fuelRate == null) null else tr("升/百公里", "L/100km"),
-                    icon = MileNoteIcons.Fuel,
-                    accent = semantic.success.content,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1056,8 +1045,6 @@ private fun StatCell(
     label: String,
     value: String,
     unit: String?,
-    icon: ImageVector,
-    accent: Color,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -1065,32 +1052,13 @@ private fun StatCell(
         modifier = modifier.padding(vertical = 2.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(12.dp),
-                    tint = accent,
-                )
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = value,
