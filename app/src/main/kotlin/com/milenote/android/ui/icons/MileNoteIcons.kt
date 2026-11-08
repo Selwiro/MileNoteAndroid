@@ -445,6 +445,15 @@ object MileNoteIcons {
         )
     }
 
+    /** 单位设置（刻度尺）。 */
+    val Ruler: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Ruler",
+            "M3 9h18v6H3z",
+            "M7 9v3M11 9v4M15 9v3M19 9v4",
+        )
+    }
+
     /** 费用 CSV（表格文件）。 */
     val FileText: ImageVector by lazy {
         strokeIcon(

@@ -6,11 +6,11 @@
 
 ## 现状
 
-- **0.34.1（versionCode 80，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
+- **0.34.2（versionCode 81，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
   minSdk 26 / targetSdk 37。界面中英双语（设置 → 外观 → 语言）。
 - Kotlin 2.4.21 + Jetpack Compose（BOM 2026.09.00、material3 1.5.0-beta02）+ Material 3 Expressive；
   AGP 9.5.0 / Gradle 9.6.0。**版本矩阵是实测跑通的，不要随手升级。**
-- `domain/` = 纯 Kotlin 领域层（与 Web 版同源的算法、备份、导入、OCR 解析，JVM 单测）；
+- `domain/` = 纯 Kotlin 领域层（算法、备份、导入、OCR 解析，JVM 单测）；Web 版已停更，domain 以本仓库实现为准，不再对照 Web。
   `app/` = Compose 界面、数据层（单文件 JSON 账本快照）、平台能力（OCR/SAF/WebDAV）。
 - **i18n**：用户可见文案用 `tr("中文", "English")`（带占位符用 `tr(zh, en, args)`）；domain 用
   `com.milenote.android.domain.i18n.tr`。分类名/项目名/皮肤 id/presetKey 等**数据值不翻译**，
@@ -18,7 +18,7 @@
 
 ## 硬规则
 
-- 账本必须保持 **`version:2` 单文件 JSON**（图片 base64 dataURL 内嵌），**与 Web 版备份双向可导入**。
+- 账本保持 **`version:2` 单文件 JSON**（图片 base64 dataURL 内嵌；历史 Web 备份仍可导入）。
   改结构先谈兼容；破坏性结构升级归 2.0.0。
 - **不新增权限**（现有：相机、网络、粗略定位，共 3 项）；不加回系统通知、应用锁、WorkManager
   后台任务、动态取色。

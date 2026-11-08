@@ -139,13 +139,14 @@ private data class VehicleEditTarget(
 /**
  * 设置内部页面（用内部状态切换，不新增导航路由；系统返回键先回菜单）。
  *
- * 一级按性质分三组：车辆/外观/记账、数据（外部导入 / 备份与还原 / WebDAV 同步）、关于。
+ * 一级按性质分三组：车辆/外观/单位/记账、数据（外部导入 / 备份与还原 / WebDAV 同步）、关于。
  * 全部子页都从设置首页一层进入，不再有三级页。
  */
 private enum class SettingsPage {
     ROOT,
     VEHICLES,
     APPEARANCE,
+    UNITS,
     CATEGORIES,
     IMPORT,
     BACKUP,
@@ -159,6 +160,7 @@ private enum class SettingsPage {
             ROOT -> tr("设置", "Settings")
             VEHICLES -> tr("我的车辆", "My vehicles")
             APPEARANCE -> tr("外观", "Appearance")
+            UNITS -> tr("单位", "Units")
             CATEGORIES -> tr("费用分类与项目", "Categories & items")
             IMPORT -> tr("外部导入", "Import from other apps")
             BACKUP -> tr("备份与还原", "Backup & restore")
@@ -170,13 +172,14 @@ private enum class SettingsPage {
 /**
  * 设置。
  *
- * 首页：三张卡片、7 行菜单（36dp 图标色底圆片 + 标题 + 状态摘要 + chevron）——
- * 车辆/外观/费用分类与项目；外部导入 / 备份与还原 / WebDAV 同步；关于。
+ * 首页：三张卡片、8 行菜单（单色图标 + 标题 + chevron）——
+ * 车辆/外观/单位/费用分类与项目；外部导入 / 备份与还原 / WebDAV 同步；关于。
  * 点按进入子页；子页共用同一个 TopAppBar（返回箭头回到菜单），系统返回键用
  * [BackHandler] 先回菜单；不新增路由。返回逻辑只有"子页 → 设置首页"一层。
  *
  * - 我的车辆：横向车辆卡片，点卡片切换当前车辆，卡片右上角编辑；添加车辆打开全屏编辑对话框。
  * - 外观：5 套皮肤、深浅色三态。
+ * - 单位：货币 / 里程 / 油量显示口径（只改显示标签，不换算数值）。
  * - 费用分类与项目：费用分类 / 项目库两个页签；分类按当前车辆隔离。
  * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导。
  * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
@@ -505,6 +508,12 @@ fun SettingsScreen(
                                 )
                                 SectionDivider()
                                 SettingsMenuRow(
+                                    icon = MileNoteIcons.Ruler,
+                                    title = tr("单位", "Units"),
+                                    onClick = { pageName = SettingsPage.UNITS.name },
+                                )
+                                SectionDivider()
+                                SettingsMenuRow(
                                     icon = MileNoteIcons.Tag,
                                     title = tr("费用分类与项目", "Categories & items"),
                                     onClick = { pageName = SettingsPage.CATEGORIES.name },
@@ -615,6 +624,17 @@ fun SettingsScreen(
                         }
                     }
 
+                    SettingsPage.UNITS -> SettingsPageList {
+                        item("units") {
+                            UnitsSection(
+                                settings = settings,
+                                onCurrencyChange = { unit -> vm.setCurrency(unit) },
+                                onDistanceUnitChange = { unit -> vm.setDistanceUnit(unit) },
+                                onVolumeUnitChange = { unit -> vm.setVolumeUnit(unit) },
+                            )
+                        }
+                    }
+
                     SettingsPage.APPEARANCE -> SettingsPageList {
                         item("appearance") {
                             AppearanceSection(
@@ -624,9 +644,6 @@ fun SettingsScreen(
                                 onDarkModeChange = { mode -> vm.setDarkMode(mode) },
                                 language = settings.language,
                                 onLanguageChange = { language -> vm.setLanguage(language) },
-                                onCurrencyChange = { unit -> vm.setCurrency(unit) },
-                                onDistanceUnitChange = { unit -> vm.setDistanceUnit(unit) },
-                                onVolumeUnitChange = { unit -> vm.setVolumeUnit(unit) },
                             )
                         }
                     }
@@ -987,9 +1004,6 @@ private fun AppearanceSection(
     onDarkModeChange: (DarkMode) -> Unit,
     language: AppLanguage,
     onLanguageChange: (AppLanguage) -> Unit,
-    onCurrencyChange: (CurrencyUnit?) -> Unit,
-    onDistanceUnitChange: (DistanceUnit) -> Unit,
-    onVolumeUnitChange: (VolumeUnit) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard {
@@ -1026,54 +1040,6 @@ private fun AppearanceSection(
 
         SectionDivider()
 
-        // 单位：只改变显示标签/符号，不换算已录入的数值（账本与备份口径不变）。
-        Text(tr("单位", "Units"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(4.dp))
-        Text(
-            text = tr("货币", "Currency"),
-            style = MaterialTheme.typography.labelMedium,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(6.dp))
-        SegmentedChoiceRow(
-            options = currencyOptions(),
-            selected = settings.currency,
-            onSelect = onCurrencyChange,
-        )
-        Spacer(modifier = Modifier.size(10.dp))
-        Text(
-            text = tr("里程", "Distance"),
-            style = MaterialTheme.typography.labelMedium,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(6.dp))
-        SegmentedChoiceRow(
-            options = distanceUnitOptions(),
-            selected = settings.distanceUnit,
-            onSelect = onDistanceUnitChange,
-        )
-        Spacer(modifier = Modifier.size(10.dp))
-        Text(
-            text = tr("油量", "Volume"),
-            style = MaterialTheme.typography.labelMedium,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(6.dp))
-        SegmentedChoiceRow(
-            options = volumeUnitOptions(),
-            selected = settings.volumeUnit,
-            onSelect = onVolumeUnitChange,
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        Text(
-            text = tr(
-                "单位只改显示标签，不换算数值。",
-                "Units only change display labels; values are not converted.",
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-
         SectionDivider()
 
         Text(
@@ -1081,6 +1047,69 @@ private fun AppearanceSection(
                 "皮肤随账本备份；深浅色只存本机，不随备份恢复。",
                 "Theme is kept in the ledger backup; light/dark mode stays on this device and is not restored from backups.",
             ),
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 单位页（与「外观」平级）：货币 / 里程 / 油量只影响显示标签，不做数值换算。
+ */
+@Composable
+private fun UnitsSection(
+    settings: AppSettings,
+    onCurrencyChange: (CurrencyUnit?) -> Unit,
+    onDistanceUnitChange: (DistanceUnit) -> Unit,
+    onVolumeUnitChange: (VolumeUnit) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    SectionCard {
+        Text(
+            text = tr("单位只改显示标签，不换算数值。", "Units only change display labels; values are not converted."),
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.size(12.dp))
+
+        Text(tr("货币", "Currency"), style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(8.dp))
+        SegmentedChoiceRow(
+            options = currencyOptions(),
+            selected = settings.currency,
+            onSelect = onCurrencyChange,
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        Text(
+            text = tr("默认跟随语言：中文元 / 英文美元。", "Follows the language by default: CNY for Chinese, USD for English."),
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+
+        SectionDivider()
+
+        Text(tr("里程", "Distance"), style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(8.dp))
+        SegmentedChoiceRow(
+            options = distanceUnitOptions(),
+            selected = settings.distanceUnit,
+            onSelect = onDistanceUnitChange,
+        )
+
+        SectionDivider()
+
+        Text(tr("油量", "Volume"), style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(8.dp))
+        SegmentedChoiceRow(
+            options = volumeUnitOptions(),
+            selected = settings.volumeUnit,
+            onSelect = onVolumeUnitChange,
+        )
+
+        SectionDivider()
+
+        Text(
+            text = tr("油耗单位随里程/油量自动组合。", "Fuel economy unit follows the distance/volume combination."),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
