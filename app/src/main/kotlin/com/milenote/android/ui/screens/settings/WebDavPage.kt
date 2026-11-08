@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.milenote.android.BuildConfig
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.WebDavConflictChoice
 import com.milenote.android.ui.WebDavUiState
@@ -62,7 +63,7 @@ private val SyncTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("
 private enum class WebDavOverwrite { UPLOAD, DOWNLOAD }
 
 /**
- * WebDAV 同步子页（设置 → 数据管理 → WebDAV 同步）。
+ * WebDAV 同步子页（设置 → WebDAV 同步）。
  *
  * 内容顺序（自上而下）：
  * 1. **连接状态**：已配置/未配置、上次同步时间、上次结果、远端文件存在性/大小；
@@ -121,6 +122,8 @@ internal fun WebDavPage(
             trimmed.isEmpty() -> tr("请填写服务器文件完整地址", "Enter the full server file URL")
             !(trimmed.startsWith("https://") || trimmed.startsWith("http://")) ->
                 tr("地址需以 https:// 或 http:// 开头", "The address must start with https:// or http://")
+            trimmed.startsWith("http://") && !BuildConfig.DEBUG ->
+                tr("当前版本仅支持 HTTPS 连接（明文 HTTP 仅调试版可用）", "This build only supports HTTPS connections (plain HTTP is available in debug builds only)")
             trimmed.startsWith("http://") && !allowHttp ->
                 tr("HTTP 连接需先开启下方「允许 HTTP（不安全）」", "Turn on “Allow HTTP (insecure)” below to use an HTTP connection")
             else -> null
@@ -260,33 +263,36 @@ internal fun WebDavPage(
                 color = scheme.onSurfaceVariant,
             )
 
-            Spacer(modifier = Modifier.size(8.dp))
-            HorizontalDivider(color = scheme.outlineVariant)
-            Spacer(modifier = Modifier.size(8.dp))
+            // 明文 HTTP 只在调试构建放行（release 的 network-security-config 禁止明文）。
+            if (BuildConfig.DEBUG) {
+                Spacer(modifier = Modifier.size(8.dp))
+                HorizontalDivider(color = scheme.outlineVariant)
+                Spacer(modifier = Modifier.size(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(tr("允许 HTTP（不安全）", "Allow HTTP (insecure)"), style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = tr(
-                            "仅建议自建局域网服务器；公网请使用 HTTPS，否则账本与密码可能被窃听。",
-                            "Only recommended for a self-hosted LAN server; use HTTPS on the public internet or the ledger and password may be intercepted.",
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(tr("允许 HTTP（不安全）", "Allow HTTP (insecure)"), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = tr(
+                                "仅建议自建局域网服务器；公网请使用 HTTPS，否则账本与密码可能被窃听。",
+                                "Only recommended for a self-hosted LAN server; use HTTPS on the public internet or the ledger and password may be intercepted.",
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = allowHttp,
+                        onCheckedChange = {
+                            allowHttp = it
+                            urlError = null
+                        },
+                        enabled = !state.busy,
                     )
                 }
-                Switch(
-                    checked = allowHttp,
-                    onCheckedChange = {
-                        allowHttp = it
-                        urlError = null
-                    },
-                    enabled = !state.busy,
-                )
             }
 
             Spacer(modifier = Modifier.size(12.dp))
@@ -432,6 +438,7 @@ internal fun WebDavPage(
             WebDavNote(tr("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。", "Jianguoyun: Account security → Add app → generate an app password; use the app password, not your login password."))
             WebDavNote(tr("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。", "Create the target folder in your WebDAV service first; the app only reads and writes the JSON file you entered."))
             WebDavNote(tr("账本以 JSON 明文保存在远端，传输由 HTTPS 保护；建议放在私有目录，不要把直链分享给他人。", "The ledger is stored remotely as plain JSON; transport is protected by HTTPS. Keep it in a private folder and do not share the direct link."))
+            WebDavNote(tr("Web 版默认使用「加密同步」；本应用暂只支持明文同步，与 Web 版互传时请在 Web 端选择「明文同步」。", "The web version defaults to encrypted sync; this app currently supports plain sync only. Choose “plain sync” on the web side when sharing a file between them."))
             WebDavNote(tr("自动同步开启后：只在应用打开期间，打开时或本地修改后自动同步；退出应用后不会保留后台任务。两边都有修改时会暂停并提示手动处理。", "With auto sync on: syncs only while the app is open, on launch or after local changes; no background task survives after you leave. It pauses and asks you to resolve when both sides changed."))
         }
     }
@@ -631,7 +638,7 @@ private fun ConflictOption(title: String, detail: String, onClick: () -> Unit) {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * 数据管理页「WebDAV 同步」行使用的状态摘要。
+ * 设置页「WebDAV 同步」行使用的状态摘要。
  *
  * 无「本地有未同步修改」标记（VM 未暴露 dirty 状态），因此用「未配置 / 上次同步时间 / 已配置但尚未同步」表达。
  */

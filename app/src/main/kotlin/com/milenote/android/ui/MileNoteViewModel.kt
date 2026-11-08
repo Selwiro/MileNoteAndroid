@@ -54,12 +54,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** 记一笔/编辑记录的目标。 */
 data class EditorTarget(
     val record: Record? = null,
     val category: String = "油费",
     val serviceReminderId: String? = null,
+    /** 打开编辑器后是否直接进入拍照识票（快捷方式「扫加油票」）。 */
+    val startOcr: Boolean = false,
 )
 
 /** 删除保养记录时询问是否恢复其完成的提醒。 */
@@ -113,6 +117,12 @@ data class WebDavUiState(
     val lastAutoSyncResult: String? = null,
 )
 
+/** 最近一次被隔离的损坏账本文件（设置页「导出原始账本」用）。 */
+data class QuarantinedRaw(
+    val name: String,
+    val savedAtMillis: Long,
+)
+
 /** 全局 UI 状态。 */
 data class UiState(
     val garage: Garage? = null,
@@ -132,6 +142,8 @@ data class UiState(
     val webDav: WebDavUiState = WebDavUiState(),
     /** 总览自定义时间范围；非空时覆盖 [period]。 */
     val customRange: DateRange? = null,
+    /** 最近一次读取失败被隔离的原始账本；仅用于设置页导出入口。 */
+    val quarantinedRaw: QuarantinedRaw? = null,
 ) {
     /** 总览实际使用的统计范围（自定义优先）。 */
     fun effectiveRange(today: java.time.LocalDate = Dates.today()): DateRange =
@@ -253,10 +265,20 @@ class MileNoteViewModel(
 
     // ---------- 记一笔 / 编辑记录 ----------
 
-    fun openEditor(recordId: String? = null, category: String = "油费", serviceReminderId: String? = null) {
+    fun openEditor(
+        recordId: String? = null,
+        category: String = "油费",
+        serviceReminderId: String? = null,
+        startOcr: Boolean = false,
+    ) {
         val record = recordId?.let { id -> _state.value.activeCar?.records?.firstOrNull { it.id == id } }
         _state.value = _state.value.copy(
-            editor = EditorTarget(record = record, category = category, serviceReminderId = serviceReminderId),
+            editor = EditorTarget(
+                record = record,
+                category = category,
+                serviceReminderId = serviceReminderId,
+                startOcr = startOcr,
+            ),
         )
     }
 
@@ -654,6 +676,20 @@ class MileNoteViewModel(
 
     suspend fun exportBackup(): String = repository.exportBackup()
 
+    /** 刷新「最近一次损坏账本」状态；进入备份与还原页时调用。 */
+    suspend fun refreshQuarantinedRaw() {
+        val file = repository.quarantinedRaw()
+        _state.value = _state.value.copy(
+            quarantinedRaw = file?.let { QuarantinedRaw(name = it.name, savedAtMillis = it.lastModified()) },
+        )
+    }
+
+    /** 读取损坏账本的原始字节；读取失败或不存在返回 null。 */
+    suspend fun readQuarantinedRaw(): ByteArray? = withContext(Dispatchers.IO) {
+        val file = repository.quarantinedRaw() ?: return@withContext null
+        runCatching { file.readBytes() }.getOrNull()
+    }
+
     fun restoreBackup(text: String) {
         viewModelScope.launch {
             try {
@@ -909,7 +945,7 @@ class MileNoteViewModel(
         if (outcome.kind == AutoSyncOutcome.Kind.SKIPPED) return
         if (outcome.kind == AutoSyncOutcome.Kind.CONFLICT) {
             _state.value = _state.value.copy(
-                message = tr("自动同步发现冲突，请到 设置 → 数据管理 → WebDAV 手动处理", "Auto sync found a conflict. Resolve it in Settings → Data management → WebDAV."),
+                message = tr("自动同步发现冲突，请到 设置 → WebDAV 同步 手动处理", "Auto sync found a conflict. Resolve it in Settings → WebDAV sync."),
             )
         }
         updateWebDav {

@@ -113,7 +113,7 @@ import java.time.ZoneOffset
  * - 明细：搜索、时间筛选、汇总、按月份分组的独立记录卡片，点卡片看详情；
  * - 底部可折叠「满箱法说明」。
  *
- * 新增记录统一由底栏「记一笔」承担；导入入口在「车辆与设置 → 数据管理」。
+ * 新增记录统一由底栏「记一笔」承担；导入入口在「设置 → 外部导入」。
  * 只输出内容，不含 Scaffold / 顶栏 / 底栏；底部由外层 Scaffold 预留。
  *
  * @param vm 全局 ViewModel（期间、编辑记录）。
@@ -384,7 +384,7 @@ fun FuelScreen(
                     EmptyState(
                         illustration = painterResource(R.drawable.ill_empty_fuel),
                         title = tr("至少需要两次有里程、加油量的加满记录", "At least two full-tank records with mileage and fuel amount are needed"),
-                        description = tr("导入加油记录后也会自动计算；导入入口在 设置 → 数据管理。", "Imported fuel records are calculated automatically too; import is in Settings → Data management."),
+                        description = tr("导入加油记录后也会自动计算；导入入口在 设置 → 外部导入。", "Imported fuel records are calculated automatically too; import is in Settings → Import from other apps."),
                     )
                 } else {
                     FuelTrendChart(
@@ -495,7 +495,7 @@ fun FuelScreen(
                             tr("没有匹配的加油记录", "No matching fuel records")
                         },
                         description = if (detailQuery.isBlank()) {
-                            tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 数据管理。", "Add fuel from Add entry in the bottom bar; import is in Settings → Data management.")
+                            tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 外部导入。", "Add fuel from Add entry in the bottom bar; import is in Settings → Import from other apps.")
                         } else {
                             tr("试试清空搜索关键词或调整时间范围。", "Try clearing the search keyword or changing the date range.")
                         },

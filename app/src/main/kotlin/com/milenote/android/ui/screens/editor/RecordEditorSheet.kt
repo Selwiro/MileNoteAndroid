@@ -95,7 +95,7 @@ fun RecordEditorScreen(
         return
     }
     val form = remember(ledger.id, target) { RecordEditorState(ledger = ledger, target = target) }
-    var showOcr by remember { mutableStateOf(false) }
+    var showOcr by remember { mutableStateOf(target.startOcr) }
 
     // 系统返回键 / 预测式返回手势：关闭页面（未保存内容不做二次确认，与 Web 关闭弹窗一致）。
     BackHandler(onBack = onDismiss)

@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 英文系统 / 英文语言下的应用名（Manifest 引用）；界面文案由 i18n/tr() 处理。 -->
+    <!-- 英文系统 / 英文语言下的应用名与快捷方式标签（Manifest / shortcuts.xml 引用）；界面文案由 i18n/tr() 处理。 -->
     <string name="app_name">MileNote</string>
+
+    <string name="shortcut_new_entry_short">New entry</string>
+    <string name="shortcut_new_entry_long">New entry</string>
+    <string name="shortcut_fuel_short">Add fuel</string>
+    <string name="shortcut_fuel_long">Add fuel</string>
+    <string name="shortcut_scan_short">Scan</string>
+    <string name="shortcut_scan_long">Scan receipt</string>
 </resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- debug 构建：放行明文流量，便于本机/局域网 HTTP WebDAV 联调；release 走 main 的严格配置。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  release / 默认：禁止明文流量。
+  WebDAV 支持「允许 HTTP（不安全）」仅为自建局域网服务器准备，release 版不再放行；
+  调试构建由 src/debug/res/xml/network_security_config.xml 覆盖为全局放行，方便本机联调。
+  这里只额外放行模拟器/本机调试地址，便于在 release 构建上做本机回环测试。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

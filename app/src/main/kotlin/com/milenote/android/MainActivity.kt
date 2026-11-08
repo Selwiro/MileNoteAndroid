@@ -23,11 +23,13 @@ import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.i18n.AppLanguage
 import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.tr
+import com.milenote.android.navigation.AppShortcut
 import com.milenote.android.navigation.MileNoteApp
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.theme.AppTheme
 import com.milenote.android.ui.theme.MileNoteTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -38,11 +40,26 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val container = (application as MileNoteApplication).container
         handleShareIntent(intent)
+        handleShortcutIntent(intent)
         setContent {
             LaunchedEffect(Unit) { container.garageRepository.load() }
             val garage by container.garageRepository.garage.collectAsStateWithLifecycle(null)
             val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(AppSettings())
             val vm: MileNoteViewModel = viewModel(factory = MileNoteViewModel.factory(container))
+
+            // 桌面长按快捷方式（记一笔 / 记加油 / 扫加油票）：等账本加载完再打开对应入口，
+            // 避免冷启动时 load() 与 openEditor() 竞争。
+            val pendingShortcut by container.pendingShortcut.collectAsStateWithLifecycle(null)
+            LaunchedEffect(pendingShortcut) {
+                val shortcut = pendingShortcut ?: return@LaunchedEffect
+                container.pendingShortcut.value = null
+                vm.state.first { it.garage != null }
+                when (shortcut) {
+                    AppShortcut.NEW_ENTRY -> vm.openEditor()
+                    AppShortcut.FUEL -> vm.openEditor(category = "油费")
+                    AppShortcut.OCR -> vm.openEditor(category = "油费", startOcr = true)
+                }
+            }
 
             // 界面语言：设置项优先级最高，跟随时读系统语言（英文系统 → 英文界面）。
             val locales = LocalConfiguration.current.locales
@@ -86,6 +103,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleShareIntent(intent)
+        handleShortcutIntent(intent)
+    }
+
+    /** 桌面长按快捷方式：只记录待处理入口，界面在组合中消费。 */
+    private fun handleShortcutIntent(intent: Intent?) {
+        val shortcut = AppShortcut.fromAction(intent?.action) ?: return
+        (application as MileNoteApplication).container.pendingShortcut.value = shortcut
     }
 
     /** 接收 ACTION_SEND（钱迹「分享到其他 App」、文件管理器分享等），读取文本或文件字节。 */
