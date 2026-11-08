@@ -496,7 +496,7 @@ fun SettingsScreen(
 
                         item("menu-main") {
                             SectionCard(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Car,
@@ -526,7 +526,7 @@ fun SettingsScreen(
 
                         item("menu-data") {
                             SectionCard(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Import,
@@ -550,7 +550,7 @@ fun SettingsScreen(
 
                         item("menu-about") {
                             SectionCard(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
                             ) {
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Info,
@@ -796,7 +796,7 @@ private fun SettingsMenuRow(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -1379,7 +1379,10 @@ private fun BackupRestorePage(
         }
 
         item("export") {
-            SectionCard(title = tr("导出", "Export")) {
+            SectionCard(
+                title = tr("导出", "Export"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Export,
                     title = tr("导出完整备份（JSON）", "Export full backup (JSON)"),
@@ -1417,7 +1420,10 @@ private fun BackupRestorePage(
         }
 
         item("restore") {
-            SectionCard(title = tr("还原", "Restore")) {
+            SectionCard(
+                title = tr("还原", "Restore"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Import,
                     title = tr("从 JSON 备份还原", "Restore from JSON backup"),
@@ -1429,7 +1435,10 @@ private fun BackupRestorePage(
         }
 
         item("danger") {
-            SectionCard(title = tr("危险区", "Danger zone")) {
+            SectionCard(
+                title = tr("危险区", "Danger zone"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Delete,
                     title = tr("删除全部数据", "Delete all data"),
@@ -1532,11 +1541,19 @@ private fun AboutPage(
                             contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                         )
                     }
-                    Text(
-                        text = tr("里程志", "MileNote"),
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(tr("里程志", "MileNote"), style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.size(10.dp))
                 Text(
@@ -1550,20 +1567,17 @@ private fun AboutPage(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(modifier = Modifier.size(12.dp))
+            }
+        }
+
+        item("links") {
+            SectionCard(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Refresh,
                     title = tr("检查更新", "Check for updates"),
-                    subtitle = if (checkingUpdate) {
-                        tr("正在检查 GitHub…", "Checking GitHub…")
-                    } else {
-                        tr(
-                            "当前 %s (%s)",
-                            "Current %s (%s)",
-                            BuildConfig.VERSION_NAME,
-                            BuildConfig.VERSION_CODE,
-                        )
-                    },
+                    subtitle = tr("检查 GitHub 上是否有新版本", "Check GitHub for a new version"),
                     enabled = !checkingUpdate,
                     onClick = { checkForUpdates() },
                     trailing = {
@@ -1575,11 +1589,7 @@ private fun AboutPage(
                         }
                     },
                 )
-            }
-        }
-
-        item("links") {
-            SectionCard {
+                SectionDivider()
                 SettingsMenuRow(
                     icon = MileNoteIcons.Globe,
                     title = tr("官网", "Website"),
@@ -1599,7 +1609,9 @@ private fun AboutPage(
         }
 
         item("demo") {
-            SectionCard {
+            SectionCard(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Sparkle,
                     title = if (demo) tr("退出演示账本", "Exit demo ledger") else tr("体验演示账本", "Try the demo ledger"),
