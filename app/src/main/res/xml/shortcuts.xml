@@ -7,6 +7,7 @@
 
     <shortcut
         android:enabled="true"
+        android:icon="@drawable/ic_shortcut_entry"
         android:shortcutId="new_entry"
         android:shortcutLongLabel="@string/shortcut_new_entry_long"
         android:shortcutShortLabel="@string/shortcut_new_entry_short">
@@ -18,6 +19,7 @@
 
     <shortcut
         android:enabled="true"
+        android:icon="@drawable/ic_shortcut_fuel"
         android:shortcutId="add_fuel"
         android:shortcutLongLabel="@string/shortcut_fuel_long"
         android:shortcutShortLabel="@string/shortcut_fuel_short">
@@ -29,6 +31,7 @@
 
     <shortcut
         android:enabled="true"
+        android:icon="@drawable/ic_shortcut_scan"
         android:shortcutId="scan_receipt"
         android:shortcutLongLabel="@string/shortcut_scan_long"
         android:shortcutShortLabel="@string/shortcut_scan_short">
