@@ -4,6 +4,10 @@
 
   var root = document.documentElement;
   var THEME_KEY = 'milenote-theme';
+  /* 站点有两套语言页面（/ 与 /en/），这里只切换少量由 JS 写入的界面文案；
+     默认中文，行为与原来一致。 */
+  var EN = /^en/i.test(root.lang || '');
+  function t(zh, en) { return EN ? en : zh; }
   var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
   /* ---------- 主题 ---------- */
@@ -18,7 +22,7 @@
     root.dataset.theme = theme;
     document.querySelectorAll('.theme-toggle').forEach(function (btn) {
       btn.setAttribute('aria-pressed', String(theme === 'dark'));
-      btn.setAttribute('aria-label', '深色模式');
+      btn.setAttribute('aria-label', t('深色模式', 'Dark mode'));
     });
     paintThemeMeta(theme);
     if (persist) {
@@ -62,7 +66,7 @@
       var setOpen = function (open) {
         menu.hidden = !open;
         toggle.setAttribute('aria-expanded', String(open));
-        toggle.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单');
+        toggle.setAttribute('aria-label', open ? t('关闭菜单', 'Close menu') : t('打开菜单', 'Open menu'));
       };
       toggle.addEventListener('click', function () {
         setOpen(menu.hidden);
@@ -148,7 +152,10 @@
     });
     var caption = tab.getAttribute('data-caption') || '';
     if (tour.caption) tour.caption.textContent = caption;
-    if (tour.stageBtn) tour.stageBtn.setAttribute('aria-label', '查看「' + tab.querySelector('strong').textContent + '」的完整截图');
+    if (tour.stageBtn) {
+      var tabTitle = tab.querySelector('strong').textContent;
+      tour.stageBtn.setAttribute('aria-label', t('查看「' + tabTitle + '」的完整截图', 'View full screenshot of “' + tabTitle + '”'));
+    }
     return key;
   }
 
@@ -181,7 +188,8 @@
       var title = tab.querySelector('strong').textContent;
       img.src = source ? source.getAttribute('src') : 'assets/screens/' + key + '.webp';
       img.alt = source ? source.getAttribute('alt') : title;
-      cap.textContent = (tab.getAttribute('data-caption') || title) + '（' + (tour.current + 1) + ' / ' + tour.tabs.length + '）';
+      var counter = t('（' + (tour.current + 1) + ' / ' + tour.tabs.length + '）', ' (' + (tour.current + 1) + ' / ' + tour.tabs.length + ')');
+      cap.textContent = (tab.getAttribute('data-caption') || title) + counter;
       showScreen(tour.current);
     }
 
@@ -224,7 +232,7 @@
 
   function formatReleaseSize(bytes) {
     if (!bytes) return '';
-    return '约 ' + Math.round(bytes / 1048576) + ' MB';
+    return t('约 ' + Math.round(bytes / 1048576) + ' MB', 'About ' + Math.round(bytes / 1048576) + ' MB');
   }
 
   function applyRelease(data) {
@@ -329,7 +337,7 @@
 
         function done() {
           var original = btn.textContent;
-          btn.textContent = '已复制';
+          btn.textContent = t('已复制', 'Copied');
           btn.classList.add('is-done');
           window.setTimeout(function () {
             btn.textContent = original;
