@@ -64,7 +64,7 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 ## 测试
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 192 项领域 + 33 项 app 测试
+./gradlew :domain:test :app:testDebugUnitTest  # 195 项领域 + 38 项 app 测试
 ./gradlew :app:assembleDebug                   # 构建 + 编译检查
 ```
 
@@ -84,4 +84,5 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 
 - 账本存储采用与 Web 完全同构的 `version:2` 单文件 JSON（图片 base64 dataURL 内嵌），保证与 Web 版备份双向互通；不使用 Room 分表。
 - 本仓库只含 Android 端代码；功能范围、验收记录、已知限制与更早版本历史保存在作者本机工作区，不在本仓库。
-- WebDAV / 桌面小组件 / 应用锁 / 平板双栏属于第二批，未包含在本版本。
+- WebDAV 同步已实现：仅前台自动同步，远端保存明文 JSON，**暂不支持 Web 端的加密同步格式**（跨端互传请用明文）；桌面小组件 / 应用锁 / 平板双栏明确不做。
+- 桌面长按快捷方式（记一笔 / 记加油 / 扫加油票）；界面锁竖屏；release 包禁止明文 HTTP，调试包放行（详见 `AGENTS.md` 与 `docs/decisions.md`）。
