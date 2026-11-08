@@ -42,10 +42,11 @@ class GarageFileStore(context: Context) {
         if (file.renameTo(broken)) broken else null
     }
 
-    fun exportRawCopy(): File? = synchronized(lock) {
-        if (!file.exists()) return null
-        val copy = File(dir, "garage-export-${System.currentTimeMillis()}.json")
-        file.copyTo(copy, overwrite = true)
-        copy
+    /** 最近一次被隔离（解析失败）的原始文件；没有则返回 null。 */
+    fun latestQuarantined(): File? = synchronized(lock) {
+        dir.listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.name.startsWith("garage-broken-") && it.name.endsWith(".json") }
+            ?.maxByOrNull { it.lastModified() }
     }
 }

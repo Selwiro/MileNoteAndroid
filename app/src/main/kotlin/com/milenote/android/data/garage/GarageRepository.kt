@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** 恢复备份后的数量摘要，用于结果提示。 */
 data class RestoreSummary(
@@ -132,6 +133,9 @@ class GarageRepository(
     suspend fun exportBackup(): String = withContext(io) {
         BackupCodec.encode(_garage.value ?: GarageOps.normalizeGarage(null))
     }
+
+    /** 最近一次读取失败被隔离的原始账本文件（供用户导出检查）；没有则返回 null。 */
+    suspend fun quarantinedRaw(): File? = withContext(io) { store.latestQuarantined() }
 
     /** 恢复备份（v1 合到当前车 / v2 按车辆 id 合并），返回合并后的数量摘要。 */
     suspend fun restoreBackup(text: String): RestoreSummary {

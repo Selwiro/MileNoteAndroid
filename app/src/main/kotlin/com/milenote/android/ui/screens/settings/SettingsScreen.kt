@@ -49,6 +49,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,6 +74,7 @@ import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.data.update.UpdateCheckResult
 import com.milenote.android.data.update.UpdateChecker
 import com.milenote.android.domain.calc.Categories
+import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.currentKm
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
@@ -85,6 +87,7 @@ import com.milenote.android.platform.FileExporter
 import com.milenote.android.platform.LedgerExports
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.PendingConfirm
+import com.milenote.android.ui.QuarantinedRaw
 import com.milenote.android.ui.WebDavDownloadMode
 import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.LoadingState
@@ -213,6 +216,7 @@ fun SettingsScreen(
     var editing by remember { mutableStateOf<VehicleEditTarget?>(null) }
     var pendingBackup by remember { mutableStateOf<String?>(null) }
     var pendingCsv by remember { mutableStateOf<ByteArray?>(null) }
+    var pendingRaw by remember { mutableStateOf<ByteArray?>(null) }
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.ROOT.name) }
     var categoryTab by rememberSaveable { mutableIntStateOf(0) }
     val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: SettingsPage.ROOT
@@ -300,6 +304,27 @@ fun SettingsScreen(
         }
     }
 
+    val createRaw = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        val bytes = pendingRaw
+        pendingRaw = null
+        if (uri != null && bytes != null) {
+            runCatching { FileExporter.writeTo(context, uri, bytes) }
+                .onSuccess { notify(tr("原始账本已导出", "Raw ledger exported"), MessageKind.SUCCESS) }
+                .onFailure {
+                    notify(
+                        tr(
+                            "导出失败：%s",
+                            "Export failed: %s",
+                            it.message ?: tr("无法写入所选文件", "Could not write the selected file"),
+                        ),
+                        MessageKind.ERROR,
+                    )
+                }
+        }
+    }
+
     val openBackup = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -360,6 +385,24 @@ fun SettingsScreen(
         }
         pendingCsv = LedgerExports.csv(ledger)
         createCsv.launch(LedgerExports.csvFileName())
+    }
+
+    /** 导出解析失败时被隔离的原始账本（只用于人工检查/抢救，不能直接还原）。 */
+    fun exportRawFile() {
+        scope.launch {
+            busy = true
+            try {
+                val bytes = vm.readQuarantinedRaw()
+                if (bytes == null) {
+                    notify(tr("没有可导出的原始账本", "No raw ledger available to export"), MessageKind.WARNING)
+                } else {
+                    pendingRaw = bytes
+                    createRaw.launch("里程志-原始数据-${Dates.iso(Dates.today())}.json")
+                }
+            } finally {
+                busy = false
+            }
+        }
     }
 
     fun openVehicleEditor(id: String?) {
@@ -653,10 +696,13 @@ fun SettingsScreen(
                         recordsCount = cars.sumOf { it.records.size },
                         demo = state.demo,
                         loadError = state.loadError,
+                        quarantinedRaw = state.quarantinedRaw,
                         busy = busy,
                         message = message,
                         onExportBackup = { exportBackupFile() },
                         onExportCsv = { exportCsvFile() },
+                        onExportRaw = { exportRawFile() },
+                        onRefreshQuarantinedRaw = { vm.refreshQuarantinedRaw() },
                         onImportBackup = {
                             openBackup.launch(
                                 arrayOf("application/json", "application/octet-stream", "text/plain"),
@@ -1239,15 +1285,20 @@ private fun BackupRestorePage(
     recordsCount: Int,
     demo: Boolean,
     loadError: String?,
+    quarantinedRaw: QuarantinedRaw?,
     busy: Boolean,
     message: SettingsMessage?,
     onExportBackup: () -> Unit,
     onExportCsv: () -> Unit,
+    onExportRaw: () -> Unit,
+    onRefreshQuarantinedRaw: suspend () -> Unit,
     onImportBackup: () -> Unit,
     onDeleteAll: () -> Unit,
     onExitDemo: () -> Unit,
     onDismissMessage: () -> Unit,
 ) {
+    // 每次进入本页都重新检查是否有被隔离的损坏账本（读取失败时自动隔离）。
+    LaunchedEffect(Unit) { onRefreshQuarantinedRaw() }
     SettingsPageList {
         if (loadError != null || demo || message != null) {
             item("messages") {
@@ -1295,6 +1346,19 @@ private fun BackupRestorePage(
                         }
                     },
                 )
+                if (quarantinedRaw != null) {
+                    SectionDivider()
+                    SettingsActionRow(
+                        icon = MileNoteIcons.Warning,
+                        title = tr("导出原始账本（损坏文件）", "Export raw ledger (corrupted file)"),
+                        subtitle = tr(
+                            "账本读取失败时保留的原始 JSON，用于人工检查或抢救；不能直接还原",
+                            "The original JSON kept when the ledger failed to load, for manual inspection or recovery; it cannot be restored directly",
+                        ),
+                        enabled = !busy,
+                        onClick = onExportRaw,
+                    )
+                }
                 SectionDivider()
                 SettingsActionRow(
                     icon = MileNoteIcons.Download,
