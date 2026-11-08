@@ -14,8 +14,8 @@ android {
         applicationId = "com.milenote.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 74
-        versionName = "0.32.0"
+        versionCode = 75
+        versionName = "0.33.0"
         vectorDrawables.useSupportLibrary = true
 
         // ML Kit 的中文 OCR 只带 arm 的 .so；x86 仅用于模拟器调试，不进正式包（省约 22 MB）。
