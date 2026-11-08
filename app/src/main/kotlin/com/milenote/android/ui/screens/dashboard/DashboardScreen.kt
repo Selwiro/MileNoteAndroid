@@ -1,32 +1,35 @@
 package com.milenote.android.ui.screens.dashboard
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -43,20 +46,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.milenote.android.R
-import com.milenote.android.i18n.DataLabels
-import com.milenote.android.i18n.Units
-import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Companion
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
@@ -73,13 +80,14 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.Units
+import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.Routes
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
 import com.milenote.android.ui.components.CategoryBadge
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.HeroBadge
-import com.milenote.android.ui.components.HeroCarArt
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
@@ -100,12 +108,14 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneOffset
 
-/** 紧凑 Hero 高度：只保留车辆身份与插画，不再承载里程/花销数据。 */
+/** 顶卡最小高度：与现状一致（156dp），保证页面节奏不变。 */
 private val CompactHeroHeight = 156.dp
 
-/** Hero 右侧插画区域（96×88dp；HeroCarArt 为 2.38:1 宽幅，横向自适应）。 */
-private val HeroArtWidth = 96.dp
-private val HeroArtHeight = 88.dp
+/** 右侧肖像区最大宽度（有照片时放用户照片；无照片时留给品牌插画出血）。 */
+private val HeroPortraitWidth = 160.dp
+
+/** 无照片时品牌插画宽度（右缘出血 12dp，见 [VehicleHeroCard]）。 */
+private val HeroCarArtWidth = 170.dp
 
 /**
  * 总览页：紧凑 Hero 车辆卡 + 用车统计大卡（2×2 指标 + 右上时间筛选）+ 里程趋势 + 爱车待办。
@@ -291,10 +301,12 @@ private fun DemoBanner(onExitDemo: () -> Unit) {
 }
 
 /**
- * 紧凑 Hero 车辆卡（约 156dp 高）：只保留车名、车型/车牌、陪伴/记录徽章与右侧车辆插画。
+ * 总览顶卡「车辆名片」（方案 A）：品牌渐变 + 车名 + 右侧肖像区 + 「已陪伴 · 笔数」页脚。
  *
- * 不再显示当前里程、本月支出等数据（已移到「用车统计」卡）；整卡点按进入设置 / 管理车辆。
- * 自定义 Row 布局可确保文字区与插画互不遮挡。
+ * - 车名是第一视觉层（24sp/32，最多 2 行）；车型/车牌 14sp 单行；页脚 12sp；
+ * - 有用户照片时占右侧 160dp 肖像区（左缘渐隐，绝不压左侧文字）；无照片时品牌插画贴底右侧出血；
+ * - **不显示总里程、不放右上角按钮**（产品 2026-11-08 决定）；整卡点按进入设置 / 车辆管理；
+ * - 字号 ≥1.3× 时收起肖像区、文字整宽，卡高由内容决定（`heightIn`，不裁字）。
  */
 @Composable
 private fun VehicleHeroCard(
@@ -303,136 +315,226 @@ private fun VehicleHeroCard(
     modifier: Modifier = Modifier,
 ) {
     val vehicle = ledger.vehicle
-    val days = Companion.days(vehicle.companionDate)
-    val badge = heroBadge(ledger, days)
     val gradient = LocalMileNoteHeroGradient.current
-    Box(
+    val contentColor = gradient.contentColor
+    val days = Companion.days(vehicle.companionDate)
+    val footer = heroFooterText(ledger, days)
+    val empty = footer == null
+    val photoBitmap = remember(vehicle.image) {
+        if (DataUrlImages.isDataUrl(vehicle.image)) DataUrlImages.decode(vehicle.image) else null
+    }
+    val hasPhoto = photoBitmap != null ||
+        (!DataUrlImages.isDataUrl(vehicle.image) && !vehicle.image.isNullOrBlank())
+    val fontScale = LocalDensity.current.fontScale
+    val fixedHeight = fontScale < 1.3f
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = CompactHeroHeight)
+            .then(
+                if (fixedHeight) {
+                    Modifier.height(CompactHeroHeight)
+                } else {
+                    Modifier.heightIn(min = CompactHeroHeight)
+                },
+            )
             .clip(MileNoteShapes.extraLarge)
             .background(Brush.linearGradient(gradient.colors))
-            .clickable(onClick = { onNavigate(Routes.SETTINGS) }),
-        contentAlignment = Alignment.Center,
+            .clickable(
+                onClickLabel = tr("管理车辆", "Manage vehicle"),
+                onClick = { onNavigate(Routes.SETTINGS) },
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = tr(
+                    "管理车辆：%s",
+                    "Manage vehicle: %s",
+                    DataLabels.vehicleName(vehicle.name),
+                )
+            },
     ) {
-        Row(
+        val cardWidth = maxWidth
+        // 右侧肖像区：正常字号占 42%，最宽 160dp；≥1.3× 字号收起。
+        val portraitWidth = if (fixedHeight) minOf(HeroPortraitWidth, cardWidth * 0.42f) else 0.dp
+        val textWidth = maxOf(0.dp, cardWidth - portraitWidth - 22.dp)
+
+        // 卡内叠加：左缘暗角（体积感 + 小字对比度余量）+ 右上柔光
+        Canvas(modifier = Modifier.matchParentSize()) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0f to Color(0x2E141E26),
+                        0.46f to Color(0x0F141E26),
+                        0.66f to Color.Transparent,
+                        1f to Color.Transparent,
+                    ),
+                ),
+            )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.14f), Color.Transparent),
+                    center = Offset(size.width * 0.88f, size.height * 0.08f),
+                    radius = size.width * 0.55f,
+                ),
+            )
+        }
+        // 顶部 1dp 高光
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.10f)),
+        )
+
+        if (fixedHeight && hasPhoto) {
+            VehiclePortraitPhoto(
+                vehicle = vehicle,
+                bitmap = photoBitmap,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(portraitWidth),
+            )
+        } else if (fixedHeight) {
+            // 地面光池 + 品牌插画（右缘出血 12dp、贴底 6dp）
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 4.dp, y = (-4).dp)
+                    .width(190.dp)
+                    .height(52.dp),
             ) {
-                HeroBadge(text = badge.first, icon = badge.second)
-                Text(
-                    text = DataLabels.vehicleName(vehicle.name),
-                    style = MaterialTheme.typography.titleLargeEmphasized,
-                    color = gradient.contentColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = heroSubtitle(ledger, days),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = gradient.contentColor.copy(alpha = 0.82f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                drawOval(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                        center = Offset(size.width / 2f, size.height / 2f),
+                        radius = size.width / 2f,
+                    ),
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            HeroVehicleArt(
-                vehicle = vehicle,
+            Image(
+                painter = painterResource(R.drawable.milenote_car_hero),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .width(HeroArtWidth)
-                    .height(HeroArtHeight),
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 12.dp, y = (-6).dp)
+                    .width(HeroCarArtWidth),
             )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(textWidth + 20.dp)
+                .padding(start = 20.dp, top = 16.dp, bottom = 15.dp),
+            verticalArrangement = if (empty) Arrangement.Center else Arrangement.Top,
+        ) {
+            Text(
+                text = DataLabels.vehicleName(vehicle.name),
+                style = MaterialTheme.typography.headlineSmallEmphasized,
+                color = contentColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = heroModelLine(vehicle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            if (footer != null) {
+                if (fixedHeight) {
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = Color.White.copy(alpha = 0.16f),
+                )
+                Spacer(modifier = Modifier.height(9.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = MileNoteIcons.Calendar,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = footer,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = contentColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }
 
-/**
- * 紧凑 Hero 副标题：车型/车牌优先；有陪伴天数/记录数时由徽章承载，副标题不再重复；
- * 无数据时保留「添加车辆信息，开启你的用车账本」引导文案。
- */
-private fun heroSubtitle(ledger: Ledger, days: Int?): String {
-    val vehicle = ledger.vehicle
-    val modelPlate = listOf(vehicle.model, vehicle.plate)
+/** 右侧肖像区：用户照片 cover/fit + 左缘渐隐（DstIn），保证照片不压左侧文字。 */
+@Composable
+private fun VehiclePortraitPhoto(
+    vehicle: Vehicle,
+    bitmap: ImageBitmap?,
+    modifier: Modifier = Modifier,
+) {
+    val contentScale = if (vehicle.imageFit == "cover") ContentScale.Crop else ContentScale.Fit
+    val fadeModifier = Modifier
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.55f to Color.Black,
+                        1f to Color.Black,
+                    ),
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    when {
+        bitmap != null -> Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            contentScale = contentScale,
+            modifier = modifier.fillMaxSize().then(fadeModifier),
+        )
+        !vehicle.image.isNullOrBlank() -> AsyncImage(
+            model = vehicle.image,
+            contentDescription = null,
+            contentScale = contentScale,
+            placeholder = painterResource(R.drawable.milenote_car_hero),
+            error = painterResource(R.drawable.milenote_car_hero),
+            modifier = modifier.fillMaxSize().then(fadeModifier),
+        )
+        else -> Unit
+    }
+}
+
+/** 车型 · 车牌；都为空时给「点击完善车辆信息」引导。 */
+private fun heroModelLine(vehicle: Vehicle): String =
+    listOf(vehicle.model, vehicle.plate)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
-    if (modelPlate.isNotEmpty()) return modelPlate
+        .ifBlank { tr("点击完善车辆信息", "Tap to complete vehicle info") }
 
-    // 徽章已显示「陪伴 X 天 · N 笔」或「已记录 N 笔」时，副标题只提示完善信息，避免重复。
-    if (ledger.records.isNotEmpty() || (days != null && days > 0)) {
-        return tr("点击完善车辆信息", "Tap to complete vehicle info")
-    }
-
-    val km = currentKm(ledger)
-    if (km > 0) {
-        return tr("当前里程 %s · 点击完善车辆信息", "Current mileage %s · tap to complete vehicle info", Format.km(km, Units.distanceUnit))
-    }
-    if (vehicle.name.isNotBlank() && vehicle.name != "我的爱车") {
-        return tr("点击完善车辆信息", "Tap to complete vehicle info")
-    }
-    return tr("添加车辆信息，开启你的用车账本", "Add vehicle info to start your ledger")
-}
-
-/**
- * 紧凑 Hero 徽章：有提车日期显示陪伴天数（并有记录时附带笔数）；
- * 否则显示记录数或「完善车辆信息」，不再出现「设置提车日期」假按钮。
- */
-private fun heroBadge(ledger: Ledger, days: Int?): Pair<String, ImageVector> {
+/** 页脚文案：已陪伴天数 · 记录笔数；两者都没有时返回 null（空账本状态）。 */
+private fun heroFooterText(ledger: Ledger, days: Int?): String? {
     val recordCount = ledger.records.size
-    if (days != null && days > 0) {
-        val text = if (recordCount > 0) {
-            tr("陪伴 %d 天 · %d 笔", "%d days · %d entries", days, recordCount)
-        } else {
-            tr("陪伴 %d 天", "%d days", days)
-        }
-        return text to MileNoteIcons.Calendar
-    }
-    if (recordCount > 0) return tr("已记录 %d 笔", "%d entries", recordCount) to MileNoteIcons.Records
-    return tr("完善车辆信息", "Complete vehicle info") to MileNoteIcons.Edit
-}
-
-/** 紧凑 Hero 右侧插画：用户图片优先（圆角 + 白描边 + 轻阴影）；无图 / 解码失败用品牌车插画。 */
-@Composable
-private fun HeroVehicleArt(vehicle: Vehicle, modifier: Modifier = Modifier) {
-    val image = vehicle.image
-    val contentScale = if (vehicle.imageFit == "cover") ContentScale.Crop else ContentScale.Fit
-    val shape = RoundedCornerShape(16.dp)
-    when {
-        DataUrlImages.isDataUrl(image) -> {
-            val bitmap = remember(image) { DataUrlImages.decode(image) }
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = DataLabels.vehicleName(vehicle.name),
-                    modifier = modifier
-                        .shadow(elevation = 2.dp, shape = shape, clip = false)
-                        .border(width = 2.dp, color = Color.White.copy(alpha = 0.82f), shape = shape)
-                        .clip(shape),
-                    contentScale = contentScale,
-                )
-            } else {
-                HeroCarArt(modifier = modifier)
-            }
-        }
-        !image.isNullOrBlank() -> {
-            AsyncImage(
-                model = image,
-                contentDescription = DataLabels.vehicleName(vehicle.name),
-                modifier = modifier
-                    .shadow(elevation = 2.dp, shape = shape, clip = false)
-                    .border(width = 2.dp, color = Color.White.copy(alpha = 0.82f), shape = shape)
-                    .clip(shape),
-                placeholder = painterResource(R.drawable.milenote_car_hero),
-                error = painterResource(R.drawable.milenote_car_hero),
-                contentScale = contentScale,
-            )
-        }
-        else -> HeroCarArt(modifier = modifier)
+    return when {
+        days != null && days > 0 && recordCount > 0 ->
+            tr("已陪伴 %d 天 · %d 笔", "%d days · %d entries", days, recordCount)
+        days != null && days > 0 -> tr("已陪伴 %d 天", "%d days", days)
+        recordCount > 0 -> tr("已记录 %d 笔", "%d entries", recordCount)
+        else -> null
     }
 }
 
