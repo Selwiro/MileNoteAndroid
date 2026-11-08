@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  长按应用图标的快捷方式：记一笔 / 记加油 / 扫加油票（原方案 2026-11-04 §M5）。
+  长按应用图标的快捷方式：记一笔 / 油费识别。
   intent 只带自定义 action，MainActivity 解析后交给 MileNoteViewModel 打开对应入口。
 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
@@ -13,18 +13,6 @@
         android:shortcutShortLabel="@string/shortcut_new_entry_short">
         <intent
             android:action="com.milenote.android.SHORTCUT_NEW_ENTRY"
-            android:targetClass="com.milenote.android.MainActivity"
-            android:targetPackage="com.milenote.android" />
-    </shortcut>
-
-    <shortcut
-        android:enabled="true"
-        android:icon="@drawable/ic_shortcut_fuel"
-        android:shortcutId="add_fuel"
-        android:shortcutLongLabel="@string/shortcut_fuel_long"
-        android:shortcutShortLabel="@string/shortcut_fuel_short">
-        <intent
-            android:action="com.milenote.android.SHORTCUT_FUEL"
             android:targetClass="com.milenote.android.MainActivity"
             android:targetPackage="com.milenote.android" />
     </shortcut>

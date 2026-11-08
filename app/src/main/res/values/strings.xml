@@ -6,8 +6,6 @@
     <!-- 长按图标的应用快捷方式标签（系统语言为中文时使用） -->
     <string name="shortcut_new_entry_short">记一笔</string>
     <string name="shortcut_new_entry_long">记一笔</string>
-    <string name="shortcut_fuel_short">记加油</string>
-    <string name="shortcut_fuel_long">记加油</string>
-    <string name="shortcut_scan_short">扫油票</string>
-    <string name="shortcut_scan_long">扫加油票</string>
+    <string name="shortcut_scan_short">油费识别</string>
+    <string name="shortcut_scan_long">油费识别</string>
 </resources>

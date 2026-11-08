@@ -44,7 +44,7 @@
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
 
-            <!-- 长按应用图标：记一笔 / 记加油 / 扫加油票 -->
+            <!-- 长按应用图标：记一笔 / 油费识别 -->
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />

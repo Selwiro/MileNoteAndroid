@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
             val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(AppSettings())
             val vm: MileNoteViewModel = viewModel(factory = MileNoteViewModel.factory(container))
 
-            // 桌面长按快捷方式（记一笔 / 记加油 / 扫加油票）：等账本加载完再打开对应入口，
+            // 桌面长按快捷方式（记一笔 / 油费识别）：等账本加载完再打开对应入口，
             // 避免冷启动时 load() 与 openEditor() 竞争。
             val pendingShortcut by container.pendingShortcut.collectAsStateWithLifecycle(null)
             LaunchedEffect(pendingShortcut) {
@@ -56,7 +56,6 @@ class MainActivity : ComponentActivity() {
                 vm.state.first { it.garage != null }
                 when (shortcut) {
                     AppShortcut.NEW_ENTRY -> vm.openEditor()
-                    AppShortcut.FUEL -> vm.openEditor(category = "油费")
                     AppShortcut.OCR -> vm.openEditor(category = "油费", startOcr = true)
                 }
             }

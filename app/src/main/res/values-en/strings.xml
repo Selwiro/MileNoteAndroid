@@ -5,8 +5,6 @@
 
     <string name="shortcut_new_entry_short">New entry</string>
     <string name="shortcut_new_entry_long">New entry</string>
-    <string name="shortcut_fuel_short">Add fuel</string>
-    <string name="shortcut_fuel_long">Add fuel</string>
-    <string name="shortcut_scan_short">Scan</string>
-    <string name="shortcut_scan_long">Scan receipt</string>
+    <string name="shortcut_scan_short">Fuel scan</string>
+    <string name="shortcut_scan_long">Scan fuel receipt</string>
 </resources>
