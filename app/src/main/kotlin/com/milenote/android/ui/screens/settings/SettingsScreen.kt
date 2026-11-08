@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -64,11 +65,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.BuildConfig
+import com.milenote.android.R
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.data.update.UpdateCheckResult
@@ -184,7 +187,7 @@ private enum class SettingsPage {
  * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导。
  * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
  * - WebDAV 同步：连接配置、前台自动同步、手动上传/下载。
- * - 关于：应用名、版本、官网/GitHub、演示账本、本机数据说明。
+ * - 关于：应用 logo 与简介、检查更新、官网/GitHub、演示账本。
  *
  * @param vm 全局 ViewModel。
  * @param onNavigate 路由回调；仅在首页返回、且宿主没有 OnBackPressedDispatcher 时回传
@@ -1512,37 +1515,42 @@ private fun AboutPage(
             SectionCard {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+                    // 应用真实图标（自适应图标的背景色 + 前景层），不使用占位图标。
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(56.dp)
                             .clip(MaterialTheme.shapes.medium)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
+                            .background(androidx.compose.ui.res.colorResource(R.color.ic_launcher_background)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = MileNoteIcons.Car,
+                        Image(
+                            painter = painterResource(R.mipmap.ic_launcher_foreground),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                         )
                     }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(tr("里程志", "MileNote"), style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            text = tr("MileNote · 汽车助手", "MileNote · Car assistant"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        text = tr("里程志", "MileNote"),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                Spacer(modifier = Modifier.size(12.dp))
-                AboutRow(
-                    label = tr("版本", "Version"),
-                    value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                Spacer(modifier = Modifier.size(10.dp))
+                Text(
+                    text = tr(
+                        "本地优先的多车用车账本：记录费用与加油、用满箱法算油耗、管理保养计划；" +
+                            "数据只保存在本机，无账号、无后端。",
+                        "A local-first ledger for your cars: track expenses and refuels, compute fuel economy " +
+                            "with the full-tank method, and manage service plans. Your data stays on this device — " +
+                            "no account, no backend.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(modifier = Modifier.size(8.dp))
+                Spacer(modifier = Modifier.size(12.dp))
                 SettingsActionRow(
                     icon = MileNoteIcons.Refresh,
                     title = tr("检查更新", "Check for updates"),
@@ -1605,22 +1613,6 @@ private fun AboutPage(
             }
         }
 
-        item("note") {
-            SectionCard(title = tr("本机数据说明", "Local data")) {
-                Text(
-                    text = tr(
-                        "账本只保存在本机应用存储中；导入导出的文件由你自行选择存放位置，不会上传服务器。" +
-                            "里程、油耗与成本口径与 Web 版一致（满箱法、区间归属、油费来源冲突处理）。" +
-                            "界面基于 Material 3 Expressive，图标为里程志自绘线描集。",
-                        "The ledger lives only in this app's local storage; you choose where imported and exported files go, and nothing is uploaded. " +
-                            "Mileage, fuel economy and cost follow the same rules as the web version (full-tank method, interval attribution, fuel-source conflicts). " +
-                            "The interface uses Material 3 Expressive with hand-drawn MileNote icons.",
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
     }
 
     updateDialog?.let { dialog ->
@@ -1657,28 +1649,6 @@ private fun AboutPage(
     }
 }
 
-@Composable
-private fun AboutRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(88.dp),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
 
 // ---------------------------------------------------------------------------------------------
 // 通用行与分隔线
