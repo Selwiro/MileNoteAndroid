@@ -102,7 +102,6 @@ import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.components.SectionHeader
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.AppTheme
-import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapeTokens
 import kotlinx.coroutines.Dispatchers
@@ -453,7 +452,6 @@ fun SettingsScreen(
                 },
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
                 ),
             )
         },
@@ -497,36 +495,18 @@ fun SettingsScreen(
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Car,
                                     title = tr("我的车辆", "My vehicles"),
-                                    subtitle = if (cars.isEmpty()) {
-                                        tr("还没有车辆，点按添加", "No vehicles yet — tap to add")
-                                    } else {
-                                        tr("%d 辆 · 当前：%s", "%d vehicles · Current: %s", cars.size, activeName)
-                                    },
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                     onClick = { pageName = SettingsPage.VEHICLES.name },
                                 )
                                 SectionDivider()
                                 SettingsMenuRow(
-                                    icon = MileNoteIcons.Sparkle,
+                                    icon = MileNoteIcons.Palette,
                                     title = tr("外观", "Appearance"),
-                                    subtitle = appearanceSummary(appTheme, settings),
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     onClick = { pageName = SettingsPage.APPEARANCE.name },
                                 )
                                 SectionDivider()
                                 SettingsMenuRow(
-                                    icon = MileNoteIcons.Wallet,
+                                    icon = MileNoteIcons.Tag,
                                     title = tr("费用分类与项目", "Categories & items"),
-                                    subtitle = tr(
-                                        "%d 类 · 自定义 %d 项 · 按车辆",
-                                        "%d categories · %d custom · per vehicle",
-                                        Categories.ALL.size,
-                                        customCategoryCount,
-                                    ),
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                                     onClick = { pageName = SettingsPage.CATEGORIES.name },
                                 )
                             }
@@ -539,32 +519,18 @@ fun SettingsScreen(
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Import,
                                     title = tr("外部导入", "Import from other apps"),
-                                    subtitle = tr("小熊油耗 / 钱迹记账 / 其他 App", "Bear / Qianji / Other apps"),
-                                    containerColor = LocalMileNoteSemanticColors.current.info.container,
-                                    contentColor = LocalMileNoteSemanticColors.current.info.content,
                                     onClick = { pageName = SettingsPage.IMPORT.name },
                                 )
                                 SectionDivider()
                                 SettingsMenuRow(
-                                    icon = MileNoteIcons.Export,
+                                    icon = MileNoteIcons.Archive,
                                     title = tr("备份与还原", "Backup & restore"),
-                                    subtitle = tr(
-                                        "%d 辆 · %d 条记录",
-                                        "%d vehicles · %d records",
-                                        cars.size,
-                                        cars.sumOf { it.records.size },
-                                    ),
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     onClick = { pageName = SettingsPage.BACKUP.name },
                                 )
                                 SectionDivider()
                                 SettingsMenuRow(
-                                    icon = MileNoteIcons.Download,
+                                    icon = MileNoteIcons.Cloud,
                                     title = tr("WebDAV 同步", "WebDAV sync"),
-                                    subtitle = webDavStatusSummary(state.webDav),
-                                    containerColor = LocalMileNoteSemanticColors.current.info.container,
-                                    contentColor = LocalMileNoteSemanticColors.current.info.content,
                                     onClick = { pageName = SettingsPage.WEBDAV.name },
                                 )
                             }
@@ -577,9 +543,6 @@ fun SettingsScreen(
                                 SettingsMenuRow(
                                     icon = MileNoteIcons.Info,
                                     title = tr("关于", "About"),
-                                    subtitle = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     onClick = { pageName = SettingsPage.ABOUT.name },
                                 )
                             }
@@ -796,40 +759,33 @@ private fun SettingsPageList(
 }
 
 /** 设置菜单行：36dp 图标色底圆片 + 标题 + 摘要 + 可选 chevron；无 onClick 时作为只读说明行。 */
+/**
+ * 设置一级/二级页的菜单行：单色图标 + 标题（+ 可选一行说明），无图标底色。
+ */
 @Composable
 private fun SettingsMenuRow(
     icon: ImageVector,
     title: String,
-    subtitle: String,
-    containerColor: Color,
-    contentColor: Color,
     onClick: (() -> Unit)? = null,
     showChevron: Boolean = onClick != null,
-    subtitleMaxLines: Int = 1,
+    subtitle: String? = null,
 ) {
+    val scheme = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(containerColor),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(22.dp),
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -837,19 +793,21 @@ private fun SettingsMenuRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = subtitleMaxLines,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (showChevron) {
             Icon(
                 imageVector = MileNoteIcons.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = scheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -887,16 +845,6 @@ private fun SettingsMessageArea(
     }
 }
 
-/** 外观菜单摘要，如「里程蓝 · 跟随系统」。 */
-private fun appearanceSummary(appTheme: AppTheme, settings: AppSettings): String {
-    val darkLabel = when (settings.darkMode) {
-        DarkMode.SYSTEM -> tr("跟随系统", "System")
-        DarkMode.LIGHT -> tr("浅色", "Light")
-        DarkMode.DARK -> tr("深色", "Dark")
-    }
-    return "${appTheme.displayName} · $darkLabel"
-}
-
 // ---------------------------------------------------------------------------------------------
 // 车辆卡片
 // ---------------------------------------------------------------------------------------------
@@ -919,7 +867,6 @@ private fun VehicleCard(
         onClick = onClick,
         shape = MaterialTheme.shapes.large,
         color = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
-        contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
         border = when {
             selected -> BorderStroke(2.dp, scheme.primary)
             else -> BorderStroke(1.dp, scheme.outlineVariant)
@@ -983,7 +930,6 @@ private fun VehicleCard(
                     Surface(
                         shape = MileNoteShapeTokens.full,
                         color = scheme.primary,
-                        contentColor = scheme.onPrimary,
                     ) {
                         Text(
                             text = tr("当前", "Current"),
@@ -1121,8 +1067,8 @@ private fun AppearanceSection(
         Spacer(modifier = Modifier.size(8.dp))
         Text(
             text = tr(
-                "单位只改变显示标签，不会换算已录入的数值，也不影响账本备份；货币默认跟随界面语言（中文元 / 英文美元）。",
-                "Units only change display labels — recorded values are not converted and backups are unaffected. Currency follows the interface language by default (CNY for Chinese, USD for English).",
+                "单位只改显示标签，不换算数值。",
+                "Units only change display labels; values are not converted.",
             ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
@@ -1309,29 +1255,21 @@ private fun ExternalImportPage(
                 SettingsMenuRow(
                     icon = MileNoteIcons.CategoryFuel,
                     title = tr("小熊油耗", "Bear"),
-                    subtitle = tr("XLS / XLSX · 加油记录转油费，按满箱法统计", "XLS / XLSX · Refuel records become fuel expenses, counted with the full-tank method"),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    subtitle = tr("XLS / XLSX · 导入加油记录", "XLS / XLSX · Import fuel records"),
                     onClick = { onOpenImporter("bear") },
-                    subtitleMaxLines = 2,
                 )
                 SectionDivider()
                 SettingsMenuRow(
                     icon = MileNoteIcons.Wallet,
                     title = tr("钱迹记账", "Qianji"),
-                    subtitle = tr("TXT / JSON / CSV · 支出记录转费用，可自动完成保养待办", "TXT / JSON / CSV · Expense records become entries and can complete service to-dos"),
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    subtitle = tr("TXT / JSON / CSV · 导入支出记录", "TXT / JSON / CSV · Import expense records"),
                     onClick = { onOpenImporter("qianji") },
-                    subtitleMaxLines = 2,
                 )
                 SectionDivider()
                 SettingsMenuRow(
                     icon = MileNoteIcons.Share,
                     title = tr("从其他 App 分享", "Share from other apps"),
-                    subtitle = tr("在钱迹等 App 里选「分享到里程志」，会自动识别并预览", "Choose “Share to MileNote” in Qianji and other apps to detect and preview a file"),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    subtitle = tr("在钱迹等 App 选「分享到里程志」", "Choose “Share to MileNote” in Qianji"),
                     onClick = null,
                     showChevron = false,
                 )
@@ -1413,7 +1351,7 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.Export,
                     title = tr("导出完整备份（JSON）", "Export full backup (JSON)"),
-                    subtitle = tr("全部车辆、图片、费用与保养提醒；可跨设备还原", "All vehicles, images, expenses and reminders; restorable on another device"),
+                    subtitle = tr("全部车辆与记录，可跨设备还原", "Everything, restorable on another device"),
                     enabled = !busy,
                     onClick = onExportBackup,
                     trailing = {
@@ -1430,19 +1368,16 @@ private fun BackupRestorePage(
                     SettingsActionRow(
                         icon = MileNoteIcons.Warning,
                         title = tr("导出原始账本（损坏文件）", "Export raw ledger (corrupted file)"),
-                        subtitle = tr(
-                            "账本读取失败时保留的原始 JSON，用于人工检查或抢救；不能直接还原",
-                            "The original JSON kept when the ledger failed to load, for manual inspection or recovery; it cannot be restored directly",
-                        ),
+                        subtitle = tr("仅用于检查或抢救，不能直接还原", "For inspection only; cannot be restored"),
                         enabled = !busy,
                         onClick = onExportRaw,
                     )
                 }
                 SectionDivider()
                 SettingsActionRow(
-                    icon = MileNoteIcons.Download,
+                    icon = MileNoteIcons.FileText,
                     title = tr("导出费用 CSV", "Export expense CSV"),
-                    subtitle = tr("当前车辆全部记录 · UTF-8，可用 Excel 打开；仅查看，不能还原", "All records of the current vehicle · UTF-8, opens in Excel; for viewing only, cannot be restored"),
+                    subtitle = tr("当前车辆记录，可用 Excel 打开", "Current vehicle's records; opens in Excel"),
                     enabled = !busy,
                     onClick = onExportCsv,
                 )
@@ -1454,7 +1389,7 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.Import,
                     title = tr("从 JSON 备份还原", "Restore from JSON backup"),
-                    subtitle = tr("只合并新增记录，不覆盖现有数据；单个文件 ≤ 30 MB", "Merges new records only, never overwrites existing data; single file ≤ 30 MB"),
+                    subtitle = tr("只合并新增，不覆盖现有数据", "Merges new records only; never overwrites"),
                     enabled = !busy,
                     onClick = onImportBackup,
                 )
@@ -1466,7 +1401,7 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.Delete,
                     title = tr("删除全部数据", "Delete all data"),
-                    subtitle = tr("清空所有车辆与记录，需输入「删除」确认；建议先导出备份", "Removes all vehicles and records; type “删除” to confirm. Export a backup first"),
+                    subtitle = tr("清空全部数据，需输入「删除」确认", "Wipes all data; type “删除” to confirm"),
                     danger = true,
                     onClick = onDeleteAll,
                 )
@@ -1580,7 +1515,7 @@ private fun AboutPage(
                 )
                 Spacer(modifier = Modifier.size(8.dp))
                 SettingsActionRow(
-                    icon = MileNoteIcons.Download,
+                    icon = MileNoteIcons.Refresh,
                     title = tr("检查更新", "Check for updates"),
                     subtitle = if (checkingUpdate) {
                         tr("正在检查 GitHub…", "Checking GitHub…")
@@ -1609,21 +1544,17 @@ private fun AboutPage(
         item("links") {
             SectionCard {
                 SettingsMenuRow(
-                    icon = MileNoteIcons.Forward,
+                    icon = MileNoteIcons.Globe,
                     title = tr("官网", "Website"),
                     subtitle = "selwiro.github.io/MileNoteAndroid",
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = { openLink("https://selwiro.github.io/MileNoteAndroid/") },
                     showChevron = false,
                 )
                 SectionDivider()
                 SettingsMenuRow(
-                    icon = MileNoteIcons.Forward,
+                    icon = MileNoteIcons.Code,
                     title = tr("GitHub 仓库", "GitHub repository"),
                     subtitle = "github.com/Selwiro/MileNoteAndroid",
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = { openLink("https://github.com/Selwiro/MileNoteAndroid") },
                     showChevron = false,
                 )
@@ -1636,9 +1567,9 @@ private fun AboutPage(
                     icon = MileNoteIcons.Sparkle,
                     title = if (demo) tr("退出演示账本", "Exit demo ledger") else tr("体验演示账本", "Try the demo ledger"),
                     subtitle = if (demo) {
-                        tr("当前为内置样例数据，修改不会保存；返回你的真实车库", "Showing built-in sample data; changes are not saved. Return to your real garage.")
+                        tr("内置样例，修改不保存", "Built-in samples; changes are not saved")
                     } else {
-                        tr("用内置样例体验多车、换肤与导入（不写入真实账本）", "Try multiple vehicles, themes and import with built-in samples (nothing is written to your real ledger)")
+                        tr("内置样例体验，不写入真实账本", "Try built-in samples; nothing is written")
                     },
                     onClick = onToggleDemo,
                 )
@@ -1746,20 +1677,12 @@ private fun SettingsActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(if (danger) scheme.errorContainer else scheme.surfaceContainerHigh),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (danger) scheme.onErrorContainer else scheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (danger) scheme.error else scheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -1781,7 +1704,7 @@ private fun SettingsActionRow(
                     } else {
                         scheme.onSurfaceVariant.copy(alpha = 0.38f)
                     },
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

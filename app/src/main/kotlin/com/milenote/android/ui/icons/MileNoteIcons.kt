@@ -405,6 +405,80 @@ object MileNoteIcons {
     /** 汽车美容星芒（独立入口）。 */
     val Sparkle: ImageVector get() = CategoryBeauty
 
+    // -----------------------------------------------------------------------------------------
+    // 设置页专用图标（单色描边，与设计规范一致）
+    // -----------------------------------------------------------------------------------------
+
+    /** 外观 / 皮肤（调色板）。 */
+    val Palette: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Palette",
+            "M12 3c-4.97 0-9 3.58-9 8 0 4.42 4.03 10 9 10 1.66 0 2.5-1.09 2.5-2.3 0-.6-.24-1.14-.62-1.55-.37-.4-.6-.94-.6-1.55 0-1.24 1.01-2.1 2.26-2.1H18c2.21 0 3-1.34 3-3 0-4.42-4.03-8-9-8z",
+            "M7 12.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+            "M10.5 8.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+            "M15 8.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+        )
+    }
+
+    /** 费用分类与项目（标签）。 */
+    val Tag: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Tag",
+            "M20.6 13.4 11 3H4v7l9.6 9.6a2 2 0 0 0 2.8 0l4.2-4.2a2 2 0 0 0 0-2.8z",
+            "M7.5 7.5h.01",
+        )
+    }
+
+    /** 备份与还原（归档盒）。 */
+    val Archive: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Archive",
+            "M3 5h18v4H3zM5 9v10h14V9M10 13h4",
+        )
+    }
+
+    /** WebDAV 同步（云）。 */
+    val Cloud: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Cloud",
+            "M17.5 18H7a4 4 0 0 1-.4-8A6 6 0 0 1 18.6 8.6 4.7 4.7 0 0 1 17.5 18z",
+        )
+    }
+
+    /** 费用 CSV（表格文件）。 */
+    val FileText: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.FileText",
+            "M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6",
+        )
+    }
+
+    /** 检查更新（刷新）。 */
+    val Refresh: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Refresh",
+            "M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4",
+        )
+    }
+
+    /** 官网（地球）。 */
+    val Globe: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Globe",
+            "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
+            "M3 12h18",
+            "M12 3c2.5 2.5 3.5 6 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-6-3.5-9s1-6.5 3.5-9z",
+        )
+    }
+
+    /** GitHub 仓库（代码）。 */
+    val Code: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Code",
+            "m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16",
+        )
+    }
+
     /** 底栏 4 项图标：总览 / 记录 / 油耗 / 保养。 */
     val BottomNav: List<ImageVector> = listOf(Home, Records, Fuel, Maintenance)
 }

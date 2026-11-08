@@ -637,18 +637,6 @@ private fun ConflictOption(title: String, detail: String, onClick: () -> Unit) {
 // 工具：状态摘要 / 时间 / 大小
 // ---------------------------------------------------------------------------------------------
 
-/**
- * 设置页「WebDAV 同步」行使用的状态摘要。
- *
- * 无「本地有未同步修改」标记（VM 未暴露 dirty 状态），因此用「未配置 / 上次同步时间 / 已配置但尚未同步」表达。
- */
-internal fun webDavStatusSummary(state: WebDavUiState): String = when {
-    !state.configured -> tr("未配置 · 点按填写服务器与账号", "Not configured · Tap to enter server and account")
-    state.busy -> tr("处理中…", "Working…")
-    state.lastSyncAt != null -> tr("上次同步：%s", "Last sync: %s", formatSyncTime(state.lastSyncAt))
-    else -> tr("已配置 · 尚未同步", "Configured · Not synced yet")
-}
-
 /** 上次同步时间：本地时区 `MM.dd HH:mm`；为空显示「尚未同步」。 */
 private fun formatSyncTime(millis: Long?): String {
     if (millis == null) return tr("尚未同步", "Not synced yet")
