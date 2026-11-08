@@ -53,8 +53,8 @@ class DemoDataTest {
         assertEquals(42000.0, weekend.vehicle.currentKm, 1e-9)
         assertEquals(50000.0, city.vehicle.currentKm, 1e-9)
         assertEquals(8000.0, city.vehicle.startKm!!, 1e-9)
-        assertEquals("周末出逃 · 演示", weekend.vehicle.name)
-        assertEquals("城市通勤 · 演示", city.vehicle.name)
+        assertEquals("周末出逃计划", weekend.vehicle.name)
+        assertEquals("城市通勤", city.vehicle.name)
         assertEquals("Volkswagen · Golf", weekend.vehicle.model)
         assertEquals("Toyota · Corolla", city.vehicle.model)
         // 城市车机油周期被改为 7500 km / 9 月

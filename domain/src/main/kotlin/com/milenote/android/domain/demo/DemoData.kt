@@ -49,9 +49,9 @@ object DemoData {
         var ledger = blankLedger().copy(
             id = if (secondary) "demo-city" else "demo-weekend",
             vehicle = Vehicle(
-                name = if (secondary) tr("城市通勤 · 演示", "City commute · Demo") else tr("周末出逃 · 演示", "Weekend escape · Demo"),
+                name = if (secondary) tr("城市通勤", "City commute") else tr("周末出逃计划", "Weekend escape plan"),
                 model = if (secondary) "Toyota · Corolla" else "Volkswagen · Golf",
-                plate = if (secondary) tr("演示 B 号车", "Demo car B") else tr("演示 A 号车", "Demo car A"),
+                plate = if (secondary) tr("B 号车", "Car B") else tr("A 号车", "Car A"),
                 companionDate = Dates.iso(companionDate),
                 startKm = offset,
                 currentKm = km(42000),
