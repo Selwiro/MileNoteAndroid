@@ -1,6 +1,7 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.import.detectMap
+import com.milenote.android.domain.import.importRows
 import com.milenote.android.domain.import.inferServiceNote
 import com.milenote.android.domain.import.normalizeImport
 import com.milenote.android.domain.model.Record
@@ -192,5 +193,56 @@ class ImportMappingTest {
         assertEquals("金额必须大于 0", items[2].error)
         assertEquals("非支出记录，已跳过", items[3].error)
         assertEquals(2, items[0].row)
+    }
+
+    @Test
+    fun `fuel grade column imports known grades and drops unknown values`() {
+        val items = normalizeImport(
+            listOf(
+                listOf("2026-01-01", "油费", 300, "95#"),
+                listOf("2026-01-02", "油费", 300, " 92# "),
+                listOf("2026-01-03", "油费", 300, "92号"),
+                listOf("2026-01-04", "油费", 300, null),
+            ),
+            detectMap(listOf("日期", "分类", "金额", "燃油标号")),
+            "qianji",
+        )
+        assertEquals("95#", items[0].record.fuelGrade)
+        // 前后空白先 trim 再校验。
+        assertEquals("92#", items[1].record.fuelGrade)
+        // 非法标号不阻断导入，只把字段清空。
+        assertEquals("", items[2].error)
+        assertNull(items[2].record.fuelGrade)
+        assertNull(items[3].record.fuelGrade)
+    }
+
+    @Test
+    fun `fuel grade aliases map to the same column`() {
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "燃油标号"))["fuelGrade"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "标号"))["fuelGrade"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "油品"))["fuelGrade"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "汽油标号"))["fuelGrade"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "fuelGrade"))["fuelGrade"])
+        assertNull(detectMap(listOf("日期", "分类", "金额"))["fuelGrade"])
+    }
+
+    @Test
+    fun `exported csv row round trips fuel amount fields and grade`() {
+        val csv = listOf(
+            "\"日期\",\"地点\",\"项目\",\"分类\",\"金额\"," +
+                "\"应付金额\",\"优惠金额\",\"油价\",\"燃油标号\"," +
+                "\"总里程\",\"加油量\",\"加满\",\"漏记\",\"油耗\",\"行驶里程\",\"备注\",\"来源\"",
+            "\"2026-11-01\",\"\",\"\",\"油费\",\"290\"," +
+                "\"300\",\"10\",\"7.5\",\"95#\"," +
+                "\"12345\",\"40\",\"是\",\"否\",\"\",\"\",\"\",\"手动记录\"",
+        ).joinToString("\r\n") + "\r\n"
+        val rows = parseDelimited(csv)
+        val item = importRows(rows.drop(1), detectMap(rows.first()), "qianji").single()
+        assertEquals("", item.error)
+        assertEquals(290.0, item.record.amount, 1e-9)
+        assertEquals(300.0, item.record.payable!!, 1e-9)
+        assertEquals(10.0, item.record.discount!!, 1e-9)
+        assertEquals(7.5, item.record.unitPrice!!, 1e-9)
+        assertEquals("95#", item.record.fuelGrade)
     }
 }

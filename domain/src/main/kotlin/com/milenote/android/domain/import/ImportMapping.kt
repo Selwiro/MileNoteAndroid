@@ -7,6 +7,7 @@ import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.validateRecord
 import com.milenote.android.domain.import.file.SpreadsheetData
+import com.milenote.android.domain.model.FUEL_GRADES
 import com.milenote.android.domain.model.Record
 
 /**
@@ -43,6 +44,7 @@ val FIELDS: Map<String, List<String>> = linkedMapOf(
     "payable" to listOf("应付金额", "应付", "原价", "应收金额"),
     "discount" to listOf("优惠金额", "优惠", "折扣", "减免"),
     "unitPrice" to listOf("油价", "单价", "油单价", "元/升", "价格"),
+    "fuelGrade" to listOf("燃油标号", "标号", "油品", "汽油标号", "fuelGrade"),
     "odometer" to listOf("总里程", "里程", "公里数", "odometer"),
     "liters" to listOf("加油量", "油量", "升数", "liters"),
     "full" to listOf("加满", "是否加满", "full"),
@@ -122,6 +124,7 @@ fun importRows(
         unitPrice = Numbers.parse(rawCell(row, map, "unitPrice")),
         payable = Numbers.parse(rawCell(row, map, "payable")),
         discount = Numbers.parse(rawCell(row, map, "discount")),
+        fuelGrade = textCell(row, map, "fuelGrade").trim().takeIf { it in FUEL_GRADES },
         rate = Numbers.parse(rawCell(row, map, "rate")),
         distance = Numbers.parse(rawCell(row, map, "distance")),
         full = FULL_TRUE.matches(textCell(row, map, "full").trim()),

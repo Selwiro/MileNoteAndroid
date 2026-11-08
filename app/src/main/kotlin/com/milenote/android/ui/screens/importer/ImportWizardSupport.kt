@@ -139,6 +139,7 @@ internal fun importFieldLabels(): Map<String, String> = linkedMapOf(
     "payable" to tr("应付金额", "Amount due"),
     "discount" to tr("优惠金额", "Discount"),
     "unitPrice" to tr("油价（元/升）", "Fuel price (CNY/L)"),
+    "fuelGrade" to tr("燃油标号", "Fuel grade"),
     "odometer" to tr("总里程（公里）", "Odometer (km)"),
     "liters" to tr("加油量（升）", "Fuel amount (L)"),
     "full" to tr("是否加满", "Full tank"),

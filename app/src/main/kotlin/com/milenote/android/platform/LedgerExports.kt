@@ -12,12 +12,17 @@ import java.time.format.DateTimeFormatter
  * 与 Web 版一致的文本导出：费用 CSV 与单条提醒 ICS。
  *
  * CSV 为 UTF-8 BOM + CRLF，全部单元格加引号并防公式注入；
+ * 列在 Web 版基础上于「金额」后补齐「应付金额 / 优惠金额 / 油价 / 燃油标号」
+ * （取记录字段，空则空单元格），与导入别名表 [com.milenote.android.domain.import.FIELDS]
+ * 中对应字段互相映射，保证导出文件可被导入流程原样回灌。
  * ICS 为全天事件 + 提前一天 DISPLAY 提醒。
  */
 object LedgerExports {
 
     private val CSV_HEADERS = listOf(
-        "日期", "地点", "项目", "分类", "金额", "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源",
+        "日期", "地点", "项目", "分类", "金额",
+        "应付金额", "优惠金额", "油价", "燃油标号",
+        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源",
     )
 
     /** 当前车辆全部记录 → CSV 字节（含 BOM）。 */
@@ -36,6 +41,10 @@ object LedgerExports {
                     r.projects.orEmpty(),
                     r.category,
                     numberCell(r.amount),
+                    r.payable?.let { numberCell(it) } ?: "",
+                    r.discount?.let { numberCell(it) } ?: "",
+                    r.unitPrice?.let { numberCell(it) } ?: "",
+                    r.fuelGrade.orEmpty(),
                     r.odometer?.let { numberCell(it) } ?: "",
                     r.liters?.let { numberCell(it) } ?: "",
                     if (r.full) "是" else "否",

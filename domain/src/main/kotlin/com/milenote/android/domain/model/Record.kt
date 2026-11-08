@@ -2,6 +2,9 @@ package com.milenote.android.domain.model
 
 import kotlinx.serialization.Serializable
 
+/** 燃油标号合法取值；导入清洗用（界面选项见 app 的 `FuelGradeOptions`）。 */
+val FUEL_GRADES: List<String> = listOf("92#", "95#", "98#", "0#")
+
 /**
  * 一条费用记录（Web 备份 `ledger.records[]`）。
  *
@@ -58,6 +61,6 @@ data class Record(
     val currency: String? = null,
     /** 旧版遗留时刻字段；Web 编辑时会删除，但备份中可能存在。 */
     val time: String? = null,
-    /** 燃油标号（仅油费记录）：`92#` / `95#` / `98#` / `0#`；缺省表示未指定。 */
+    /** 燃油标号（仅油费记录）：取值见 [FUEL_GRADES]，缺省表示未指定。 */
     val fuelGrade: String? = null,
 )
