@@ -35,7 +35,7 @@
 （`ANDROID_HOME` 或 `local.properties`）。任何人 clone 后 `./gradlew assembleDebug` 即可出 APK。
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（244 + 116），必须全绿
+./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（249 + 116），必须全绿
 ./gradlew :app:assembleDebug                   # 编译检查，产物在 app/build/outputs/apk/debug/
 ./build.sh debug                               # 编译 + 归档到 dist/
 ./build.sh release                             # R8 +（有密钥时）签名，归档到 dist/ 并生成 .sha256

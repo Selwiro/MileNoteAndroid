@@ -7,11 +7,7 @@
 -keepclassmembers class com.milenote.android.** { *** Companion; }
 -keepclasseswithmembers class com.milenote.android.** { kotlinx.serialization.KSerializer serializer(...); }
 
-# jxl / ML Kit / Room 基础规则由各自 AAR 提供，若 release 构建报错在此补充。
-
-# jxl（xls 读取）：使用了少量反射/工厂，保守保留。
--keep class jxl.** { *; }
--dontwarn jxl.**
+# ML Kit / Room 基础规则由各自 AAR 提供，若 release 构建报错在此补充。
 
 # ML Kit Text Recognition（AAR 自带 consumer rules，这里兜底）
 -keep class com.google.mlkit.** { *; }

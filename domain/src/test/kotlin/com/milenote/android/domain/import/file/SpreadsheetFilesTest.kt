@@ -1,6 +1,5 @@
 package com.milenote.android.domain.import.file
 
-import jxl.write.Label as WriteLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -22,11 +21,7 @@ class SpreadsheetFilesTest {
 
     @Test
     fun `dispatches xls by file signature even when the extension is xlsx`() {
-        val bytes = XlsFixture.build { workbook ->
-            val sheet = workbook.createSheet("记录", 0)
-            sheet.addCell(WriteLabel(0, 0, "名称"))
-            sheet.addCell(WriteLabel(0, 1, "早餐"))
-        }
+        val bytes = XlsFixtures.load("dispatch.xls")
         val data = reader.read(bytes, "账单.xlsx")
 
         assertEquals(listOf("名称"), data.headers)

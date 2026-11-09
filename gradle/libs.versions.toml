@@ -18,7 +18,6 @@ glance = "1.2.0"
 splashscreen = "1.2.0"
 junit = "4.13.2"
 coroutines = "1.10.2"
-jxl = "2.6.12"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -48,7 +47,6 @@ com-squareup-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version
 org-jetbrains-kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 org-jetbrains-kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 org-jetbrains-kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
-net-sourceforge-jxl-jxl = { group = "net.sourceforge.jexcelapi", name = "jxl", version.ref = "jxl" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

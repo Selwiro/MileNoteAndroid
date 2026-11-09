@@ -12,7 +12,6 @@ kotlin {
 
 dependencies {
     implementation(libs.org.jetbrains.kotlinx.serialization.json)
-    implementation(libs.net.sourceforge.jxl.jxl)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.jetbrains.kotlinx.coroutines.test)
