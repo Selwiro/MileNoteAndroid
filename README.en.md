@@ -9,7 +9,7 @@
 
 > **One car, one ledger.** Turn fuel, maintenance and every kilometre into a ledger you can actually read.
 
-MileNote is a **native Android, local-first, multi-vehicle car ledger**: record nine expense categories, compute real fuel economy with the full-tank method (kWh/100 km for EVs), and manage maintenance by whichever comes first — distance or date. **No account, no backend** — your ledger lives on your phone; when you need it on another device, sync it to your own WebDAV server.
+MileNote is a **local-first, multi-vehicle car ledger for Android**: record nine expense categories, compute real fuel economy with the full-tank method (kWh/100 km for EVs), and manage maintenance by whichever comes first — distance or date. **No account, no backend** — your ledger lives on your phone; when you need it on another device, sync it to your own WebDAV server.
 
 [Website & download](https://selwiro.github.io/MileNoteAndroid/en/) · [中文站](https://selwiro.github.io/MileNoteAndroid/) · [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) · [Issues](https://github.com/Selwiro/MileNoteAndroid/issues)
 
@@ -30,10 +30,10 @@ MileNote is a **native Android, local-first, multi-vehicle car ledger**: record 
 
 ## Features
 
-- **Multi-vehicle ledger** — Any number of vehicles; expenses, fuel economy, maintenance, imports and exports are scoped to the current vehicle, while complete backups cover every vehicle. Vehicle photos from the gallery (compressed automatically) or an image URL.
-- **Quick entry** — Nine built-in categories: fuel, insurance, maintenance, repairs, detailing, tolls, parking, fines and car supplies, plus custom categories. The category icon grid sits on top and amount, date, odometer and energy fields fit on one screen; search, filter, group by month, edit and delete.
+- **Multi-vehicle ledger** — Any number of vehicles; expenses, fuel economy, maintenance, imports and exports are scoped to the current vehicle, while complete backups cover every vehicle. Vehicle photos can come from the gallery (compressed automatically) or from an image URL.
+- **Quick entry** — Nine built-in categories: fuel, insurance, maintenance, repairs, detailing, tolls, parking, fines and car supplies, plus custom categories. The category icon grid sits on top and amount, date, odometer and energy fields fit on one screen; entries support search, filtering, month grouping, editing and deletion.
 - **Fuel economy / energy use** — The full-tank method only counts between two full tanks: the first full tank sets the baseline, partial fills carry over to the next settlement, and marking a missed fill-up resets the baseline. Outputs average economy, fuel cost per kilometre, trends and fill-up details. EVs switch to an energy view (kWh/100 km, full-charge method; when no full-charge interval exists it falls back to cumulative charging with a clear note).
-- **Service plans** — 12 plans for combustion cars and 6 for EVs; a plan moves to the to-do list when either distance or date falls due. The plan table shows last done, next date/mileage and status; completing one records it and schedules the next round.
+- **Service plans** — 12 service plans for fuel cars and 6 for EVs; a plan moves to To-dos when either distance or date falls due. The plan table shows the last completed date/mileage, the next one and the status; completing a plan records it and schedules the next round.
 - **Statistics** — Total spend, recorded distance, cost per kilometre, average fuel economy; stacked monthly bars for trends and a donut for cost composition; statistics / records tabs and custom date ranges.
 - **Import & export** — Bear (XLS/XLSX), Qianji (TXT/JSON/CSV/XLSX) and full JSON backups; field mapping, row-by-row preview, duplicate skipping, and system-share intake. Expenses export to CSV (17 columns) for the current vehicle; the full ledger exports to JSON.
 - **Receipt scanning** — CameraX capture or gallery pick; on-device ML Kit (Chinese) reads the amount paid, fuel volume and date. Only empty fields are filled, results need review, and images are never written to disk or uploaded.
@@ -59,7 +59,7 @@ Current version **0.35.3 (beta, versionCode 92)**; the first stable release is p
 - arm64-v8a / armeabi-v7a; APK around 23 MB
 - Self-signed APK — allow "install unknown apps" on first install
 
-After installing, try the built-in demo ledger (two vehicles and complete sample data; it resets on exit and never touches your real ledger), then add a vehicle, record the first entry and export a full JSON backup. Builds signed with different keys cannot overwrite each other; export a backup before uninstalling or switching devices.
+After installing, try the built-in demo ledger (two vehicles and complete sample data; it resets on exit and never touches your real ledger), then add a vehicle, record the first entry and export a full JSON backup. An APK signed with a different key cannot overwrite the installed app; export a backup before uninstalling or switching devices.
 
 ## Build from source
 
@@ -95,7 +95,7 @@ Version matrix (tested together; avoid casual upgrades): Gradle 9.6.0 · AGP 9.5
 
 ## Versions & releases
 
-`main` keeps moving; each `vX.Y.Z` tag maps to a GitHub Release (APK + `.sha256`). Beta versions use `0.x`; the first stable release is `1.0.0`, followed by semver. This repository's history starts at `v0.27.0` (2026-11-06). See [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) for changelogs.
+`main` tracks ongoing development; each `vX.Y.Z` tag maps to a GitHub Release (APK + `.sha256`). Beta versions use `0.x`; the first stable release is `1.0.0`, followed by semver. This repository's history starts at `v0.27.0` (2026-11-06). See [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) for changelogs.
 
 ## Known limitations
 
