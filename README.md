@@ -5,18 +5,13 @@
 ![kotlin](https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white)
 ![compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203%20Expressive-4285F4?logo=jetpackcompose&logoColor=white)
 
+**简体中文** · [English](README.en.md)
+
 > **一辆车，一本账。** 把油费、保养和每一公里，记成一本看得懂的账。
 
 里程志（MileNote）是一款 **Android 原生、本地优先的多车用车账本**：记录九类用车支出，用满箱法计算真实油耗（纯电车辆按满电法计算电耗），按「先到为准」管理保养。**无账号、无后端**——账本默认只存在你的手机里；需要跨设备时，可以同步到你自己提供的 WebDAV。
 
 [官网与下载](https://selwiro.github.io/MileNoteAndroid/) · [English site](https://selwiro.github.io/MileNoteAndroid/en/) · [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) · [问题反馈](https://github.com/Selwiro/MileNoteAndroid/issues)
-
-<details>
-<summary><b>English</b></summary>
-
-MileNote is a local-first, multi-vehicle car expense tracker for Android, built with Kotlin and Jetpack Compose. It records nine expense categories, computes real fuel economy with the full-tank method (kWh/100km for EVs), and manages maintenance by whichever comes first — mileage or date. There is no account and no backend: your ledger stays on your phone, with optional sync to your own WebDAV server. See the [English website](https://selwiro.github.io/MileNoteAndroid/en/) and [Releases](https://github.com/Selwiro/MileNoteAndroid/releases).
-
-</details>
 
 ## 界面
 
