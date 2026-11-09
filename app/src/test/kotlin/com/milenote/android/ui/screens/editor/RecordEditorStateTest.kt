@@ -75,6 +75,70 @@ class RecordEditorStateTest {
     }
 
     @Test
+    fun `ev kwh and price auto fills amount paid`() {
+        val form = RecordEditorState(ledger(ev = true), EditorTarget())
+        form.kwh = "45"
+        form.unitPrice = "0.64"
+        form.onFuelFieldChanged("kwh")
+        form.onFuelFieldChanged("unitPrice")
+        assertEquals("28.8", form.payable)
+        assertEquals("28.8", form.amount)
+        assertEquals("0", form.discount)
+    }
+
+    @Test
+    fun `ev typing price digit by digit after amount keeps energy consistent`() {
+        val form = RecordEditorState(ledger(ev = true), EditorTarget())
+        form.amount = "28.8"
+        form.onFuelFieldChanged("amount")
+        for (text in listOf("0", "0.", "0.6", "0.64")) {
+            form.unitPrice = text
+            form.onFuelFieldChanged("unitPrice")
+        }
+        assertEquals("45", form.kwh)
+        assertEquals("28.8", form.payable)
+        assertEquals("0", form.discount)
+    }
+
+    @Test
+    fun `ev typing price digit by digit keeps amount consistent`() {
+        val form = RecordEditorState(ledger(ev = true), EditorTarget())
+        form.kwh = "45"
+        for (text in listOf("0", "0.", "0.6", "0.64")) {
+            form.unitPrice = text
+            form.onFuelFieldChanged("unitPrice")
+        }
+        assertEquals("28.8", form.amount)
+        assertEquals("28.8", form.payable)
+        assertEquals("0", form.discount)
+    }
+
+    @Test
+    fun `ev amount and price auto fills charging amount`() {
+        val form = RecordEditorState(ledger(ev = true), EditorTarget())
+        form.amount = "28.8"
+        form.unitPrice = "0.64"
+        form.onFuelFieldChanged("amount")
+        form.onFuelFieldChanged("unitPrice")
+        assertEquals("45", form.kwh)
+    }
+
+    @Test
+    fun `ev editing amount is not overwritten by auto fill`() {
+        val form = RecordEditorState(ledger(ev = true), EditorTarget())
+        form.kwh = "45"
+        form.unitPrice = "0.64"
+        form.onFuelFieldChanged("kwh")
+        form.onFuelFieldChanged("unitPrice")
+        // 用户手动改实付：不应被自动值抢回
+        form.amount = "30"
+        form.onFuelFieldChanged("amount")
+        assertEquals("30", form.amount)
+        assertEquals("28.8", form.payable)
+        assertEquals("-1.2", form.discount)
+    }
+
+    @Test
     fun `ev build record writes kwh and clears fuel fields`() {
         val form = RecordEditorState(ledger(ev = true), EditorTarget())
         form.amount = "28.8"

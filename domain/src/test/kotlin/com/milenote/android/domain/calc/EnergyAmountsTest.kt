@@ -81,6 +81,40 @@ class EnergyAmountsTest {
     }
 
     @Test
+    fun `amount and price fill fuel amount`() {
+        // 只填了实付 300 与油价 7.5 → 加油量 40
+        val filled = fillEnergyAmounts(
+            Record(category = "油费", amount = 300.0, unitPrice = 7.5),
+        )
+        assertEquals(40.0, filled.liters!!, 1e-9)
+        assertEquals(300.0, filled.payable!!, 1e-9)
+        assertEquals(0.0, filled.discount!!, 1e-9)
+    }
+
+    @Test
+    fun `amount and price fill charging amount`() {
+        // 只填了实付 28.8 与电价 0.64 → 充电量 45
+        val filled = fillEnergyAmounts(
+            Record(category = "油费", amount = 28.8, unitPrice = 0.64),
+            ev = true,
+        )
+        assertEquals(45.0, filled.kwh!!, 1e-9)
+        assertNull(filled.liters)
+        assertEquals(28.8, filled.payable!!, 1e-9)
+    }
+
+    @Test
+    fun `payable and price fill charging amount`() {
+        // 应付 50（实付 45 + 优惠 5）与电价 1.0 → 充电量 50
+        val filled = fillEnergyAmounts(
+            Record(category = "油费", amount = 45.0, discount = 5.0, unitPrice = 1.0),
+            ev = true,
+        )
+        assertEquals(50.0, filled.kwh!!, 1e-9)
+        assertEquals(50.0, filled.payable!!, 1e-9)
+    }
+
+    @Test
     fun `ev record with only amount is not guessed`() {
         val plain = Record(category = "油费", amount = 62.0)
         assertEquals(plain, fillEnergyAmounts(plain))

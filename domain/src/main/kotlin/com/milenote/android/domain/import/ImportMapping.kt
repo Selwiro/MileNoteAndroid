@@ -107,6 +107,7 @@ fun importRows(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
+    ev: Boolean = false,
 ): List<ImportItem> = rows.mapIndexed { i, row ->
     val rawCategory = textCell(row, map, "category")
     val type = textCell(row, map, "type").trim()
@@ -138,7 +139,7 @@ fun importRows(
         record = record.copy(kind = "manual")
     }
     // 小熊/钱迹新导出可能只有部分金额字段，空白项按「量×价=应付，应付-优惠=实付」补齐。
-    record = fillEnergyAmounts(record)
+    record = fillEnergyAmounts(record, ev)
     val error = if (TYPE_SKIP.containsMatchIn(type)) {
         "非支出记录，已跳过"
     } else {
@@ -153,7 +154,15 @@ fun importRows(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
-): List<ImportItem> = importRows(data.rows, detectMap(data.headers), source, defaultCategory, customCategories)
+    ev: Boolean = false,
+): List<ImportItem> = importRows(
+    data.rows,
+    detectMap(data.headers),
+    source,
+    defaultCategory,
+    customCategories,
+    ev,
+)
 
 /**
  * 单元格版 [normalizeImport]：在 [importRows] 基础上补齐
@@ -166,7 +175,7 @@ fun normalizeImport(
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
     ev: Boolean = false,
-): List<ImportItem> = importRows(rows, map, source, defaultCategory, customCategories)
+): List<ImportItem> = importRows(rows, map, source, defaultCategory, customCategories, ev)
     .mapIndexed { i, item ->
         var record = inferServiceNote(
             item.record.copy(

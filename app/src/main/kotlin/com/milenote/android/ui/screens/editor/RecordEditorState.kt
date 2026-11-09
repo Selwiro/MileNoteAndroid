@@ -240,31 +240,39 @@ internal class RecordEditorState(
         }
     }
 
-    /** 用户手动改了某个油费字段：取消它的自动填充标记并重算空白项。 */
+    /** 用户手动改了某个能源字段：取消它的自动填充标记并重算空白项。 */
     fun onFuelFieldChanged(field: String) {
         if (!isFuel) return
         autoFuelFields.remove(field)
-        autoFillFuel()
+        // 正在编辑实付金额时不要反向回填它，避免和用户输入抢值。
+        autoFillFuel(includeAmount = field != "amount")
     }
 
     /**
      * 能源字段联动：能量量 × 单价 = 应付金额，应付金额 - 优惠金额 = 实付金额。
-     * 燃油用「加油量 × 油价」，纯电用「充电量 × 电价」；只补空字段或上一次自动填出来的字段。
+     * 燃油用「加油量 × 油价」，纯电用「充电量 × 电价」；能算出来的字段都补
+     * （实付 / 应付 / 优惠 / 单价 / 能源量），只补空字段或上一次自动填出来的字段。
+     *
+     * @param includeAmount 是否允许回填「实付金额」（用户正在编辑实付时不回填，避免抢输入）。
      */
-    private fun autoFillFuel() {
+    private fun autoFillFuel(includeAmount: Boolean = true) {
         if (!isFuel) return
         // 自动填过的字段先置空再重算，避免输入变化后沿用旧的派生值。
+        // 上一次自动补出来的能源量/金额都不当作「用户填写」，否则会出现 48 度 × 0.64 之类的自洽错误。
+        val energyField = if (isEv) "kwh" else "liters"
         val energyValue = Numbers.parse(if (isEv) kwh else liters)
+            .takeUnless { energyField in autoFuelFields }
         val seed = Record(
             category = "油费",
-            amount = Numbers.parse(amount) ?: 0.0,
+            // 上一次自动补出来的实付金额不当作「用户填写」，否则会把应付-实付算成优惠。
+            amount = (Numbers.parse(amount).takeUnless { "amount" in autoFuelFields }) ?: 0.0,
             liters = if (isEv) null else energyValue,
             kwh = if (isEv) energyValue else null,
             unitPrice = Numbers.parse(unitPrice).takeUnless { "unitPrice" in autoFuelFields },
             payable = Numbers.parse(payable).takeUnless { "payable" in autoFuelFields },
             discount = Numbers.parse(discount).takeUnless { "discount" in autoFuelFields },
         )
-        val filled = fillEnergyAmounts(seed)
+        val filled = fillEnergyAmounts(seed, isEv)
         if (isEv) {
             applyAuto("kwh", kwh, filled.kwh) { kwh = it }
         } else {
@@ -273,6 +281,9 @@ internal class RecordEditorState(
         applyAuto("unitPrice", unitPrice, filled.unitPrice) { unitPrice = it }
         applyAuto("payable", payable, filled.payable) { payable = it }
         applyAuto("discount", discount, filled.discount) { discount = it }
+        if (includeAmount && filled.amount > 0.0) {
+            applyAuto("amount", amount, filled.amount) { amount = it }
+        }
     }
 
     private fun applyAuto(field: String, current: String, next: Double?, set: (String) -> Unit) {
@@ -316,7 +327,7 @@ internal class RecordEditorState(
             kind = if (isManual) "manual" else "expense",
             time = null,
         )
-        return fillEnergyAmounts(record)
+        return fillEnergyAmounts(record, isEv)
     }
 
     /**

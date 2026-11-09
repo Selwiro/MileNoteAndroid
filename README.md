@@ -64,7 +64,7 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 ## 测试
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 241 项领域 + 63 项 app 测试
+./gradlew :domain:test :app:testDebugUnitTest  # 244 项领域 + 68 项 app 测试
 ./gradlew :app:assembleDebug                   # 构建 + 编译检查
 ```
 
