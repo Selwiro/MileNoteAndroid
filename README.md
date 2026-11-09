@@ -63,7 +63,7 @@ git clone git@github.com:Selwiro/MileNoteAndroid.git
 cd MileNoteAndroid
 
 ./gradlew :app:assembleDebug                     # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :domain:test :app:testDebugUnitTest    # 244 项领域 + 116 项 app 单测
+./gradlew :domain:test :app:testDebugUnitTest    # 249 项领域 + 116 项 app 单测
 ./build.sh release                               # 可选：R8 + 签名（提供密钥时），归档到 dist/ 并生成 .sha256
 ```
 
@@ -81,7 +81,7 @@ Kotlin + Jetpack Compose + Material 3 Expressive；单 Activity + Compose Naviga
 |---|---|
 | `app/` | Compose 界面与 ViewModel、数据层（账本读写）、OCR、导入导出、WebDAV、平台能力（SAF / 分享 / 定位） |
 | `domain/` | 纯 Kotlin 领域层：数据模型、满箱法 / 满电法、保养方案、统计、备份合并、导入解析（JVM 单测） |
-| `app/src/test`、`domain/src/test` | app 单测（116 项）与领域单测（244 项） |
+| `app/src/test`、`domain/src/test` | app 单测（116 项）与领域单测（249 项） |
 | `build.sh`、`dev-gradle.sh` | 构建、签名与归档脚本 |
 
 版本矩阵（实测跑通，不建议随意升级）：Gradle 9.6.0 · AGP 9.5.0 · Kotlin 2.4.21 · Compose BOM 2026.09.00 · material3 1.5.0-beta02 · compileSdk / targetSdk 37 · minSdk 26。
@@ -112,3 +112,10 @@ Kotlin + Jetpack Compose + Material 3 Expressive；单 Activity + Compose Naviga
 - 版本发布：<https://github.com/Selwiro/MileNoteAndroid/releases>
 - 问题反馈：<https://github.com/Selwiro/MileNoteAndroid/issues>
 - 本站截图与页面源码在 `gh-pages` 分支；`main` 只保留 Android 代码。
+
+## 许可 / 商标 / 贡献
+
+- **源码许可**：本仓库源代码以 [Apache License 2.0](LICENSE) 授权，版权行见 [NOTICE](NOTICE)。你可以阅读、修改、自行构建并再分发（包括免费再分发），只需保留版权与许可声明，并遵守 Apache-2.0 的条款。
+- **商店版与收费**：应用商店中的版本是**收费分发渠道**：你支付的主要是持续的版本更新、问题支持与商店渠道服务。Apache-2.0 不限制收费分发——任何人都可以 clone 后自行 `./gradlew :app:assembleDebug` 构建，或基于源码再分发，包括免费分发。商店版的渠道服务条款见 [EULA.md](EULA.md)，它与 [LICENSE](LICENSE) 冲突时以 LICENSE 为准。
+- **商标不在许可范围**：「里程志」「MileNote」名称与图标为开发者保留的商标，不随代码许可授权；基于源码分发的修改版请使用自己的名称与图标，不要造成来源混淆，也不得暗示开发者为其背书。
+- **外部贡献（DCO）**：欢迎 Pull Request，但提交需带 Developer Certificate of Origin 签署（`git commit -s`，即提交信息末尾带 `Signed-off-by: 你的名字 <你的邮箱>`），表示你有权按 Apache-2.0 提交该贡献；提交前请先开 Issue 讨论，并跑通单测与编译。

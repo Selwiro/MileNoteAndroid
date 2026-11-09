@@ -70,7 +70,7 @@ git clone git@github.com:Selwiro/MileNoteAndroid.git
 cd MileNoteAndroid
 
 ./gradlew :app:assembleDebug                     # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :domain:test :app:testDebugUnitTest    # 244 domain + 116 app unit tests
+./gradlew :domain:test :app:testDebugUnitTest    # 249 domain + 116 app unit tests
 ./build.sh release                               # optional: R8 + signing (when a key is present), archived to dist/ with .sha256
 ```
 
@@ -88,7 +88,7 @@ Kotlin + Jetpack Compose + Material 3 Expressive; a single Activity with Compose
 |---|---|
 | `app/` | Compose UI and ViewModel, data layer (ledger I/O), OCR, import/export, WebDAV, platform capabilities (SAF / share / location) |
 | `domain/` | Pure Kotlin domain layer: models, full-tank / full-charge methods, service plans, statistics, backup merging, import parsing (JVM unit tests) |
-| `app/src/test`, `domain/src/test` | 116 app tests and 244 domain tests |
+| `app/src/test`, `domain/src/test` | 116 app tests and 249 domain tests |
 | `build.sh`, `dev-gradle.sh` | Build, signing and archive scripts |
 
 Version matrix (tested together; avoid casual upgrades): Gradle 9.6.0 · AGP 9.5.0 · Kotlin 2.4.21 · Compose BOM 2026.09.00 · material3 1.5.0-beta02 · compileSdk / targetSdk 37 · minSdk 26.
@@ -119,3 +119,10 @@ Version matrix (tested together; avoid casual upgrades): Gradle 9.6.0 · AGP 9.5
 - Releases: <https://github.com/Selwiro/MileNoteAndroid/releases>
 - Issues: <https://github.com/Selwiro/MileNoteAndroid/issues>
 - Website source and screenshots live in the `gh-pages` branch; `main` keeps Android code only.
+
+## License, trademark and contributions
+
+- **Source license**: this repository is licensed under the [Apache License 2.0](LICENSE); copyright notices are in [NOTICE](NOTICE). You may read, modify, build and redistribute it, including for free, provided you keep the copyright and license notices and comply with Apache-2.0.
+- **Store builds and pricing**: the app-store build is a **paid distribution channel** — what you pay for is ongoing updates, support and the store's channel services. Apache-2.0 does not restrict charging: anyone may clone the repo, build with `./gradlew :app:assembleDebug`, and redistribute the result, free or paid. Channel terms for store builds are in [EULA.md](EULA.md); where they conflict with the [LICENSE](LICENSE), the LICENSE prevails.
+- **Trademarks are not licensed**: the names "MileNote" and "里程志" and the app icon are reserved trademarks and are not licensed with the code. Forks must use their own name and icon and must not imply endorsement by the developer.
+- **External contributions (DCO)**: Pull Requests are welcome, but every commit must carry a Developer Certificate of Origin sign-off (`git commit -s`, i.e. a `Signed-off-by:` line) certifying you have the right to submit it under Apache-2.0. Please open an Issue first and make sure the tests and build pass.
