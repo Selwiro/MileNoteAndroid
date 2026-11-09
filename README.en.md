@@ -1,128 +1,461 @@
 # MileNote
 
-![release](https://img.shields.io/github/v/release/Selwiro/MileNoteAndroid?include_prereleases&label=release&color=55758b)
-![platform](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
-![kotlin](https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white)
-![compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203%20Expressive-4285F4?logo=jetpackcompose&logoColor=white)
+![Release](https://img.shields.io/github/v/release/Selwiro/MileNoteAndroid?include_prereleases&label=release&color=55758b)
+![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white)
+![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203%20Expressive-4285F4?logo=jetpackcompose&logoColor=white)
 
 [简体中文](README.md) · **English**
 
-> **One car, one ledger.** Turn fuel, maintenance and every kilometre into a ledger you can actually read.
+MileNote is an **open-source, native, local-first Android app for logging car expenses and mileage**. It supports multiple vehicles, daily expense records, fuel and energy analysis, service planning and running-cost statistics.
 
-MileNote is a **local-first, multi-vehicle car ledger for Android**: record nine expense categories, compute real fuel economy with the full-tank method (kWh/100 km for EVs), and manage maintenance by whichever comes first — distance or date. **No account, no backend** — your ledger lives on your phone; when you need it on another device, sync it to your own WebDAV server.
+No account is needed, and the ledger is stored on your phone by default — it never depends on a developer server. To sync between devices, you can connect your own WebDAV storage.
 
-[Website & download](https://selwiro.github.io/MileNoteAndroid/en/) · [中文站](https://selwiro.github.io/MileNoteAndroid/) · [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) · [Issues](https://github.com/Selwiro/MileNoteAndroid/issues)
+Refuelling, charging, parking, insurance, repairs and scheduled maintenance all live in one place, with charts that show how each car is used and where the money goes over time.
 
-<details>
-<summary><b>简体中文</b></summary>
+[**Website & download**](https://selwiro.github.io/MileNoteAndroid/en/) · [Issues](https://github.com/Selwiro/MileNoteAndroid/issues)
 
-里程志（MileNote）是一款 Android 原生、本地优先的多车用车账本：九类费用、满箱法油耗（纯电按满电法算电耗）、12/6 项保养方案。无账号、无后端，账本默认只存在手机里；需要跨设备时可同步到自己的 WebDAV。完整中文说明见 [README.md](README.md)。
+## Highlights
 
-</details>
+- **Local-first, no account:** the ledger stays on your device by default, with no subscriptions, ads or analytics.
+- **Fuel cars and EVs:** separate fuel-economy and energy analysis, with matching service plans for each powertrain.
+- **Independent multi-vehicle management:** expenses, energy and service records are kept per vehicle; a full backup covers every vehicle.
+- **Easy migration:** import records from Bear and Qianji, with CSV export, full JSON backups and optional WebDAV sync.
 
 ## Screenshots
 
-> Captured from the built-in demo ledger (English UI, 0.32.0); all data is synthetic and only illustrates the information structure. Latest UI on the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots).
+These screenshots come from the built-in demo ledger in v0.32.0 (English UI); all data is synthetic. The interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
 
-| Dashboard | New record | Statistics | Maintenance |
+| Overview | Add entry | Analytics | Service |
 |:---:|:---:|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/dashboard.webp" width="180" alt="Dashboard"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/editor.webp" width="180" alt="New record"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/analytics.webp" width="180" alt="Statistics"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/maintenance.webp" width="180" alt="Maintenance"> |
+| <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/dashboard.webp" width="180" alt="Overview"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/editor.webp" width="180" alt="Add entry"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/analytics.webp" width="180" alt="Analytics"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/maintenance.webp" width="180" alt="Service"> |
 
 ## Features
 
-- **Multi-vehicle ledger** — Any number of vehicles; expenses, fuel economy, maintenance, imports and exports are scoped to the current vehicle, while complete backups cover every vehicle. Vehicle photos can come from the gallery (compressed automatically) or from an image URL.
-- **Quick entry** — Nine built-in categories: fuel, insurance, maintenance, repairs, detailing, tolls, parking, fines and car supplies, plus custom categories. The category icon grid sits on top and amount, date, odometer and energy fields fit on one screen; entries support search, filtering, month grouping, editing and deletion.
-- **Fuel economy / energy use** — The full-tank method only counts between two full tanks: the first full tank sets the baseline, partial fills carry over to the next settlement, and marking a missed fill-up resets the baseline. Outputs average economy, fuel cost per kilometre, trends and fill-up details. EVs switch to an energy view (kWh/100 km, full-charge method; when no full-charge interval exists it falls back to cumulative charging with a clear note).
-- **Service plans** — 12 service plans for fuel cars and 6 for EVs; a plan moves to To-dos when either distance or date falls due. The plan table shows the last completed date/mileage, the next one and the status; completing a plan records it and schedules the next round.
-- **Statistics** — Total spend, recorded distance, cost per kilometre, average fuel economy; stacked monthly bars for trends and a donut for cost composition; statistics / records tabs and custom date ranges.
-- **Import & export** — Bear (XLS/XLSX), Qianji (TXT/JSON/CSV/XLSX) and full JSON backups; field mapping, row-by-row preview, duplicate skipping, and system-share intake. Expenses export to CSV (17 columns) for the current vehicle; the full ledger exports to JSON.
-- **Receipt scanning** — CameraX capture or gallery pick; on-device ML Kit (Chinese) reads the amount paid, fuel volume and date. Only empty fields are filled, results need review, and images are never written to disk or uploaded.
-- **Optional WebDAV sync** — Nutstore (Jianguoyun), Nextcloud, Synology or your own WebDAV; foreground auto-sync (once on open plus a debounce after local edits) and manual sync, stopping when the app closes. The connection password is encrypted with Android Keystore + AES-256-GCM.
-- **Today's fuel price** — Shows the current price for the vehicle's fuel grade in your located city and the next adjustment direction; for reference only (hidden for EVs and in the English UI).
-- **Look & language** — Material 3 Expressive; five themes (Mile Blue, Forest Green, Lilac, Warm Amber, Graphite) × light/dark; English and Chinese UI; currency / distance / volume settings change labels only, never values.
-- **Native integration** — Home-screen shortcuts (new entry / scan receipt), system share intake, SAF file picking, update check; portrait-locked UI.
+### Daily logging and multi-vehicle management
 
-## Data & privacy
+MileNote supports any number of vehicles and keeps expenses, energy and service records separate for each one. A vehicle can have a name and a photo; photos can be picked from the gallery and are compressed automatically, or added through an image URL.
 
-- **No account** — No phone number, email or third-party login; no subscriptions, ads or analytics.
-- **Ledger stays local** — A single `version:2` JSON file in the app's private storage (vehicle images embedded as data URLs), written atomically. It never passes through a developer server.
-- **On-device computation** — File parsing and OCR run on the device; original files and OCR images are never uploaded or written into the ledger.
-- **Three permissions only** — Camera, network and coarse location (location is used solely for the fuel price card).
-- **WebDAV is your server** — Address and password are supplied by you; Android uploads plain JSON and release builds only allow HTTPS. Sync only runs in the foreground.
-- **Keep your own backups** — Export a full JSON backup before uninstalling, switching devices or clearing data; backups include vehicle images and the whole ledger.
+Nine expense categories are built in:
 
-## Download & install
-
-Current version **0.35.3 (beta, versionCode 92)**; the first stable release is planned as 1.0.0. The latest APK, release notes and SHA-256 are on [Releases](https://github.com/Selwiro/MileNoteAndroid/releases); the website download page reads the latest release automatically.
-
-- Android 8.0 (API 26) and above
-- arm64-v8a / armeabi-v7a; APK around 23 MB
-- Self-signed APK — allow "install unknown apps" on first install
-
-After installing, try the built-in demo ledger (two vehicles and complete sample data; it resets on exit and never touches your real ledger), then add a vehicle, record the first entry and export a full JSON backup. An APK signed with a different key cannot overwrite the installed app; export a backup before uninstalling or switching devices.
-
-## Build from source
-
-Requires **JDK 17+** and **Android SDK Platform 37 / Build-Tools 37.0.0**. Gradle comes from the repository wrapper (9.6.0, downloaded on first build) — no global Gradle needed. Point `ANDROID_HOME` at the SDK, or let Android Studio generate `local.properties` when you open the repository.
-
-```bash
-git clone git@github.com:Selwiro/MileNoteAndroid.git
-cd MileNoteAndroid
-
-./gradlew :app:assembleDebug                     # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :domain:test :app:testDebugUnitTest    # 249 domain + 116 app unit tests
-./build.sh release                               # optional: R8 + signing (when a key is present), archived to dist/ with .sha256
-```
-
-You can also open the repository root in Android Studio and run `app`.
-
-- **Mainland China network**: `export MILENOTE_ALIYUN=1` prefers the Aliyun mirror; if the wrapper distribution downloads slowly, replace `distributionUrl` in `gradle/wrapper/gradle-wrapper.properties` with a mirror (for example `https://mirrors.cloud.tencent.com/gradle/gradle-9.6.0-bin.zip`).
-- **Release signing is optional**: `keystore/` and password files are never committed. Put the key and `keystore/keystore.properties` (`storePassword` / `keyAlias` / `keyPassword`) in place, or set `MILENOTE_STORE_PASSWORD` / `MILENOTE_KEY_PASSWORD`, and release builds get signed; otherwise you get `app-release-unsigned.apk`. Anyone can still clone and build.
-- `build.sh` archives to `dist/` by default; override with `MILENOTE_OUT_DIR=<dir>`.
-
-## Tech stack & structure
-
-Kotlin + Jetpack Compose + Material 3 Expressive; a single Activity with Compose Navigation; the ledger is a single JSON snapshot (DataStore for settings); on-device ML Kit OCR; OkHttp for WebDAV.
-
-| Module | Contents |
+| Category | Typical records |
 |---|---|
-| `app/` | Compose UI and ViewModel, data layer (ledger I/O), OCR, import/export, WebDAV, platform capabilities (SAF / share / location) |
-| `domain/` | Pure Kotlin domain layer: models, full-tank / full-charge methods, service plans, statistics, backup merging, import parsing (JVM unit tests) |
-| `app/src/test`, `domain/src/test` | 116 app tests and 249 domain tests |
-| `build.sh`, `dev-gradle.sh` | Build, signing and archive scripts |
+| Fuel | Refuelling and charging |
+| Insurance | Compulsory and commercial insurance |
+| Maintenance | Routine servicing and consumables |
+| Repairs | Fault diagnosis and parts repair |
+| Detailing | Car wash, cleaning and detailing |
+| Tolls | Motorways and toll roads |
+| Parking | Short-term and car-park fees |
+| Fines | Traffic-related penalties |
+| Car supplies | In-car devices, accessories and supplies |
 
-Version matrix (tested together; avoid casual upgrades): Gradle 9.6.0 · AGP 9.5.0 · Kotlin 2.4.21 · Compose BOM 2026.09.00 · material3 1.5.0-beta02 · compileSdk / targetSdk 37 · minSdk 26.
+You can also create custom categories as needed.
 
-## Versions & releases
+The entry page keeps category, amount, date, mileage and energy fields on one screen, so you don't have to keep switching. Existing records support search, filtering, a month view, editing and deletion.
 
-`main` tracks ongoing development; each `vX.Y.Z` tag maps to a GitHub Release (APK + `.sha256`). Beta versions use `0.x`; the first stable release is `1.0.0`, followed by semver. This repository's history starts at `v0.27.0` (2026-11-06). See [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) for changelogs.
+### Fuel economy and energy consumption
+
+MileNote records and analyses energy differently depending on the vehicle's powertrain.
+
+**Fuel cars: full-tank method**
+
+Fuel economy is calculated from the distance and the actual fuel volume between two full tanks, so incomplete intervals never skew the average.
+
+- The first full tank only establishes a baseline.
+- Partial fills accumulate until the next settlement.
+- If a refuel was missed, mark it as missed and rebuild the baseline.
+- Outputs include average fuel economy, fuel cost per kilometre, trends and fill-up details.
+
+**EVs: full-charge method**
+
+EVs use charging records for energy analysis, showing average energy economy in **kWh/100 km**, plus charging spend and cost per kilometre.
+
+Full-charge intervals are preferred. If the selected range has no usable full-charge interval, the app estimates from cumulative charging and labels the method in the interface.
+
+All analysis is based on recorded data; the app never invents missing records.
+
+### Service plans
+
+The app ships with preset service plans for each powertrain:
+
+- Fuel cars: 12 default service items.
+- EVs: 6 default service items.
+
+Reminders consider both time and mileage, and **whichever threshold is reached first marks the item as due**.
+
+The plan table shows what was last completed, the next expected date and mileage, and the current status. After you complete a service and save the record, the app schedules the next round automatically.
+
+Due items appear in the in-app to-do list. When you want a system calendar reminder, export a single plan as an `.ics` file.
+
+### Analytics
+
+Beyond individual records, the Analytics page summarises spending over a period.
+
+It covers:
+
+- Total spend, recorded mileage and cost per kilometre.
+- Average fuel economy or the corresponding energy metric.
+- Stacked monthly bars showing how each expense category changes over time.
+- A donut chart comparing category shares.
+- Statistics and records tabs, plus custom date ranges.
+
+Cost per kilometre is based on recorded spending and recorded mileage. Unrecorded costs such as depreciation or loan interest are not included automatically.
+
+### Receipt scanning
+
+After refuelling, photograph the receipt or pick an existing image from the gallery.
+
+The app uses **CameraX + ML Kit** to recognise Chinese receipts on the device and tries to extract the amount paid, fuel volume and date.
+
+Scan results only fill fields that are still empty and never overwrite existing values. Review them before saving so a misread doesn't end up in your ledger.
+
+Recognition runs locally; the image is never uploaded and never written into the ledger.
+
+### Import and export
+
+If you already tracked expenses in another app, you don't have to start from scratch.
+
+Supported sources:
+
+| Source | Import formats |
+|---|---|
+| Bear | XLS, XLSX |
+| Qianji | TXT, JSON, CSV, XLSX |
+| MileNote full backup | JSON |
+
+While importing you can adjust field mapping, preview and edit records row by row, and skip detected duplicates. You can also send a file to MileNote through the Android share sheet.
+
+Export comes in two forms:
+
+- **Expense CSV:** the current vehicle's expense details, with 17 columns.
+- **Full JSON backup:** every vehicle, record, service entry and related data.
+
+A full backup works for switching phones, restoring data, or keeping as a standalone local archive.
+
+### WebDAV sync
+
+WebDAV is optional. Without it, the ledger always stays local.
+
+You can connect Nutstore (Jianguoyun), Nextcloud, Synology NAS or any other WebDAV-compatible storage service.
+
+Sync can be triggered manually, runs once when the app opens, and is debounced after local edits.
+
+Sync jobs only run while the app is in the foreground; they stop when you leave the app.
+
+The WebDAV password is encrypted with Android Keystore and AES-256-GCM before being stored on the device. Release builds only allow HTTPS connections.
+
+**Note:** the ledger uploaded to WebDAV is plain JSON and is not end-to-end encrypted. Use a service you trust and set access permissions carefully.
+
+### Other features
+
+| Feature | Description |
+|---|---|
+| Today's fuel price | Reference price and expected adjustment direction based on the vehicle's fuel grade and your located city |
+| Themes | Five themes — Mile Blue, Forest Green, Lilac, Warm Amber and Graphite — all with light and dark modes |
+| Interface language | Simplified Chinese and English |
+| Display units | Currency, distance and volume units change labels only; existing values are not converted |
+| Home-screen shortcuts | Long-press the app icon to add an entry or scan a receipt |
+| System integration | System share intake, SAF file picking and in-app update checks |
+| Demo ledger | Two virtual vehicles with sample records; exiting the demo restores your real ledger automatically |
+
+Today's fuel price is only available for fuel vehicles in the Chinese interface; treat it as reference data only.
+
+The app currently uses a portrait phone layout; tablet and landscape two-pane layouts are not available yet.
+
+## Download and install
+
+The current release is **v0.35.3 beta (versionCode 92)**. The project is still being tested and actively developed.
+
+Download from:
+
+- [Website & download page](https://selwiro.github.io/MileNoteAndroid/en/)
+- [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases)
+
+GitHub Releases provide the APK, release notes and SHA-256 checksums. The website also reads the latest version, APK size and checksum from GitHub Releases.
+
+### Requirements
+
+| Item | Requirement |
+|---|---|
+| Android version | Android 8.0 (API 26) or later |
+| CPU architecture | arm64-v8a / armeabi-v7a |
+| APK size | About 23 MB |
+| Installation | Self-signed APK |
+
+On first install, Android may ask you to allow installing unknown apps from your browser or file manager.
+
+After installing, try the built-in demo ledger, then add a vehicle and start logging. It's worth exporting a full JSON backup early so you get comfortable with backup and restore.
+
+**Note:** APKs signed with different keys cannot be installed over each other. Back up your ledger before uninstalling the app, clearing app data or switching devices.
+
+## Data and privacy
+
+MileNote has no account system and never builds a database of users' ledgers on a developer server.
+
+Data is handled as follows:
+
+| Item | How it is handled |
+|---|---|
+| Ledger storage | A single `version:2` JSON file in the app's private storage |
+| Writing | Atomic writes reduce the risk of corruption when a write is interrupted |
+| Vehicle images | Embedded in the ledger as data URLs |
+| File import | Parsed on the device; original files are never uploaded |
+| Receipt OCR | Recognised on the device; images are never uploaded or kept |
+| WebDAV | Configured by you; plain JSON sent over HTTPS |
+| Accounts and analytics | No accounts, subscriptions, ads or analytics |
+
+The app requests camera, network and coarse location. Coarse location is used only for the today's fuel price feature.
+
+The default ledger is never uploaded to a developer server; online features such as today's fuel price, update checks and your own WebDAV still talk to the corresponding external services.
+
+### Backups
+
+The ledger lives in the app's private storage, so uninstalling the app or clearing its data can delete it.
+
+Export a full JSON backup regularly and keep it somewhere outside your phone.
+
+Full backups contain vehicle images and ledger data — treat them like any other personal file.
 
 ## Known limitations
 
-- No account system or real-time multi-device sync; WebDAV sync runs in the foreground only and the remote ledger is plain JSON.
-- Service due notices appear only in the app's to-do list — no system notifications; a single reminder can be exported as an `.ics` calendar file.
-- Portrait-locked; no tablet / landscape two-pane layout.
-- The APK is self-signed; allow unknown sources on first install, and changing the signing key prevents overwrite-installing.
-- EVs do not get receipt OCR for charging, battery health or range estimates; the fuel-price adjustment direction is indicative only.
-- Cost per kilometre = recorded spending ÷ recorded distance, excluding depreciation, loan interest and other unrecorded costs.
+MileNote is still in active development. Current limitations:
 
-## Feedback & contributing
+- **Multi-device use:** no account-based real-time sync; WebDAV only runs while the app is in the foreground.
+- **Service reminders:** due items are shown in the app only and don't trigger system notifications; you can export a calendar file manually.
+- **Screen sizes:** the UI is portrait-locked; no tablet or landscape two-pane layout yet.
+- **EVs:** no charging-receipt OCR, battery health analysis or range estimation yet.
+- **Today's fuel price:** prices and adjustment direction are reference only; rely on official announcements and station prices.
+- **Cost statistics:** calculated from recorded data only; depreciation, loan interest and other costs are not included automatically.
+- **Sync security:** WebDAV keeps plain JSON remotely; you are responsible for securing the server.
+- **APK signing:** builds signed with different keys cannot be installed over each other.
 
-- **Bugs and ideas**: open an [Issue](https://github.com/Selwiro/MileNoteAndroid/issues); include the version (Settings → About), device model, steps to reproduce and screenshots where useful.
-- **Pull requests**: please open an Issue to discuss first; before submitting, run `./gradlew :domain:test :app:testDebugUnitTest` and `./gradlew :app:assembleDebug`.
-- **Conventions**: [AGENTS.md](AGENTS.md) documents the hard rules (ledger format, permissions, tests, releases); commit messages follow `type(scope): summary`.
-- **Privacy**: use synthetic sample data only; never commit real receipts, real ledgers, keys or build artifacts.
+## Roadmap
 
-## Links
+The project is in its `0.x` beta phase, continuing to fix issues, add features and polish the experience.
 
-- Website / download: <https://selwiro.github.io/MileNoteAndroid/en/> (Chinese: <https://selwiro.github.io/MileNoteAndroid/>)
-- Releases: <https://github.com/Selwiro/MileNoteAndroid/releases>
-- Issues: <https://github.com/Selwiro/MileNoteAndroid/issues>
-- Website source and screenshots live in the `gh-pages` branch; `main` keeps Android code only.
+**Planned releases:**
+
+- **Beta (0.x):** ongoing iteration and testing.
+- **1.0.0:** the first stable release.
+- **After 1.0:** version numbers follow Semantic Versioning (SemVer).
+
+Feature requests are welcome in [GitHub Issues](https://github.com/Selwiro/MileNoteAndroid/issues). A feature that hasn't been scheduled is not part of the roadmap yet.
+
+What actually shipped is listed in [Releases](https://github.com/Selwiro/MileNoteAndroid/releases).
+
+---
+
+## Developer guide
+
+The rest of this document is for people who want to build the app, study the code or contribute.
+
+### Tech stack
+
+MileNote is written in Kotlin and uses the native Android stack.
+
+| Technology | Purpose |
+|---|---|
+| Kotlin | Primary language |
+| Jetpack Compose | Declarative UI |
+| Material 3 Expressive | Components and theming |
+| Compose Navigation | Navigation |
+| DataStore | App settings persistence |
+| JSON snapshot | Ledger storage |
+| CameraX | Camera capture |
+| ML Kit | On-device Chinese text recognition |
+| OkHttp | WebDAV networking |
+| Android Keystore | Secure storage of connection passwords |
+
+The architecture is a single Activity with Compose Navigation. Business calculations and data models live in a standalone pure-Kotlin domain module, which keeps them testable and reusable.
+
+### Project structure
+
+```text
+MileNoteAndroid/
+├── app/                  # Android app module
+│   └── src/test/         # App unit tests
+├── domain/               # Pure Kotlin domain module
+│   └── src/test/         # Domain unit tests
+├── gradle/               # Gradle Wrapper configuration
+├── build.sh              # Release build and archiving
+├── dev-gradle.sh         # Development build helper
+├── AGENTS.md             # Project conventions
+├── README.md             # Chinese README
+└── README.en.md          # English README
+```
+
+Module responsibilities:
+
+- **`app/`:** Compose UI, ViewModels, ledger I/O, OCR, file import/export, WebDAV and Android platform integration.
+- **`domain/`:** data models, the full-tank and full-charge methods, service plans, statistics, backup merging, import parsing and other domain logic.
+- **`app/src/test/`:** app unit tests.
+- **`domain/src/test/`:** domain JVM unit tests.
+
+### Build environment
+
+The project requires JDK 17 or later, Android SDK Platform 37 and Build-Tools 37.0.0.
+
+Gradle comes from the repository's wrapper and is downloaded on the first build, so no global Gradle installation is needed.
+
+These versions are known to build and pass tests together:
+
+| Component | Version |
+|---|---|
+| Gradle | 9.6.0 |
+| Android Gradle Plugin | 9.5.0 |
+| Kotlin | 2.4.21 |
+| Compose BOM | 2026.09.00 |
+| Material 3 | 1.5.0-beta02 |
+| compileSdk / targetSdk | 37 |
+| minSdk | 26 |
+
+Prefer this combination, and verify builds and tests before upgrading dependencies.
+
+### Getting the source
+
+```bash
+git clone https://github.com/Selwiro/MileNoteAndroid.git
+cd MileNoteAndroid
+```
+
+You can open the repository root directly in Android Studio.
+
+For command-line builds, point `ANDROID_HOME` at the Android SDK, or let Android Studio generate `local.properties`.
+
+### Building a debug APK
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+The output is written to:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Running tests
+
+```bash
+./gradlew :domain:test :app:testDebugUnitTest
+```
+
+The suite currently contains **249 domain unit tests** and **116 app unit tests**.
+
+### Building a release APK
+
+```bash
+./build.sh release
+```
+
+The script runs a release build with R8, archives the output to the repository's `dist/` directory and writes a `.sha256` checksum file alongside it.
+
+Change the archive location with an environment variable:
+
+```bash
+MILENOTE_OUT_DIR=/path/to/output ./build.sh release
+```
+
+### Build mirrors
+
+On networks in mainland China, use the Aliyun mirror configuration:
+
+```bash
+export MILENOTE_ALIYUN=1
+```
+
+If the Gradle Wrapper distribution downloads slowly, change `distributionUrl` in `gradle/wrapper/gradle-wrapper.properties` to a mirror, for example:
+
+```text
+https://mirrors.cloud.tencent.com/gradle/gradle-9.6.0-bin.zip
+```
+
+When using third-party mirrors, verify the file's source and integrity yourself.
+
+### Release signing
+
+Release signing is optional. Without a signing key the build still completes, but the output is `app-release-unsigned.apk`.
+
+To sign, prepare your own key and configure it here:
+
+```text
+keystore/keystore.properties
+```
+
+with:
+
+```properties
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+You can also supply the passwords through environment variables:
+
+- `MILENOTE_STORE_PASSWORD`
+- `MILENOTE_KEY_PASSWORD`
+
+Signing keys, passwords and related sensitive files must never be committed to Git.
+
+### Versions and releases
+
+The project iterates on `main` and marks releases with `vX.Y.Z` Git tags.
+
+Each release tag maps to a GitHub Release containing the APK and a SHA-256 checksum.
+
+The public Android release history in this repository starts at **v0.27.0 (6 November 2026)**.
+
+Release notes and install files are maintained in [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases).
+
+## Feedback and contributing
+
+Bug reports, suggestions and pull requests are all welcome.
+
+### Reporting issues
+
+Open an issue in [Issues](https://github.com/Selwiro/MileNoteAndroid/issues). A good bug report includes:
+
+- The app version (Settings → About).
+- Your phone model and Android version.
+- Steps to reproduce and what actually happens.
+- Screenshots or error messages where useful.
+
+Please protect your privacy; don't upload real ledgers or receipts containing personal information.
+
+### Contributing code
+
+For larger changes, discuss the approach in an issue first.
+
+Before submitting a pull request, run at least:
+
+```bash
+./gradlew :domain:test :app:testDebugUnitTest
+./gradlew :app:assembleDebug
+```
+
+Project conventions are documented in [AGENTS.md](AGENTS.md), including the ledger format, permissions, tests and release rules.
+
+Commit messages use:
+
+```text
+type(scope): summary
+```
+
+Use synthetic data for all demo and test data. Never commit real ledgers, receipts, signing keys, passwords or build artifacts.
 
 ## License, trademark and contributions
 
 - **Source license**: this repository is licensed under the [Apache License 2.0](LICENSE); copyright notices are in [NOTICE](NOTICE). You may read, modify, build and redistribute it, including for free, provided you keep the copyright and license notices and comply with Apache-2.0.
 - **Store builds and pricing**: the app-store build is a **paid distribution channel** — what you pay for is ongoing updates, support and the store's channel services. Apache-2.0 does not restrict charging: anyone may clone the repo, build with `./gradlew :app:assembleDebug`, and redistribute the result, free or paid. Channel terms for store builds are in [EULA.md](EULA.md); where they conflict with the [LICENSE](LICENSE), the LICENSE prevails.
 - **Trademarks are not licensed**: the names "MileNote" and "里程志" and the app icon are reserved trademarks and are not licensed with the code. Forks must use their own name and icon and must not imply endorsement by the developer.
-- **External contributions (DCO)**: Pull Requests are welcome, but every commit must carry a Developer Certificate of Origin sign-off (`git commit -s`, i.e. a `Signed-off-by:` line) certifying you have the right to submit it under Apache-2.0. Please open an Issue first and make sure the tests and build pass.
+- **External contributions (DCO)**: Pull Requests are welcome, but every commit must carry a Developer Certificate of Origin sign-off (`git commit -s`, i.e. a `Signed-off-by:` line) certifying you have the right to submit it under Apache-2.0. Please open an issue first and make sure the tests and build pass.
+
+## Links
+
+- [Website & download](https://selwiro.github.io/MileNoteAndroid/en/)
+- [Chinese site](https://selwiro.github.io/MileNoteAndroid/)
+- [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases)
+- [Issues](https://github.com/Selwiro/MileNoteAndroid/issues)
+
+Website pages and screenshots live in the `gh-pages` branch; the Android source lives on `main`.
