@@ -1,117 +1,448 @@
 # 里程志 MileNote
 
-![release](https://img.shields.io/github/v/release/Selwiro/MileNoteAndroid?include_prereleases&label=release&color=55758b)
-![platform](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
-![kotlin](https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white)
-![compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203%20Expressive-4285F4?logo=jetpackcompose&logoColor=white)
+![Release](https://img.shields.io/github/v/release/Selwiro/MileNoteAndroid?include_prereleases&label=release&color=55758b)
+![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white)
+![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203%20Expressive-4285F4?logo=jetpackcompose&logoColor=white)
 
 **简体中文** · [English](README.en.md)
 
-> **一辆车，一本账。** 把油费、保养和每一公里，记成一本看得懂的账。
+里程志（MileNote）是一款**开源、原生、本地优先的 Android 用车记账应用**，支持多车管理、日常费用记录、油耗与电耗分析、保养计划和用车成本统计。
 
-里程志（MileNote）是一款 **Android 原生、本地优先的多车用车账本**：记录九类用车支出，用满箱法计算真实油耗（纯电车辆按满电法计算电耗），按「先到为准」管理保养。**无账号、无后端**——账本默认只存在你的手机里；需要跨设备时，可以同步到你自己提供的 WebDAV。
+应用无需注册账号，账本默认保存在手机本地，不依赖开发者服务器。需要在不同设备之间同步时，也可以连接自己的 WebDAV 存储服务。
 
-[官网与下载](https://selwiro.github.io/MileNoteAndroid/) · [English site](https://selwiro.github.io/MileNoteAndroid/en/) · [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) · [问题反馈](https://github.com/Selwiro/MileNoteAndroid/issues)
+无论是加油、充电、停车，还是保险、维修与定期保养，都可以集中记录和管理，并通过统计图表了解车辆的使用情况与长期支出。
 
-## 界面
+[**官网与下载**](https://selwiro.github.io/MileNoteAndroid/)  · [问题反馈](https://github.com/Selwiro/MileNoteAndroid/issues)
 
-> 截图取自 App 内置演示账本（0.27.0 实拍），数据为合成示例，仅示意信息结构；最新界面见[官网](https://selwiro.github.io/MileNoteAndroid/#screenshots)。
+## 应用特点
+
+- **本地优先，无需账号：** 账本默认只保存在设备上，没有订阅、广告或埋点统计。
+- **燃油车与纯电动车：** 分别提供油耗、电耗分析及对应的保养方案。
+- **多车独立管理：** 不同车辆的费用、能耗和保养记录相互独立，完整备份包含全部车辆。
+- **数据方便迁移：** 支持从小熊油耗、钱迹导入记录，提供 CSV 导出、JSON 完整备份和可选的 WebDAV 同步。
+
+## 界面预览
+
+以下截图来自 v0.27.0 的内置演示账本，所有数据均为合成示例。应用界面会随版本迭代调整，最新截图请查看[官方网站](https://selwiro.github.io/MileNoteAndroid/#screenshots)。
 
 | 用车总览 | 记一笔 | 费用统计 | 维修保养 |
 |:---:|:---:|:---:|:---:|
 | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens/dashboard.webp" width="180" alt="用车总览"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens/editor.webp" width="180" alt="记一笔"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens/analytics.webp" width="180" alt="费用统计"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens/maintenance.webp" width="180" alt="维修保养"> |
 
-## 功能
+## 功能介绍
 
-- **多车账本**：可添加任意数量车辆，费用、油耗、保养、导入与导出都按当前车辆隔离；完整备份包含全部车辆。支持车辆照片（相册上传自动压缩，或填写图片 URL）。
-- **记一笔**：九类内置费用——油费、保险、保养、维修、汽车美容、过路费、停车费、罚单、汽车用品，可新增自定义分类；分类图标网格置顶，金额、日期、里程与能源字段一屏填完，支持搜索、筛选、按月分组、编辑与删除。
-- **油耗 / 电耗**：满箱法只统计两次「加满」之间，第一次加满只建立基准，未加满的加油量累计到下次结算，标记漏记即重设基准；输出综合平均油耗、每公里油费、油耗走势与加油明细。纯电车辆切换为能耗分析（kWh/100km，满电法，范围内没有满电区间时用累计充电量估算并标注口径）。
-- **保养计划**：燃油车 12 项、纯电车 6 项默认方案，公里数或日期任一到期就进入待办；计划表展示上次已做、下次日期/里程与状态；完成并记录后自动安排下一轮。
-- **费用统计**：累计支出、记录里程、每公里成本、综合平均油耗；按月堆叠柱状图看支出趋势，环图看费用构成；统计 / 明细双页签，支持自定义时间区间。
-- **导入与导出**：小熊油耗（XLS/XLSX）、钱迹（TXT/JSON/CSV/XLSX）与完整 JSON 备份；字段映射、逐行预览、重复记录跳过，也可从系统分享直接进入导入。费用可导出当前车辆 CSV（17 列），完整账本可导出 JSON。
-- **小票识别**：CameraX 拍照或相册选图，ML Kit 中文端侧识别实付金额、加油量与日期；只回填空字段，识别结果需核对后保存，图片不落盘、不上传。
-- **WebDAV 同步（可选）**：可连接坚果云、Nextcloud、群晖或自建 WebDAV；前台自动同步（打开时一次 + 本地修改后防抖）加手动触发，退出应用即结束。连接密码用 Android Keystore + AES-256-GCM 加密保存。
-- **今日油价**：按车辆燃油标号显示定位城市的当日油价与下次调价方向，数据仅供参考（纯电车辆与英文界面不显示）。
-- **外观与语言**：Material 3 Expressive；五套皮肤（里程蓝、森林绿、丁香紫、暖日橙、石墨灰）× 浅色 / 深色；中英双语界面；货币 / 里程 / 油量仅切换显示单位，不换算数值。
-- **原生集成**：桌面长按快捷方式（记一笔 / 扫小票）、系统分享接收、SAF 文件选择、检查更新；界面锁竖屏。
+### 日常记账与多车管理
 
-## 数据与隐私
+里程志支持添加任意数量的车辆，并为每辆车分别管理费用、能耗和保养记录。车辆可以设置名称、照片等信息，照片既可以从相册选择并自动压缩，也可以通过图片 URL 添加。
 
-- **无需账号**：不需要手机号、邮箱或第三方登录，没有订阅、广告与埋点统计。
-- **账本在本地**：保存在应用私有目录下的单文件 `version:2` JSON（车辆图片以 dataURL 内嵌），原子写入，不经过开发者服务器。
-- **本地计算**：文件解析与 OCR 都在设备上完成，原始文件与识别用图不上传、不写入账本。
-- **权限只有 3 项**：相机、网络、粗略定位（定位仅用于今日油价卡）。
-- **WebDAV 是你自己的服务器**：地址与密码由你填写；Android 上传的是明文 JSON，release 包只允许 HTTPS，同步只在前台进行。
-- **备份请自己保管**：卸载应用、更换设备或清理数据前，请先导出完整 JSON 备份；备份文件包含车辆图片与完整账本。
+应用内置九类常用支出：
+
+| 分类 | 常见记录 |
+|---|---|
+| 油费 | 加油、充电等能源支出 |
+| 保险 | 交强险、商业保险 |
+| 保养 | 常规保养及耗材更换 |
+| 维修 | 故障检修、零部件维修 |
+| 汽车美容 | 洗车、清洁、美容服务 |
+| 过路费 | 高速公路、收费道路 |
+| 停车费 | 临时停车、停车场费用 |
+| 罚单 | 交通违法相关支出 |
+| 汽车用品 | 车载设备、配件及用品 |
+
+此外，还可以根据需要创建自定义分类。
+
+记账页面将分类、金额、日期、里程和能源信息集中在一个页面，减少反复切换。已有记录支持搜索、筛选、按月查看，以及编辑和删除。
+
+### 油耗与电耗分析
+
+里程志会根据车辆的动力类型提供不同的能源记录和分析方式。
+
+**燃油车：满箱法油耗**
+
+以两次加满油之间的行驶里程和实际加油量计算油耗，避免将不完整的加油区间直接用于平均值计算。
+
+- 第一次加满油只用于建立计算基准。
+- 中途未加满的加油量会累计到下一次结算。
+- 如果漏记了加油记录，可以标记漏记并重新建立基准。
+- 提供综合平均油耗、每公里油费、油耗走势和加油明细。
+
+**纯电动车：满电法电耗**
+
+纯电车型使用充电记录进行能耗分析，以 **kWh/100km** 展示平均电耗，并统计充电支出和每公里电费。
+
+优先使用完整的满电区间计算能耗。如果所选范围内没有可用的满电区间，则根据累计充电量估算，并在界面中标明计算方式。
+
+所有分析均基于已录入的数据，不会虚构缺失的记录。
+
+### 保养计划
+
+应用为不同动力类型提供预设保养方案：
+
+- 燃油车：12 项默认保养项目。
+- 纯电动车：6 项默认保养项目。
+
+保养提醒同时参考时间和行驶里程，**任一条件达到设定值，即视为到期**。
+
+保养计划表会显示上次完成情况、下次预计日期与里程，以及当前状态。完成保养并保存记录后，应用会自动安排下一轮计划。
+
+到期项目在 App 内的待办列表中显示。需要使用系统日历提醒时，可以将单条计划导出为 `.ics` 文件。
+
+### 费用统计
+
+除了查看每笔记录，还可以通过统计页面了解一段时间内的用车支出。
+
+主要包括：
+
+- 累计支出、记录里程及每公里成本。
+- 综合平均油耗或对应的能源消耗指标。
+- 按月堆叠柱状图，展示各类费用的变化趋势。
+- 费用构成环形图，比较不同分类的支出占比。
+- 统计与明细双页签，以及自定义时间区间筛选。
+
+每公里成本按照已录入支出与记录里程计算。车辆折旧、贷款利息等没有录入的费用，不会自动计入统计结果。
+
+### 小票识别
+
+加油后可以直接拍摄小票，或从相册选择已有图片。
+
+应用使用 **CameraX + ML Kit** 在设备端识别中文小票，尝试提取实付金额、加油量和日期。
+
+识别结果只会填入尚未填写的字段，不会覆盖已有内容。保存前需要自行核对，避免识别错误影响账本。
+
+识别过程在本地完成，所用图片不会上传，也不会写入账本。
+
+### 数据导入与导出
+
+如果之前使用其他记账工具，不必从头录入全部数据。
+
+目前支持：
+
+| 来源 | 导入格式 |
+|---|---|
+| 小熊油耗 | XLS、XLSX |
+| 钱迹 | TXT、JSON、CSV、XLSX |
+| 里程志完整备份 | JSON |
+
+导入时可以调整字段映射、逐行预览和修改记录，并跳过识别出的重复数据。也可以通过 Android 系统分享功能，将文件发送到里程志导入。
+
+导出提供两种方式：
+
+- **费用 CSV：** 导出当前车辆的费用明细，包含 17 列字段。
+- **完整 JSON 备份：** 保存全部车辆、账目、保养记录和相关数据。
+
+完整备份可用于更换手机、恢复数据，也可以作为独立的本地存档。
+
+### WebDAV 同步
+
+WebDAV 是可选功能。未配置时，账本始终保存在本地。
+
+可以连接坚果云、Nextcloud、群晖 NAS 或其他兼容 WebDAV 的存储服务。
+
+同步支持手动触发，也可以在应用打开时自动执行一次，并在本地数据修改后进行防抖同步。
+
+同步任务仅在应用前台运行，退出应用后不会继续后台同步。
+
+WebDAV 连接密码使用 Android Keystore 与 AES-256-GCM 加密保存在设备上。Release 版本只允许 HTTPS 连接。
+
+**注意：** 上传到 WebDAV 的账本是明文 JSON 文件，并未进行端到端加密。建议使用可信任的服务并妥善设置访问权限。
+
+### 其他功能
+
+| 功能 | 说明 |
+|---|---|
+| 今日油价 | 根据车辆燃油标号和定位城市显示参考油价及预计调价方向 |
+| 外观主题 | 里程蓝、森林绿、丁香紫、暖日橙、石墨灰五套主题，均支持浅色与深色模式 |
+| 界面语言 | 简体中文、英文 |
+| 显示单位 | 可设置货币、里程及油量单位，仅调整显示标识，不自动换算已有数值 |
+| 桌面快捷方式 | 长按应用图标可快速记账或进入小票识别 |
+| 系统集成 | 支持系统分享、SAF 文件选择和应用内检查更新 |
+| 演示账本 | 内置两辆虚拟车辆及样例记录，退出演示后自动还原，不影响真实账本 |
+
+今日油价仅在中文界面的燃油车型中提供，数据仅供参考。
+
+目前应用采用手机竖屏布局，尚未提供平板和横屏双栏界面。
 
 ## 下载与安装
 
-当前版本 **0.35.3（beta，versionCode 92）**，首个正式版定为 1.0.0。最新安装包、版本说明与 SHA-256 见 [Releases](https://github.com/Selwiro/MileNoteAndroid/releases)；官网下载页会自动读取最新 Release 的版本、包大小与校验值。
+当前发布版本为 **v0.35.3 Beta（versionCode 92）**。项目仍处于测试和持续完善阶段。
 
-- 系统要求：Android 8.0（API 26）及以上
-- 架构：arm64-v8a / armeabi-v7a，安装包约 23 MB
-- 自签名 APK，首次安装需要在系统设置里允许「安装未知应用」
+可通过以下渠道下载：
 
-安装后可以先打开内置演示账本试记（两辆车、完整样例数据，退出后自动还原，不写入真实账本），再添加车辆、记第一笔，并导出一次完整 JSON 备份。不同签名的版本不能覆盖安装；卸载或换机前请先备份。
+- [官方网站与下载页](https://selwiro.github.io/MileNoteAndroid/)
+- [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases)
 
-## 从源码构建
+GitHub Releases 提供 APK、版本说明与 SHA-256 校验文件。官网也会从 GitHub Releases 读取最新版本、安装包大小及校验值。
 
-需要 **JDK 17+** 与 **Android SDK Platform 37 / Build-Tools 37.0.0**；Gradle 由仓库内 wrapper 提供（9.6.0，首次构建自动下载），无需全局安装 Gradle。SDK 位置用 `ANDROID_HOME` 指定，或让 Android Studio 打开仓库后自动生成 `local.properties`。
+### 系统要求
 
-```bash
-git clone git@github.com:Selwiro/MileNoteAndroid.git
-cd MileNoteAndroid
-
-./gradlew :app:assembleDebug                     # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :domain:test :app:testDebugUnitTest    # 249 项领域 + 116 项 app 单测
-./build.sh release                               # 可选：R8 + 签名（提供密钥时），归档到 dist/ 并生成 .sha256
-```
-
-也可以直接用 Android Studio 打开仓库根目录，选 `app` 运行。
-
-- **中国大陆网络**：设置 `export MILENOTE_ALIYUN=1` 优先走阿里云镜像；wrapper 发行包下载慢时，可把 `gradle/wrapper/gradle-wrapper.properties` 的 `distributionUrl` 换成镜像地址（如腾讯云 `https://mirrors.cloud.tencent.com/gradle/gradle-9.6.0-bin.zip`）。
-- **发布签名是可选的**：`keystore/` 与口令文件都不入库。把密钥与 `keystore/keystore.properties`（`storePassword` / `keyAlias` / `keyPassword`）放到位，或设置环境变量 `MILENOTE_STORE_PASSWORD` / `MILENOTE_KEY_PASSWORD`，release 才会签名；否则产出 `app-release-unsigned.apk`，不影响任何人 clone 后构建。
-- `build.sh` 默认归档到仓库内 `dist/`，可用 `MILENOTE_OUT_DIR=<目录>` 覆盖。
-
-## 技术栈与结构
-
-Kotlin + Jetpack Compose + Material 3 Expressive；单 Activity + Compose Navigation；账本为单文件 JSON 快照（DataStore 存设置）；ML Kit 端侧 OCR；OkHttp 访问 WebDAV。
-
-| 模块 | 内容 |
+| 项目 | 要求 |
 |---|---|
-| `app/` | Compose 界面与 ViewModel、数据层（账本读写）、OCR、导入导出、WebDAV、平台能力（SAF / 分享 / 定位） |
-| `domain/` | 纯 Kotlin 领域层：数据模型、满箱法 / 满电法、保养方案、统计、备份合并、导入解析（JVM 单测） |
-| `app/src/test`、`domain/src/test` | app 单测（116 项）与领域单测（249 项） |
-| `build.sh`、`dev-gradle.sh` | 构建、签名与归档脚本 |
+| Android 版本 | Android 8.0（API 26）及以上 |
+| CPU 架构 | arm64-v8a / armeabi-v7a |
+| APK 大小 | 约 23 MB |
+| 安装方式 | 自签名 APK |
 
-版本矩阵（实测跑通，不建议随意升级）：Gradle 9.6.0 · AGP 9.5.0 · Kotlin 2.4.21 · Compose BOM 2026.09.00 · material3 1.5.0-beta02 · compileSdk / targetSdk 37 · minSdk 26。
+首次安装时，Android 可能要求允许浏览器或文件管理器「安装未知应用」。
 
-## 版本与发布
+安装后可以先体验内置演示账本，再添加车辆并开始正式记账。建议在使用初期导出一次完整 JSON 备份，熟悉备份与恢复流程。
 
-`main` 分支持续迭代，`vX.Y.Z` tag 对应 GitHub Release 资产（APK + `.sha256`）。beta 期版本号用 `0.x`，首个正式版为 `1.0.0`，之后按 semver 递增；本仓库历史自 `v0.27.0`（2026-11-06）起。更新日志见 [Releases](https://github.com/Selwiro/MileNoteAndroid/releases)。
+**注意：** 使用不同签名密钥构建的 APK 无法互相覆盖安装。卸载应用、清除应用数据或更换设备前，请先备份账本。
+
+## 数据与隐私
+
+里程志不提供账号体系，也不在开发者服务器上建立用户账本数据库。
+
+应用的数据处理遵循以下方式：
+
+| 项目 | 处理方式 |
+|---|---|
+| 账本存储 | 保存在应用私有目录下的单文件 `version:2` JSON |
+| 写入方式 | 原子写入，降低写入中断造成文件损坏的风险 |
+| 车辆图片 | 以 dataURL 形式包含在账本中 |
+| 文件导入 | 在设备端解析，不上传原始导入文件 |
+| 小票 OCR | 在设备端识别，不上传或保存识别用图片 |
+| WebDAV | 由用户自行配置，使用 HTTPS 传输明文 JSON |
+| 账号与统计 | 无账号、无订阅、无广告、无埋点统计 |
+
+应用使用的权限包括相机、网络和粗略定位。其中，粗略定位仅用于今日油价功能。
+
+默认账本不会上传到开发者服务器；但使用今日油价、检查更新或自行配置 WebDAV 等联网功能时，应用仍会与相应外部服务通信。
+
+### 数据备份
+
+账本保存在应用私有目录，卸载应用或清除应用数据可能使其丢失。
+
+因此，建议定期导出完整 JSON 备份，并保存到手机以外的位置。
+
+完整备份包含车辆图片和账本数据，请像保管其他个人文件一样妥善保管。
 
 ## 已知限制
 
-- 没有账号体系与多端实时同步；WebDAV 只在前台同步，退出应用即停止，远端账本为明文 JSON。
-- 保养到期只在 App 内「待办」提示，不做系统通知；可以把单条提醒导出为 `.ics` 日历文件。
-- 界面锁竖屏，未做平板 / 横屏双栏。
-- APK 为自签名，首次安装需允许未知来源；换签名会导致老用户无法覆盖安装。
-- 纯电车辆不提供充电小票 OCR、电池健康与续航估算；今日油价的调价方向仅供参考，以发改委公布为准。
-- 每公里成本 = 已录入支出 ÷ 记录里程，不包含折旧、贷款利息等未录入成本。
+里程志仍在持续开发，目前存在以下限制：
+
+- **多设备使用：** 不支持账号式实时同步，WebDAV 仅在应用前台运行。
+- **保养提醒：** 到期项目只在应用内提示，不会发送系统通知；可以手动导出日历文件。
+- **屏幕适配：** 当前锁定竖屏，尚未提供平板及横屏双栏布局。
+- **纯电车型：** 暂不支持充电小票 OCR、电池健康分析或续航估算。
+- **今日油价：** 价格及调价方向仅供参考，实际以官方公布信息和加油站价格为准。
+- **成本统计：** 仅根据已记录的数据计算，不自动计入折旧、贷款利息等其他成本。
+- **数据同步安全：** WebDAV 远端保存明文 JSON，需由用户自行确保服务器安全。
+- **APK 签名：** 不同签名的安装包不能直接覆盖安装。
+
+## 开发计划
+
+项目目前处于 `0.x` Beta 阶段，持续进行问题修复、功能完善和使用体验优化。
+
+**已确定的版本计划：**
+
+- **Beta（0.x）：** 持续迭代与测试。
+- **1.0.0：** 首个正式版本。
+- **正式版之后：** 按照语义化版本规则（SemVer）管理版本号。
+
+其他功能需求可以通过 [GitHub Issues](https://github.com/Selwiro/MileNoteAndroid/issues) 提交和讨论。尚未明确安排的功能不代表已经进入开发计划。
+
+具体更新内容以 [Releases](https://github.com/Selwiro/MileNoteAndroid/releases) 为准。
+
+---
+
+## 开发者文档
+
+以下内容面向希望自行构建、研究代码或参与开发的用户。
+
+### 技术栈
+
+里程志使用 Kotlin 开发，采用 Android 原生技术栈。
+
+| 技术 | 用途 |
+|---|---|
+| Kotlin | 主要开发语言 |
+| Jetpack Compose | 声明式 UI |
+| Material 3 Expressive | 界面组件与主题 |
+| Compose Navigation | 页面导航 |
+| DataStore | 应用设置持久化 |
+| JSON Snapshot | 账本数据存储 |
+| CameraX | 相机拍摄 |
+| ML Kit | 设备端中文文字识别 |
+| OkHttp | WebDAV 网络通信 |
+| Android Keystore | 连接密码安全存储 |
+
+架构采用单 Activity + Compose Navigation。业务计算与数据模型主要放在独立的纯 Kotlin 领域模块中，便于测试和复用。
+
+### 项目结构
+
+```text
+MileNoteAndroid/
+├── app/                  # Android 应用模块
+│   └── src/test/         # App 单元测试
+├── domain/               # 纯 Kotlin 领域模块
+│   └── src/test/         # 领域单元测试
+├── gradle/               # Gradle Wrapper 配置
+├── build.sh              # Release 构建与归档
+├── dev-gradle.sh         # 开发构建辅助脚本
+├── AGENTS.md             # 项目开发约定
+├── README.md             # 中文说明
+└── README.en.md          # English README
+```
+
+各模块主要职责如下：
+
+- **`app/`：** Compose 界面、ViewModel、账本读写、OCR、文件导入导出、WebDAV 和 Android 平台集成。
+- **`domain/`：** 数据模型、满箱法与满电法、保养计划、统计计算、备份合并及导入解析等领域逻辑。
+- **`app/src/test/`：** App 层单元测试。
+- **`domain/src/test/`：** 领域层 JVM 单元测试。
+
+### 构建环境
+
+项目需要 JDK 17 或更高版本，以及 Android SDK Platform 37 和 Build-Tools 37.0.0。
+
+Gradle 由仓库中的 Wrapper 提供，首次构建时自动下载，无需单独安装全局 Gradle。
+
+以下是目前通过构建与测试的版本组合：
+
+| 组件 | 版本 |
+|---|---|
+| Gradle | 9.6.0 |
+| Android Gradle Plugin | 9.5.0 |
+| Kotlin | 2.4.21 |
+| Compose BOM | 2026.09.00 |
+| Material 3 | 1.5.0-beta02 |
+| compileSdk / targetSdk | 37 |
+| minSdk | 26 |
+
+建议优先使用以上组合，升级依赖前先验证构建和测试结果。
+
+### 获取源码
+
+```bash
+git clone https://github.com/Selwiro/MileNoteAndroid.git
+cd MileNoteAndroid
+```
+
+可以直接使用 Android Studio 打开仓库根目录。
+
+命令行构建时，通过 `ANDROID_HOME` 指定 Android SDK 路径，或使用 Android Studio 自动生成 `local.properties`。
+
+### 构建 Debug APK
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+构建结果位于：
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+### 运行测试
+
+```bash
+./gradlew :domain:test :app:testDebugUnitTest
+```
+
+当前包含 **249 项领域层单元测试**和 **116 项 App 层单元测试**。
+
+### 构建 Release APK
+
+```bash
+./build.sh release
+```
+
+脚本会执行包含 R8 的 Release 构建，并将产物归档到仓库的 `dist/` 目录，同时生成 `.sha256` 校验文件。
+
+可以通过环境变量修改归档位置：
+
+```bash
+MILENOTE_OUT_DIR=/path/to/output ./build.sh release
+```
+
+### 配置构建镜像
+
+中国大陆网络环境下，可以使用仓库提供的阿里云镜像配置：
+
+```bash
+export MILENOTE_ALIYUN=1
+```
+
+如果 Gradle Wrapper 发行包下载缓慢，也可以修改 `gradle/wrapper/gradle-wrapper.properties` 中的 `distributionUrl`，替换为可用的镜像地址，例如：
+
+```text
+https://mirrors.cloud.tencent.com/gradle/gradle-9.6.0-bin.zip
+```
+
+使用第三方镜像时，请自行确认文件来源与完整性。
+
+### Release 签名
+
+Release 签名是可选的。没有配置签名密钥时，仍然可以完成构建，但产出的是 `app-release-unsigned.apk`。
+
+如需签名，请自行准备密钥，并在以下路径配置：
+
+```text
+keystore/keystore.properties
+```
+
+配置内容包括：
+
+```properties
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+也可以通过环境变量提供密码：
+
+- `MILENOTE_STORE_PASSWORD`
+- `MILENOTE_KEY_PASSWORD`
+
+签名密钥、密码及相关敏感文件不得提交到 Git 仓库。
+
+### 版本与发布
+
+项目在 `main` 分支持续迭代，使用 `vX.Y.Z` 格式的 Git Tag 标记发布版本。
+
+每个发布 Tag 对应 GitHub Release，包含 APK 与 SHA-256 校验文件。
+
+本仓库的 Android 公开发布历史从 **v0.27.0（2026 年 11 月 6 日）** 开始。
+
+版本说明和安装文件统一维护在 [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases)。
 
 ## 反馈与贡献
 
-- **Bug 与建议**：请到 [Issues](https://github.com/Selwiro/MileNoteAndroid/issues) 提交，附上版本号（设置 → 关于）、机型、复现步骤与必要截图。
-- **Pull Request**：欢迎先开 Issue 讨论再动手；提交前请跑通 `./gradlew :domain:test :app:testDebugUnitTest` 与 `./gradlew :app:assembleDebug`。
-- **代码约定**：仓库内的 [AGENTS.md](AGENTS.md) 记录了账本格式、权限、测试与发布等硬规则，提交信息使用 `type(范围): 摘要`。
-- **隐私**：样例数据一律使用合成数据，不得提交真实小票、真实账本、密钥或构建产物。
+欢迎通过 GitHub Issues 反馈 Bug、提出建议，或通过 Pull Request 参与开发。
 
-## 链接
+### 提交问题
 
-- 官网 / 下载页：<https://selwiro.github.io/MileNoteAndroid/>（英文版：<https://selwiro.github.io/MileNoteAndroid/en/>）
-- 版本发布：<https://github.com/Selwiro/MileNoteAndroid/releases>
-- 问题反馈：<https://github.com/Selwiro/MileNoteAndroid/issues>
-- 本站截图与页面源码在 `gh-pages` 分支；`main` 只保留 Android 代码。
+请在 [Issues](https://github.com/Selwiro/MileNoteAndroid/issues) 中描述问题。Bug 报告建议包含：
+
+- 应用版本号（设置 → 关于）。
+- 手机型号及 Android 版本。
+- 复现步骤与实际表现。
+- 必要的截图或错误信息。
+
+请注意保护隐私，不要上传包含真实个人信息的账本或小票。
+
+### 提交代码
+
+对于较大的功能修改，建议先创建 Issue 讨论实现方案。
+
+提交 Pull Request 前，请至少运行：
+
+```bash
+./gradlew :domain:test :app:testDebugUnitTest
+./gradlew :app:assembleDebug
+```
+
+项目的开发约定详见 [AGENTS.md](AGENTS.md)，其中包含账本格式、权限、测试和发布等规则。
+
+提交信息采用以下格式：
+
+```text
+type(范围): 摘要
+```
+
+所有演示和测试数据应使用合成数据。请勿提交真实账本、小票、签名密钥、密码或构建产物。
 
 ## 许可 / 商标 / 贡献
 
@@ -119,3 +450,12 @@ Kotlin + Jetpack Compose + Material 3 Expressive；单 Activity + Compose Naviga
 - **商店版与收费**：应用商店中的版本是**收费分发渠道**：你支付的主要是持续的版本更新、问题支持与商店渠道服务。Apache-2.0 不限制收费分发——任何人都可以 clone 后自行 `./gradlew :app:assembleDebug` 构建，或基于源码再分发，包括免费分发。商店版的渠道服务条款见 [EULA.md](EULA.md)，它与 [LICENSE](LICENSE) 冲突时以 LICENSE 为准。
 - **商标不在许可范围**：「里程志」「MileNote」名称与图标为开发者保留的商标，不随代码许可授权；基于源码分发的修改版请使用自己的名称与图标，不要造成来源混淆，也不得暗示开发者为其背书。
 - **外部贡献（DCO）**：欢迎 Pull Request，但提交需带 Developer Certificate of Origin 签署（`git commit -s`，即提交信息末尾带 `Signed-off-by: 你的名字 <你的邮箱>`），表示你有权按 Apache-2.0 提交该贡献；提交前请先开 Issue 讨论，并跑通单测与编译。
+
+## 相关链接
+
+- [官方网站与下载](https://selwiro.github.io/MileNoteAndroid/)
+- [English Site](https://selwiro.github.io/MileNoteAndroid/en/)
+- [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases)
+- [Issues / 问题反馈](https://github.com/Selwiro/MileNoteAndroid/issues)
+
+网站页面与截图资源维护在 `gh-pages` 分支，Android 应用源码主要维护在 `main` 分支。
