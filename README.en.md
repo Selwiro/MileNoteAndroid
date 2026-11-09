@@ -106,7 +106,7 @@ Cost per kilometre is based on recorded spending and recorded mileage. Unrecorde
 
 After refuelling, photograph the receipt or pick an existing image from the gallery.
 
-The app uses **CameraX + ML Kit** to recognise Chinese receipts on the device and tries to extract the amount paid, fuel volume and date.
+The app uses **CameraX + Tesseract** (Tesseract4Android, with the tessdata_fast Chinese and English models bundled) to recognise receipts on the device and tries to extract the amount paid, fuel volume and date.
 
 Scan results only fill fields that are still empty and never overwrite existing values. Review them before saving so a misread doesn't end up in your ledger.
 
@@ -267,7 +267,7 @@ MileNote is written in Kotlin and uses the native Android stack.
 | DataStore | App settings persistence |
 | JSON snapshot | Ledger storage |
 | CameraX | Camera capture |
-| ML Kit | On-device Chinese text recognition |
+| Tesseract4Android | On-device Chinese/English text recognition (Apache-2.0, tessdata_fast models bundled) |
 | OkHttp | WebDAV networking |
 | Android Keystore | Secure storage of connection passwords |
 
@@ -345,7 +345,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **249 domain unit tests** and **116 app unit tests**.
+The suite currently contains **267 domain unit tests** and **126 app unit tests**.
 
 ### Building a release APK
 

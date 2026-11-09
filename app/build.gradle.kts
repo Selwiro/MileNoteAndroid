@@ -18,7 +18,8 @@ android {
         versionName = "0.35.3"
         vectorDrawables.useSupportLibrary = true
 
-        // ML Kit 的中文 OCR 只带 arm 的 .so；x86 仅用于模拟器调试，不进正式包（省约 22 MB）。
+        // 只带 ARM 的 native 库：Tesseract4Android 同样按 ABI 分发 .so，x86 只用于模拟器调试，
+        // 不进正式包；本机模拟器是 arm64 镜像，无需 x86 也能跑。
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -104,8 +105,7 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    implementation(libs.com.google.mlkit.text.recognition.chinese)
-    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation(libs.cz.adaptech.tesseract4android)
 
     implementation(libs.io.coil.coil.compose)
     implementation(libs.io.coil.coil.network.okhttp)

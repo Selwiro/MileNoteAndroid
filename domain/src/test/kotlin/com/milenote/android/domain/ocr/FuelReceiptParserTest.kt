@@ -99,7 +99,7 @@ class FuelReceiptParserTest {
     }
 
     @Test
-    fun `mlkit label column output pairs values in order`() {
+    fun `ocr label column output pairs values in order`() {
         val receipt = FuelReceiptParser.parse(
             "油品金額\n车牌号\n应付金額\n实付金额\n可开票金额①\n记录详情\n" +
                 "92号车用汽油(VIB)\n2026-10-20 10:44:07\n中国石化示例加油由站\n1l69\n" +
@@ -218,6 +218,55 @@ class FuelReceiptParserTest {
     @Test
     fun `pump fallback requires pump markers`() {
         assertNull(FuelReceiptParser.parsePumpDisplay(listOf("22878\n3L47")))
+    }
+
+    @Test
+    fun `lone unit price without amount or liters is dropped`() {
+        // 七段屏读不出中文标签时，噪声行「7t/L」会命中单价正则；没有金额/升数支撑就置空。
+        val receipt = FuelReceiptParser.parse("fetouH\n3516\n7t/L\nIc |")
+        assertNull(receipt.amount)
+        assertNull(receipt.liters)
+        assertNull(receipt.unitPrice)
+    }
+
+    @Test
+    fun `pump display drops lone liters when amount missing`() {
+        // 加油机屏金额没读出来时，孤立的一个「1 L」是噪声，不能静默填进升数。
+        val receipt = FuelReceiptParser.parse("提枪加油\n请确认油枪归位\n1 L")
+        assertNull(receipt.amount)
+        assertNull(receipt.liters)
+        assertNull(receipt.unitPrice)
+        assertTrue(receipt.warnings.any { it.contains("加油量") || it.contains("Fuel amount") })
+    }
+
+    @Test
+    fun `pump fallback rejects one-off noise tokens`() {
+        // Tesseract 读不出七段数字时只会吐出随机 token：只出现一次的不算读数。
+        assertNull(FuelReceiptParser.parsePumpDisplay(listOf("提枪加油\n3546\n111")))
+    }
+
+    @Test
+    fun `pump fallback rejects implausible amount per liter`() {
+        // 35.46 / 1.11 = 31.95 元/L，不在合理油价区间：整组读数作废，宁可不填。
+        assertNull(
+            FuelReceiptParser.parsePumpDisplay(
+                listOf("提枪加油\n3546\n111", "提枪加油\n3546\n111"),
+            ),
+        )
+    }
+
+    @Test
+    fun `ocr misreads liters label and unit`() {
+        // Tesseract 常见误识：升数→升效、L→上。
+        val receipt = FuelReceiptParser.parse(
+            "中国石化 加油小票\n油品 92# 汽油\n单价 7.27 T/L\n升效 31.47 上\n金额 228.78 元\n" +
+                "实付金额 228.78 元\n支付时间 2026-11-09 18:42\n总里程 42318 km",
+        )
+        assertEquals(228.78, receipt.amount!!, 1e-9)
+        assertEquals(31.47, receipt.liters!!, 1e-9)
+        assertEquals(7.27, receipt.unitPrice!!, 1e-9)
+        assertEquals("2026-11-09", receipt.date)
+        assertEquals(42318.0, receipt.odometer!!, 1e-9)
     }
 
     @Test

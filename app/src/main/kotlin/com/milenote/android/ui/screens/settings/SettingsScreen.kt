@@ -202,7 +202,7 @@ private enum class SettingsPage {
  * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
  * - WebDAV 同步：连接配置、前台自动同步、手动上传/下载。
  * - 关于：应用 logo 与简介、检查更新、官网/GitHub、开源许可入口、演示账本。
- * - 开源许可：本应用与第三方组件的许可证全文（离线内嵌）、ML Kit / Android SDK 条款链接。
+ * - 开源许可：本应用与第三方组件的许可证全文（离线内嵌）、Android SDK 许可条款链接。
  *
  * @param vm 全局 ViewModel。
  * @param onNavigate 路由回调；仅在首页返回、且宿主没有 OnBackPressedDispatcher 时回传
@@ -1679,7 +1679,7 @@ private fun AboutPage(
  * 开源许可页：本应用与随 APK 分发的第三方组件。
  *
  * 许可证全文与组件清单内嵌在 `assets/licenses/`（离线可读，不请求网络）；
- * ML Kit / Android SDK 是 Google 的专有 SDK，只给条款链接。
+ * Tesseract4Android / tessdata 模型为 Apache-2.0；Android SDK 条款链接单独列出。
  */
 @Composable
 private fun LicensesPage() {
@@ -1767,14 +1767,6 @@ private fun LicensesPage() {
                     title = "BSD 3-Clause License",
                     subtitle = "Protocol Buffers · AndroidX DataStore",
                     onClick = { openAsset("BSD 3-Clause License", "licenses/bsd-3-clause.txt") },
-                )
-                SectionDivider()
-                SettingsMenuRow(
-                    icon = MileNoteIcons.Globe,
-                    title = tr("ML Kit 服务条款", "ML Kit Terms of Service"),
-                    subtitle = "developers.google.com/ml-kit/terms",
-                    onClick = { openLink("https://developers.google.com/ml-kit/terms") },
-                    showChevron = false,
                 )
                 SectionDivider()
                 SettingsMenuRow(

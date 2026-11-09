@@ -13,6 +13,7 @@ import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -75,10 +76,10 @@ import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.domain.ocr.FuelReceiptParser
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
-import com.milenote.android.platform.ocr.MlKitLatinOcrRecognizer
-import com.milenote.android.platform.ocr.MlKitOcrRecognizer
 import com.milenote.android.platform.ocr.OcrException
 import com.milenote.android.platform.ocr.OcrRecognizer
+import com.milenote.android.platform.ocr.TesseractLatinOcrRecognizer
+import com.milenote.android.platform.ocr.TesseractOcrRecognizer
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
@@ -98,7 +99,7 @@ private enum class OcrStage { Idle, Recognizing, Result, Error }
 /** OCR 输入图最长边上限（像素）：既保证小票文字可辨，又控制内存与耗时。 */
 private const val MAX_OCR_SIDE = 2000
 
-/** 小图（如加油机屏幕照片）放大到的最长边；ML Kit 对 300px 级图片几乎无法识别。 */
+/** 小图（如加油机屏幕照片）放大到的最长边；Tesseract 对 300px 级图片几乎无法识别。 */
 private const val MIN_OCR_SIDE = 1400
 
 /** 小图放大倍数上限，避免过度插值。 */
@@ -108,9 +109,15 @@ private const val MAX_OCR_UPSCALE = 5f
 private const val MAX_DECODE_SIDE = 2400
 
 /**
+ * 单次识别的时间预算：低清/七段屏照片会触发「多增强变体 × 中英双引擎」兜底，
+ * 最坏情况十几轮整图 OCR。超过预算就停止重试，保留当前得分最高的结果。
+ */
+private const val OCR_TIME_BUDGET_MS = 20_000L
+
+/**
  * 加油小票拍照识别页。
  *
- * 交互：CameraX 预览 → 拍照（或相册选图）→ ML Kit 中文 OCR → [FuelReceiptParser] 解析字段
+ * 交互：CameraX 预览 → 拍照（或相册选图）→ Tesseract 中文 OCR → [FuelReceiptParser] 解析字段
  * → 结果确认面板 → 通过 [onResult] 把 [FuelReceipt] 回填给编辑器。
  *
  * 隐私：图片只在内存中处理（识别完立即 `recycle()`），**不落盘、不上传**；
@@ -129,15 +136,15 @@ private const val MAX_DECODE_SIDE = 2400
  * @param onResult 用户点「使用结果」后回调解析出的字段（可能为空字段，调用方应允许手动修改）。
  * @param onClose 关闭页面（左上角 X / 返回）。
  * @param modifier 外部布局修饰符。
- * @param recognizer 识别实现，默认 ML Kit 中文（可注入假实现做测试）。
+ * @param recognizer 识别实现，默认 Tesseract 中文（可注入假实现做测试）。
  */
 @Composable
 fun OcrCaptureScreen(
     onResult: (FuelReceipt) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    recognizer: OcrRecognizer = MlKitOcrRecognizer,
-    latinRecognizer: OcrRecognizer = MlKitLatinOcrRecognizer,
+    recognizer: OcrRecognizer = TesseractOcrRecognizer,
+    latinRecognizer: OcrRecognizer = TesseractLatinOcrRecognizer,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -202,7 +209,10 @@ fun OcrCaptureScreen(
                 var bestParsed = FuelReceiptParser.parse("")
                 var bestScore = -1
                 val allTexts = mutableListOf<String>()
+                val recognitionStartedAt = SystemClock.elapsedRealtime()
                 suspend fun tryWith(engine: OcrRecognizer, image: Bitmap) {
+                    // 预算用尽就不再尝试新变体/引擎；已跑过的结果仍然有效。
+                    if (SystemClock.elapsedRealtime() - recognitionStartedAt > OCR_TIME_BUDGET_MS) return
                     val ocr = engine.recognize(image)
                     if (ocr.text.isNotBlank()) allTexts.add(ocr.text)
                     val parsed = FuelReceiptParser.parse(ocr.text, ocr.lines)
@@ -233,7 +243,7 @@ fun OcrCaptureScreen(
                         withContext(Dispatchers.Default) { enhanced.forEach { if (!it.isRecycled) it.recycle() } }
                     }
                 }
-                // 加油机七段数码管：ML Kit 会丢小数点/把 1 读成 L，用多轮 OCR 的数字行兜底还原。
+                // 加油机七段数码管：Tesseract 同样会丢小数点/把 1 读成 L，用多轮 OCR 的数字行兜底还原。
                 if (bestParsed.amount == null || bestParsed.liters == null) {
                     FuelReceiptParser.parsePumpDisplay(allTexts)?.let { pump ->
                         bestParsed = bestParsed.copy(
@@ -905,7 +915,7 @@ private fun prepareForOcr(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
     return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
 }
 
-/** 从相册 URI 解码位图（API 28+ 用 ImageDecoder 自动应用 EXIF 方向，且强制软件位图供 ML Kit 使用）。 */
+/** 从相册 URI 解码位图（API 28+ 用 ImageDecoder 自动应用 EXIF 方向，且强制软件 ARGB_8888 位图供 OCR 使用）。 */
 private fun decodeImage(context: Context, uri: Uri): Bitmap? = runCatching {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
@@ -968,6 +978,26 @@ private fun buildEnhancedVariants(base: Bitmap): List<Bitmap> {
         output.setPixels(pixels, 0, base.width, 0, 0, base.width, base.height)
         output
     }.getOrNull()
+    // 负片：黑底浅字（七段数码管、深色 LCD）灰度后仍偏暗，反相后变成白底黑字，
+    // Tesseract 的版面分析才找得到行。
+    val negative = runCatching {
+        val output = Bitmap.createBitmap(base.width, base.height, Bitmap.Config.ARGB_8888)
+        val invert = ColorMatrix(
+            floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f,
+            ),
+        )
+        Canvas(output).drawBitmap(
+            base,
+            0f,
+            0f,
+            Paint().apply { colorFilter = ColorMatrixColorFilter(invert) },
+        )
+        output
+    }.getOrNull()
     val crops = runCatching {
         listOf(
             // 加油机 LCD 主体：金额 / 油量两行。
@@ -982,7 +1012,7 @@ private fun buildEnhancedVariants(base: Bitmap): List<Bitmap> {
             Bitmap.createBitmap(base, left, top, right - left, bottom - top)
         }.map { crop -> prepareForOcr(crop, 0) }
     }.getOrElse { emptyList() }
-    return listOfNotNull(grayscale, threshold) + crops
+    return listOfNotNull(grayscale, threshold, negative) + crops
 }
 
 private data class CropSpec(val left: Float, val top: Float, val right: Float, val bottom: Float)

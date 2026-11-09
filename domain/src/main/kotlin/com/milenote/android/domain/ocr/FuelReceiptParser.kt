@@ -44,14 +44,22 @@ object FuelReceiptParser {
     private val NUMERIC = Regex("[:：]?[^\\d\\n]{0,4}(\\d[\\d,]*(?:\\.\\d{1,2})?)(?![\\d.])")
     private val DATE_PATTERN = Regex("(20\\d{2})[-/.年](\\d{1,2})[-/.月](\\d{1,2})日?")
     private val PAID_DATE_LABEL = Regex("支付时间|支付日期|付款时间|付款日期|交易时间|交易日期")
-    private val LITERS_UNIT = Regex("(\\d+(?:\\.\\d{1,3})?)\\s*(?:L|升|公升)(?![\\dA-Za-z])", RegexOption.IGNORE_CASE)
+    private val LITERS_UNIT = Regex(
+        // 油量单位：L 常被 OCR 读成「上」（31.47 L → 31.47 上），一并接受。
+        "(\\d+(?:\\.\\d{1,3})?)\\s*(?:L|升|公升|上)(?![\\dA-Za-z])",
+        RegexOption.IGNORE_CASE,
+    )
 
     private val PAID_LABEL = Regex(
         "^.*?(?:实付金额|实付金額|实付全额|实付金领|实际支付|实际付款|实付款|实付|支付金额|付款金额)[:：]?",
     )
     private val TOTAL_LABEL = Regex("^.*?(?:订单金额|订单金額|合计金额|总金额|应付金额|应付金額|合计)[:：]?")
-    private val LITERS_LABEL = Regex("^.*?(?:加油量|加油升数|油量|升数|数量)[:：]?")
-    private val UNIT_PRICE_LABEL = Regex("(\\d+(?:\\.\\d{1,2})?)\\s*(?:元)?\\s*/\\s*L", RegexOption.IGNORE_CASE)
+    private val LITERS_LABEL = Regex("^.*?(?:加油量|加油升数|油量|升数|升數|升效|数量)[:：]?")
+    private val UNIT_PRICE_LABEL = Regex(
+        // 「元/L」的「元」常被 OCR 读成 T（7.27 T/L），两种都认。
+        "(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|T|τ)?\\s*/\\s*L",
+        RegexOption.IGNORE_CASE,
+    )
     private val PAYABLE_LABEL = Regex("^.*?(?:应付金额|应付金額|订单金额|订单金額|订单全额|合计金额|总金额)[:：]?")
     private val DISCOUNT_LABEL = Regex("^.*?(?:优惠金额|优惠金額|优惠|折扣)[:：]?")
     private val ODOMETER_LABEL = Regex("^.*?(?:总里程|当前里程|表显里程)[:：]?")
@@ -74,7 +82,7 @@ object FuelReceiptParser {
      * 解析 OCR 结果。
      *
      * @param text 原始纯文本（用于展示/编辑）
-     * @param ocrLines ML Kit 带坐标的文字行；为空时退化为逐行解析。
+     * @param ocrLines OCR 引擎带坐标的文字行；为空时退化为逐行解析。
      */
     fun parse(text: String, ocrLines: List<OcrTextLine>): FuelReceipt {
         val normalized = Normalizer.normalize(text, Normalizer.Form.NFKC)
@@ -269,14 +277,20 @@ object FuelReceiptParser {
 
         val odometer = pick(values(ODOMETER_LABEL, ODOMETER_VALUE), tr("总里程", "Odometer"))
 
+        // 加油机屏幕的金额与升数是同一屏的成对读数：金额都没读出来时，单独的「升数」基本是噪声
+        // （实测 Tesseract 会把屏幕杂讯读成 1 L）。宁可留空让用户手填，也不要静默写错一笔加油量。
+        val trustedLiters = if (isPumpDisplay && amount == null) null else liters
+        // 单独一个单价对回填没有意义：金额和升数都不可信时，单价多半是屏幕噪声（如 7t/L）误命中。
+        val trustedUnitPrice = if (amount == null && trustedLiters == null) null else unitPrice
+
         if (amount == null || amount <= 0.0) warnings.add(tr("未确定实付金额，请手动核对", "Paid amount not detected — check manually"))
-        if (liters == null) warnings.add(tr("未确定加油量，请手动核对", "Fuel amount not detected — check manually"))
+        if (trustedLiters == null) warnings.add(tr("未确定加油量，请手动核对", "Fuel amount not detected — check manually"))
         if (date.isEmpty()) warnings.add(tr("未确定支付日期，请手动核对", "Payment date not detected — check manually"))
 
         return FuelReceipt(
             amount = amount?.takeIf { it > 0.0 && it < 100_000.0 },
-            liters = liters,
-            unitPrice = unitPrice,
+            liters = trustedLiters,
+            unitPrice = trustedUnitPrice,
             payable = payable,
             discount = discount,
             date = date,
@@ -483,7 +497,7 @@ object FuelReceiptParser {
     /**
      * 加油机 LED/LCD 屏幕兜底解析。
      *
-     * ML Kit 对七段数码管常把 `228.78` 读成 `22878`、`31.47` 读成 `3L47`；
+     * OCR 引擎对七段数码管常把 `228.78` 读成 `22878`、`31.47` 读成 `3L47`；
      * 这里汇总所有 OCR 变体的数字行，按“金额 / 油量”顺序还原小数点，并用金额÷油量补出单价。
      * 仅在 [texts] 明确包含加油机标记（提枪加油 / 油量 + 单价）时启用。
      */
@@ -538,25 +552,30 @@ object FuelReceiptParser {
             }
         }
 
+        // 跨 OCR 变体复现至少两次才算可信：ML Kit 时代的七段读数会在多个变体里重复出现；
+        // Tesseract 读不出数字时只会吐出随机噪声，单次出现的 token 直接丢掉，避免「编」出金额/升数。
         fun mostFrequent(values: List<Double>): Double? {
             if (values.isEmpty()) return null
-            return values.groupBy { String.format(java.util.Locale.US, "%.2f", it) }
-                .maxByOrNull { it.value.size }?.value?.first()
+            val mode = values.groupBy { String.format(java.util.Locale.US, "%.2f", it) }
+                .maxByOrNull { it.value.size } ?: return null
+            return mode.value.first().takeIf { mode.value.size >= 2 }
         }
 
         val amount = mostFrequent(amountCandidates) ?: return null
         var liters = mostFrequent(literCandidates) ?: return null
         // 金额与油量量级明显不合理时不做兜底，避免把订单号当读数。
         if (amount !in 1.0..100_000.0 || liters !in 1.0..200.0) return null
-        val unitPrice = (amount / liters).takeIf { it in 0.5..50.0 }
+        // 金额 ÷ 升数应落在合理油价区间（本币/升，覆盖常见市场 0.5–20）；
+        // 噪声凑出来的「35.46 ÷ 1.11 = 31.95」会在这里被拒掉，宁可不填也不静默写错值。
+        val unitPrice = (amount / liters).takeIf { it in 0.5..20.0 } ?: return null
         return FuelReceipt(
             amount = amount,
             liters = liters,
             unitPrice = unitPrice,
             warnings = listOf(
                 tr(
-                    "已按加油机读数自动换算（22878→228.78、3L47→31.47），请核对",
-                    "Auto-converted from the pump display (22878→228.78, 3L47→31.47) — please verify",
+                    "已按加油机读数自动换算，请核对金额与升数",
+                    "Auto-converted from the pump display — verify the amount and fuel volume",
                 ),
             ),
         )

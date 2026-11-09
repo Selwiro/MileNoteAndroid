@@ -106,7 +106,7 @@
 
 加油后可以直接拍摄小票，或从相册选择已有图片。
 
-应用使用 **CameraX + ML Kit** 在设备端识别中文小票，尝试提取实付金额、加油量和日期。
+应用使用 **CameraX + Tesseract**（Tesseract4Android，内置 tessdata_fast 中文与英文模型）在设备端识别小票，尝试提取实付金额、加油量和日期。
 
 识别结果只会填入尚未填写的字段，不会覆盖已有内容。保存前需要自行核对，避免识别错误影响账本。
 
@@ -267,7 +267,7 @@ GitHub Releases 提供 APK、版本说明与 SHA-256 校验文件。官网也会
 | DataStore | 应用设置持久化 |
 | JSON Snapshot | 账本数据存储 |
 | CameraX | 相机拍摄 |
-| ML Kit | 设备端中文文字识别 |
+| Tesseract4Android | 设备端中英文文字识别（Apache-2.0，内置 tessdata_fast 模型） |
 | OkHttp | WebDAV 网络通信 |
 | Android Keystore | 连接密码安全存储 |
 
@@ -345,7 +345,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-当前包含 **249 项领域层单元测试**和 **116 项 App 层单元测试**。
+当前包含 **267 项领域层单元测试**和 **126 项 App 层单元测试**。
 
 ### 构建 Release APK
 

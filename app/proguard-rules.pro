@@ -7,11 +7,14 @@
 -keepclassmembers class com.milenote.android.** { *** Companion; }
 -keepclasseswithmembers class com.milenote.android.** { kotlinx.serialization.KSerializer serializer(...); }
 
-# ML Kit / Room 基础规则由各自 AAR 提供，若 release 构建报错在此补充。
+# Room 等基础规则由各自 AAR 提供，若 release 构建报错在此补充。
 
-# ML Kit Text Recognition（AAR 自带 consumer rules，这里兜底）
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
+# Tesseract4Android：TessBaseAPI / PageIterator 的 native 方法靠类名与方法名绑定（JNI），
+# AAR 不带 consumer rules，必须显式保留，否则 R8 混淆后调用原生库会 UnsatisfiedLinkError。
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
+-dontwarn com.googlecode.tesseract.android.**
+-dontwarn com.googlecode.leptonica.android.**
 
 # kotlinx.serialization 生成的 serializer 已被 domain 规则覆盖（com.milenote.android.**）
 -dontwarn org.jetbrains.kotlinx.**
