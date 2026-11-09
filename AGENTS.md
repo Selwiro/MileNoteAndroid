@@ -6,7 +6,7 @@
 
 ## 现状
 
-- **0.34.6（versionCode 85，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
+- **0.35.3（versionCode 92，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
   minSdk 26 / targetSdk 37。界面中英双语（设置 → 外观 → 语言）。
 - Kotlin 2.4.21 + Jetpack Compose（BOM 2026.09.00、material3 1.5.0-beta02）+ Material 3 Expressive；
   AGP 9.5.0 / Gradle 9.6.0。**版本矩阵是实测跑通的，不要随手升级。**
@@ -35,7 +35,7 @@
 （`ANDROID_HOME` 或 `local.properties`）。任何人 clone 后 `./gradlew assembleDebug` 即可出 APK。
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（195 + 38），必须全绿
+./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（244 + 116），必须全绿
 ./gradlew :app:assembleDebug                   # 编译检查，产物在 app/build/outputs/apk/debug/
 ./build.sh debug                               # 编译 + 归档到 dist/
 ./build.sh release                             # R8 +（有密钥时）签名，归档到 dist/ 并生成 .sha256
