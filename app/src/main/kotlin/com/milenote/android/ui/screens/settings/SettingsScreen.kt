@@ -83,6 +83,7 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankVehicle
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.AppLanguage
 import com.milenote.android.i18n.CurrencyUnit
 import com.milenote.android.i18n.DistanceUnit
@@ -182,9 +183,9 @@ private enum class SettingsPage {
  *
  * - 我的车辆：横向车辆卡片，点卡片切换当前车辆，卡片右上角编辑；添加车辆打开全屏编辑对话框。
  * - 外观：5 套皮肤、深浅色三态。
- * - 单位：货币 / 里程 / 油量显示口径（只改显示标签，不换算数值）。
+ * - 单位：货币 / 里程 / 油量显示口径（只改显示标签，不换算数值；油量只服务燃油车）。
  * - 费用分类与项目：费用分类 / 项目库两个页签；分类按当前车辆隔离。
- * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导。
+ * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导（纯电当前车隐藏小熊油耗）。
  * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
  * - WebDAV 同步：连接配置、前台自动同步、手动上传/下载。
  * - 关于：应用 logo 与简介、检查更新、官网/GitHub、演示账本。
@@ -665,6 +666,8 @@ fun SettingsScreen(
                     )
 
                     SettingsPage.IMPORT -> ExternalImportPage(
+                        // 纯电当前车隐藏「小熊油耗」（只认加油 XLS），其它导入入口保留。
+                        ev = activeCar?.isEv == true,
                         onOpenImporter = { source -> onOpenImporter(source) },
                         onGoBackup = { pageName = SettingsPage.BACKUP.name },
                     )
@@ -727,9 +730,13 @@ fun SettingsScreen(
             title = if (target.id == null) tr("添加车辆", "Add vehicle") else tr("编辑车辆", "Edit vehicle"),
             recordCount = target.recordCount,
             onDismiss = { editing = null },
-            onSave = { vehicle ->
+            onSave = { vehicle, prunePowertrainReminders ->
                 editing = null
-                if (target.id == null) vm.addVehicle(vehicle) else vm.saveVehicle(vehicle)
+                if (target.id == null) {
+                    vm.addVehicle(vehicle)
+                } else {
+                    vm.saveVehicle(vehicle, prunePowertrainReminders = prunePowertrainReminders)
+                }
             },
             onDelete = target.id?.let { id -> { vm.deleteVehicle(id) } },
         )
@@ -894,12 +901,32 @@ private fun VehicleCard(
                     modifier = Modifier.size(width = 56.dp, height = 44.dp),
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = DataLabels.vehicleName(vehicle.name),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = DataLabels.vehicleName(vehicle.name),
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        // 纯电车辆徽标（燃油车不显示），多车时一眼可辨。
+                        if (ledger.isEv) {
+                            Surface(
+                                shape = MileNoteShapeTokens.full,
+                                color = if (selected) scheme.primary else scheme.secondaryContainer,
+                            ) {
+                                Text(
+                                    text = tr("纯电", "EV"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selected) scheme.onPrimary else scheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = secondary,
                         style = MaterialTheme.typography.bodySmall,
@@ -1020,6 +1047,8 @@ private fun AppearanceSection(
 
 /**
  * 单位页（与「外观」平级）：货币 / 里程 / 油量只影响显示标签，不做数值换算。
+ *
+ * 油量单位只服务燃油车；纯电车辆充电量固定为度（kWh），不随该设置变化。
  */
 @Composable
 private fun UnitsSection(
@@ -1063,18 +1092,30 @@ private fun UnitsSection(
 
         SectionDivider()
 
-        Text(tr("油量", "Volume"), style = MaterialTheme.typography.titleSmall)
+        Text(tr("油量（燃油车）", "Volume (fuel vehicles)"), style = MaterialTheme.typography.titleSmall)
         Spacer(modifier = Modifier.size(8.dp))
         SegmentedChoiceRow(
             options = volumeUnitOptions(),
             selected = settings.volumeUnit,
             onSelect = onVolumeUnitChange,
         )
+        Spacer(modifier = Modifier.size(6.dp))
+        Text(
+            text = tr(
+                "纯电车辆充电量固定显示为度（kWh），不受此项影响。",
+                "For EVs, charging amounts always display in kWh and are not affected by this setting.",
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
 
         SectionDivider()
 
         Text(
-            text = tr("油耗单位随里程/油量自动组合。", "Fuel economy unit follows the distance/volume combination."),
+            text = tr(
+                "燃油按里程/油量组合，纯电固定为度/百公里。",
+                "Fuel economy follows the distance/volume combination; EVs always use kWh/100 km.",
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,
         )
@@ -1215,9 +1256,10 @@ private fun CategoryTabsPage(
 // 外部导入
 // ---------------------------------------------------------------------------------------------
 
-/** 外部导入首页：来源列表；点来源直接进向导（来源预选）。 */
+/** 外部导入首页：来源列表；点来源直接进向导（来源预选）。纯电当前车隐藏「小熊油耗」。 */
 @Composable
 private fun ExternalImportPage(
+    ev: Boolean,
     onOpenImporter: (String) -> Unit,
     onGoBackup: () -> Unit,
 ) {
@@ -1226,13 +1268,16 @@ private fun ExternalImportPage(
             SectionCard(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             ) {
-                SettingsMenuRow(
-                    icon = MileNoteIcons.CategoryFuel,
-                    title = tr("小熊油耗", "Bear"),
-                    subtitle = tr("XLS / XLSX · 导入加油记录", "XLS / XLSX · Import fuel records"),
-                    onClick = { onOpenImporter("bear") },
-                )
-                SectionDivider()
+                // 小熊油耗只有加油记录（XLS/XLSX），纯电车辆不适用；钱迹等入口保持不变。
+                if (!ev) {
+                    SettingsMenuRow(
+                        icon = MileNoteIcons.CategoryFuel,
+                        title = tr("小熊油耗", "Bear"),
+                        subtitle = tr("XLS / XLSX · 导入加油记录", "XLS / XLSX · Import fuel records"),
+                        onClick = { onOpenImporter("bear") },
+                    )
+                    SectionDivider()
+                }
                 SettingsMenuRow(
                     icon = MileNoteIcons.Wallet,
                     title = tr("钱迹记账", "Qianji"),

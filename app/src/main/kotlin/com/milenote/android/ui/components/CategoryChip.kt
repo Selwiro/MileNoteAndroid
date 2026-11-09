@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteCategoryNames
@@ -38,6 +39,7 @@ import com.milenote.android.ui.theme.categoryColorOf
  * @param onClick 点按回调。
  * @param icon 分类图标，默认由调用方从 [MileNoteIcons.Category] 传入。
  * @param accentColor 分类强调色，默认按 [name] 取 [categoryColorOf]。
+ * @param ev 当前车是否纯电：纯电时「油费」显示为「电费 / Charging」（存储值不变）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +50,7 @@ fun CategoryChip(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     accentColor: androidx.compose.ui.graphics.Color = categoryColorOf(name),
+    ev: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     FilterChip(
@@ -57,7 +60,7 @@ fun CategoryChip(
         shape = MileNoteShapeTokens.full,
         label = {
             Text(
-                text = com.milenote.android.i18n.DataLabels.category(name),
+                text = DataLabels.category(name, ev),
                 style = MaterialTheme.typography.labelLarge,
             )
         },
@@ -97,6 +100,7 @@ fun CategoryChip(
  * @param categories 分类名列表，默认 9 类固定顺序 [MileNoteCategoryNames]。
  * @param icons 与 [categories] 对齐的图标列表。
  * @param onAddCategory 可选「＋ 新增分类」入口。
+ * @param ev 当前车是否纯电：纯电时「油费」显示为「电费 / Charging」（存储值不变）。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -107,6 +111,7 @@ fun CategoryChipGrid(
     categories: List<String> = MileNoteCategoryNames,
     icons: List<ImageVector> = MileNoteIcons.Category,
     onAddCategory: (() -> Unit)? = null,
+    ev: Boolean = false,
 ) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
@@ -119,6 +124,7 @@ fun CategoryChipGrid(
                 selected = category == selected,
                 onClick = { onSelect(category) },
                 icon = icons.getOrNull(index),
+                ev = ev,
             )
         }
         if (onAddCategory != null) {

@@ -33,13 +33,15 @@ object DataLabels {
     )
 
     private val SERVICE_ITEM_EN: Map<String, String> = mapOf(
-        // 12 项内置保养方案（DEFAULT_SERVICE_PLAN）
+        // 内置保养方案（燃油 12 项 / 纯电 6 项）
         "首保" to "First service",
         "机油机滤" to "Oil & filter",
         "空气滤芯" to "Air filter",
         "空调滤芯" to "Cabin filter",
         "冷却液" to "Coolant",
         "制动液" to "Brake fluid",
+        "刹车油" to "Brake fluid",
+        "三电诊断" to "EV system check",
         "灰滤" to "Ash filter",
         "火花塞" to "Spark plugs",
         "轮胎" to "Tires",
@@ -78,12 +80,23 @@ object DataLabels {
         "宁夏" to "Ningxia", "新疆" to "Xinjiang",
     )
 
-    /** 内置分类名 → 英文；自定义分类原样返回（中英文模式下都不变）。 */
-    fun category(name: String?): String {
+    /**
+     * 内置分类名 → 显示名；自定义分类原样返回（中英文模式下都不变）。
+     *
+     * 纯电车的「油费」在界面上叫「电费 / Charging」，但**账本存储值仍是「油费」**
+     * （9 类分类契约、配色、统计、CSV、备份、导入判重都依赖该值）。
+     *
+     * @param ev 当前车辆是否纯电；默认 false，保持所有旧调用点行为不变。
+     */
+    fun category(name: String?, ev: Boolean = false): String {
         val raw = name.orEmpty()
+        if (ev && raw == "油费") return tr("电费", "Charging")
         if (!I18n.english) return raw
         return CATEGORY_EN[raw] ?: raw
     }
+
+    /** 当前动力类型的能源费分类名（记录编辑器默认分类 chip / 标题用）。 */
+    fun energyCategory(ev: Boolean): String = category("油费", ev)
 
     /** 皮肤中文名 → 英文；未知值原样返回。 */
     fun theme(label: String?): String {

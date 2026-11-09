@@ -1,6 +1,8 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.d
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
@@ -222,4 +224,109 @@ class ServicePlanTest {
         assertNotNull(next.presetKey ?: "nullable")
     }
 
+    // ---- 纯电保养方案（6 项） ----
+
+    @Test
+    fun `ev default plan has six items with ev cycles`() {
+        val plan = resolveServicePlan(null, ev = true)
+        assertEquals(6, plan.size)
+        assertEquals(
+            listOf("first", "ev-diag", "cabin", "brake", "coolant", "tires"),
+            plan.map { it.key },
+        )
+        val first = plan.first { it.key == "first" }
+        assertEquals("首保", first.title)
+        assertEquals(true, first.firstOnly)
+        assertEquals(5000.0, first.intervalKm!!, 1e-9)
+        assertEquals(3, first.intervalMonths)
+        assertEquals(listOf("三电诊断"), first.projects)
+
+        val diag = plan.first { it.key == "ev-diag" }
+        assertEquals("三电诊断", diag.title)
+        assertEquals(10000.0, diag.intervalKm!!, 1e-9)
+        assertEquals(12, diag.intervalMonths)
+
+        assertEquals(8000.0, plan.first { it.key == "cabin" }.intervalKm!!, 1e-9)
+        assertEquals(9, plan.first { it.key == "cabin" }.intervalMonths)
+        assertEquals("刹车油", plan.first { it.key == "brake" }.title)
+        assertEquals(40000.0, plan.first { it.key == "brake" }.intervalKm!!, 1e-9)
+        assertEquals(24, plan.first { it.key == "brake" }.intervalMonths)
+        assertEquals(60000.0, plan.first { it.key == "coolant" }.intervalKm!!, 1e-9)
+        assertEquals(48, plan.first { it.key == "coolant" }.intervalMonths)
+        assertEquals(50000.0, plan.first { it.key == "tires" }.intervalKm!!, 1e-9)
+        assertNull(plan.first { it.key == "tires" }.intervalMonths)
+
+        // 燃油专属项不得出现在纯电方案
+        val titles = plan.map { it.title.orEmpty() }.toSet()
+        assertTrue(titles.none { it in FUEL_ONLY_SERVICE_TITLES })
+        assertEquals(12, resolveServicePlan(null, ev = false).size)
+    }
+
+    @Test
+    fun `ev plan keeps user override and drops fuel only keys`() {
+        val plan = resolveServicePlan(
+            listOf(
+                PlanEntry(key = "ev-diag", intervalKm = 15000.0, intervalMonths = 18),
+                // 燃油车时代保存的 key：切纯电后应被丢弃，而不是变成自定义项复活
+                PlanEntry(key = "oil", intervalKm = 7500.0, intervalMonths = 9),
+                PlanEntry(key = "spark", intervalKm = 30000.0, intervalMonths = null),
+            ),
+            ev = true,
+        )
+        assertEquals(6, plan.size)
+        assertEquals(15000.0, plan.first { it.key == "ev-diag" }.intervalKm!!, 1e-9)
+        assertEquals(18, plan.first { it.key == "ev-diag" }.intervalMonths)
+        assertTrue(plan.none { it.title == "机油机滤" })
+        assertTrue(plan.none { it.title == "火花塞" })
+    }
+
+    @Test
+    fun `switching powertrain does not resurrect old plan rows`() {
+        val fuelLedger = testLedger().copy(
+            servicePlan = listOf(
+                PlanEntry(key = "oil", intervalKm = 7500.0, intervalMonths = 9),
+                PlanEntry(key = "custom-wash", title = "洗车", intervalMonths = 1),
+            ),
+        )
+        assertEquals(13, resolveServicePlan(fuelLedger.servicePlan, ev = false).size)
+
+        val evLedger = fuelLedger.copy(vehicle = fuelLedger.vehicle.copy(powertrain = "ev"))
+        val plan = resolveServicePlan(evLedger.servicePlan, ev = evLedger.vehicle.isEv)
+        assertEquals(7, plan.size) // 6 项内置 + 1 条自定义
+        assertTrue(plan.none { it.key == "oil" })
+        assertTrue(plan.any { it.title == "洗车" })
+
+        val rows = servicePlanRows(evLedger, d("2026-11-01"), 20000.0)
+        assertTrue(rows.none { it.title == "机油机滤" || it.title == "空气滤芯" || it.title == "火花塞" })
+        assertTrue(rows.any { it.title == "三电诊断" })
+    }
+
+    @Test
+    fun `ev apply plan creates six reminders and ev first note`() {
+        val applied = applyServicePlan(blankLedger(POWERTRAIN_EV), emptyList(), "2026-01-01", 0.0, true)
+        assertEquals(6, applied.reminders.size)
+        assertTrue(applied.reminders.any { it.title == "机油机滤" }.not())
+
+        val first = applied.reminders.first { it.firstOnly == true }
+        assertEquals("首保", first.title)
+        assertEquals(listOf("三电诊断"), first.projects)
+        assertTrue(first.note!!.contains("三电诊断"))
+        assertEquals(5000.0, first.dueKm!!, 1e-9)
+        assertEquals("2026-04-01", first.dueDate)
+
+        val diag = applied.reminders.first { it.presetKey == "ev-diag" }
+        assertEquals(10000.0, diag.dueKm!!, 1e-9)
+        assertEquals("2027-01-01", diag.dueDate)
+        assertEquals("自定义保养方案", diag.source)
+
+        // 计划表：纯电 6 行，过期/待办状态按公里或日期先到
+        val rows = servicePlanRows(applied, d("2026-11-01"), 20000.0)
+        assertEquals(6, rows.size)
+        assertEquals("overdue", rows.first { it.title == "首保" }.status)
+        assertEquals("overdue", rows.first { it.title == "三电诊断" }.status)
+        assertEquals("overdue", rows.first { it.title == "空调滤芯" }.status)
+        assertEquals("pending", rows.first { it.title == "刹车油" }.status)
+        assertEquals("pending", rows.first { it.title == "冷却液" }.status)
+        assertEquals("pending", rows.first { it.title == "轮胎" }.status)
+    }
 }

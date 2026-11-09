@@ -54,6 +54,14 @@ object Categories {
         if (category == "维修保养") "保养" else category.orEmpty()
 
     /**
+     * 是否是能源费分类（燃油车叫「油费」，纯电车显示为「电费」）。
+     *
+     * **存储值始终是「油费」**：9 类分类是全仓契约（配色、统计、CSV、备份、导入判重），
+     * 纯电只在显示层按动力类型改名，不新增第 10 类。
+     */
+    fun isEnergy(category: String?): Boolean = normalize(category) == "油费"
+
+    /**
      * 关键词归类（Web `categoryOf`）：精确匹配优先，随后按固定顺序做关键词匹配。
      * 未识别返回空串。
      */
@@ -62,7 +70,8 @@ object Categories {
         if (s.isEmpty()) return ""
         if (ALL.contains(s) || customCategories.contains(s)) return s
         return when {
-            Regex("加油|汽油|柴油|燃油|油费").containsMatchIn(s) -> "油费"
+            // 充电相关归能源费，但排除「充电宝 / 充电器 / 充电线 / 充电头」这类非车用支出。
+            Regex("加油|汽油|柴油|燃油|油费|充电(?!宝|器|线|头)|电费|快充|慢充|补能").containsMatchIn(s) -> "油费"
             Regex("保险|车险|交强").containsMatchIn(s) -> "保险"
             Regex("保养|换油").containsMatchIn(s) -> "保养"
             Regex("高速|过路|过桥|ETC|通行", RegexOption.IGNORE_CASE).containsMatchIn(s) -> "过路费"

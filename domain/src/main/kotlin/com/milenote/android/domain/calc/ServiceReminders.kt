@@ -6,21 +6,23 @@ import com.milenote.android.domain.model.Reminder
 import java.time.LocalDate
 
 /**
- * 按默认 12 项方案生成提醒（Web `defaultServiceReminders`）。
+ * 按默认方案生成提醒（Web `defaultServiceReminders`）。
  *
  * @param baseDate 基准日期（默认用提车日期）
  * @param baseKm 基准里程（默认用记账起始里程）
  * @param includeFirst 是否包含一次性首保
+ * @param ev true=纯电 6 项方案，false=燃油 12 项
  */
 fun defaultServiceReminders(
     baseDate: String,
     baseKm: Double?,
     includeFirst: Boolean = true,
+    ev: Boolean = false,
 ): List<Reminder> {
     if (Dates.dateValue(baseDate).isEmpty() || baseKm == null || !baseKm.isFinite() || baseKm < 0) {
         throw IllegalArgumentException("请填写有效基准日期和里程")
     }
-    return DEFAULT_SERVICE_PLAN
+    return defaultServicePlan(ev)
         .filter { includeFirst || it.firstOnly != true }
         .map { plan ->
             val months = plan.intervalMonths
@@ -38,7 +40,8 @@ fun defaultServiceReminders(
                 done = false,
                 source = "默认保养方案",
                 note = if (plan.firstOnly == true) {
-                    "首保包含机油机滤，仅执行一次；公里或时间先到为准"
+                    if (ev) "首保包含三电诊断，仅执行一次；公里或时间先到为准"
+                    else "首保包含机油机滤，仅执行一次；公里或时间先到为准"
                 } else {
                     "用户设置的默认周期；公里或时间先到为准"
                 },
@@ -74,8 +77,8 @@ fun nextService(reminder: Reminder, date: String, km: Double?): Reminder? {
 /**
  * 完成保养（Web `completeService`）。
  *
- * 标记提醒已完成并生成下一轮；若完成的是首保且项目含「机油机滤」，
- * 同时把未完成的常规机油提醒用本次日期/里程重设（保留原 id）。
+ * 标记提醒已完成并生成下一轮；若完成的是首保，把首保完成判定项目对应的
+ * 未完成循环项用本次日期/里程重设（燃油=机油机滤，纯电=三电诊断；保留原 id）。
  */
 fun completeService(
     reminders: List<Reminder>,
@@ -96,14 +99,17 @@ fun completeService(
         }
     }.toMutableList()
     nextService(reminder, record.date, record.odometer)?.let { completed.add(it) }
-    if (reminder.firstOnly == true && projects.contains("机油机滤")) {
-        val index = completed.indexOfFirst {
-            it.done != true && (it.presetKey == "oil" || it.title == "机油机滤")
+    if (reminder.firstOnly == true) {
+        // 首保完成判定项目（燃油=机油机滤 / 纯电=三电诊断）：完成首保后重设对应循环项。
+        val firstTargets = splitProjects(reminder.projects) + projects
+        val index = completed.indexOfFirst { candidate ->
+            candidate.done != true && candidate.id != reminder.id &&
+                (candidate.title in firstTargets || splitProjects(candidate.projects).any { it in firstTargets })
         }
         if (index >= 0) {
-            val oil = completed[index]
-            val rescheduled = nextService(oil, record.date, record.odometer)
-            if (rescheduled != null) completed[index] = rescheduled.copy(id = oil.id)
+            val target = completed[index]
+            val rescheduled = nextService(target, record.date, record.odometer)
+            if (rescheduled != null) completed[index] = rescheduled.copy(id = target.id)
         }
     }
     return completed

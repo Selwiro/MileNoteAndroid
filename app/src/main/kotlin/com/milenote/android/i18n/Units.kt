@@ -58,6 +58,20 @@ object Units {
     val pricePerVolume: String
         get() = "$money/$volumeUnit"
 
+    /** 充电量单位：度（中文）/ kWh（英文）。纯电固定用 kWh，不随「油量单位」设置变化。 */
+    val energyUnit: String
+        get() = tr("度", "kWh")
+
+    /** 电价单位：元/度、美元/kWh 等。 */
+    val pricePerEnergy: String
+        get() = "$money/$energyUnit"
+
+    /**
+     * 能耗单位：燃油随里程/油量组合（升/百公里…）；纯电固定 kWh/100km（英里制为 kWh/100 mi）。
+     */
+    val energyConsumption: String
+        get() = if (distance == DistanceUnit.MILE) tr("度/百英里", "kWh/100 mi") else tr("度/百公里", "kWh/100 km")
+
     /** 每距离成本单位：元/公里、美元/英里 等。 */
     val costPerDistance: String
         get() = "$money/$distanceUnit"

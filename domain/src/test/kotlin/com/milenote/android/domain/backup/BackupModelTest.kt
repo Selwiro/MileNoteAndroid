@@ -4,10 +4,14 @@ import com.milenote.android.domain.d
 import com.milenote.android.domain.demo.DemoData
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.HistoryBaseline
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_FUEL
 import com.milenote.android.domain.model.PlanBase
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.domain.model.blankLedger
 import com.milenote.android.domain.calc.stats
 import org.junit.Assert.assertEquals
@@ -455,6 +459,75 @@ class BackupModelTest {
         assertNull(car.vehicle.startKm)
         assertNull(car.customCategories)
         assertEquals(1, car.version)
+    }
+
+    @Test
+    fun `powertrain and kwh survive backup round trip`() {
+        val car = blankLedger(POWERTRAIN_EV).copy(
+            id = "ev-car",
+            records = listOf(
+                Record(
+                    id = "c1",
+                    date = "2026-11-01",
+                    category = "油费",
+                    amount = 62.0,
+                    odometer = 1000.0,
+                    kwh = 40.0,
+                    unitPrice = 1.55,
+                    full = true,
+                    kind = "expense",
+                ),
+            ),
+        )
+        val garage = Garage(version = 2, activeId = "ev-car", theme = "blue", cars = listOf(car))
+        val text = BackupCodec.encode(garage)
+        assertTrue(text.contains("\"powertrain\":\"ev\""))
+        assertTrue(text.contains("\"kwh\":40"))
+        // 纯电记录不写升数字段（null 省略）
+        assertFalse(text.contains("\"liters\""))
+
+        val decoded = BackupCodec.decode(text)
+        val decodedCar = decoded.cars[0]
+        assertEquals(POWERTRAIN_EV, decodedCar.vehicle.powertrain)
+        assertTrue(decodedCar.isEv)
+        assertEquals(40.0, decodedCar.records[0].kwh!!, 1e-9)
+        assertNull(decodedCar.records[0].liters)
+        assertEquals(1.55, decodedCar.records[0].unitPrice!!, 1e-9)
+    }
+
+    @Test
+    fun `old backup without powertrain or kwh decodes as fuel`() {
+        val json = """
+            {"version":2,"activeId":"a","cars":[{"version":1,"id":"a",
+             "vehicle":{"name":"旧车","currentKm":100,"fuelCostSource":"bear"},
+             "records":[{"id":"r","date":"2026-01-01","category":"油费","amount":300,
+               "liters":40,"odometer":1000,"full":true,"kind":"expense"}],
+             "reminders":[]}]}
+        """.trimIndent()
+        val garage = BackupCodec.decode(json)
+        // 缺字段 → 燃油语义，不新增键
+        assertNull(garage.cars[0].vehicle.powertrain)
+        assertFalse(garage.cars[0].isEv)
+        assertEquals(POWERTRAIN_FUEL, garage.cars[0].vehicle.powertrainKey)
+        assertEquals(40.0, garage.cars[0].records[0].liters!!, 1e-9)
+        assertNull(garage.cars[0].records[0].kwh)
+
+        // 缺省燃油车导出时不写 powertrain 键，老版本 App 仍可读
+        val encoded = BackupCodec.encode(simpleGarage())
+        assertFalse(encoded.contains("\"powertrain\""))
+        assertFalse(encoded.contains("\"kwh\""))
+    }
+
+    @Test
+    fun `unknown powertrain normalizes to fuel on decode`() {
+        val json = """
+            {"version":2,"activeId":"a","cars":[{"version":1,"id":"a",
+             "vehicle":{"name":"怪车","currentKm":0,"powertrain":"PHEV"},
+             "records":[],"reminders":[]}]}
+        """.trimIndent()
+        val garage = BackupCodec.decode(json)
+        assertNull(garage.cars[0].vehicle.powertrain)
+        assertFalse(garage.cars[0].isEv)
     }
 
     private fun comilenotePlan() = com.milenote.android.domain.model.PlanEntry(

@@ -50,6 +50,31 @@ class CategoriesTest {
     }
 
     @Test
+    fun `charging keywords classify into the energy category`() {
+        assertEquals("油费", Categories.categoryOf("充电"))
+        assertEquals("油费", Categories.categoryOf("电费"))
+        assertEquals("油费", Categories.categoryOf("快充"))
+        assertEquals("油费", Categories.categoryOf("慢充"))
+        assertEquals("油费", Categories.categoryOf("充电桩"))
+        assertEquals("油费", Categories.categoryOf("补能"))
+        // 不用裸「电」匹配，避免把电瓶类维修吞进能源费
+        assertEquals("", Categories.categoryOf("电瓶更换"))
+        assertEquals("", Categories.categoryOf("餐饮"))
+    }
+
+    @Test
+    fun `isEnergy keeps nine category contract`() {
+        assertTrue(Categories.isEnergy("油费"))
+        // 旧分类归一后才判断
+        assertFalse(Categories.isEnergy("维修保养"))
+        assertFalse(Categories.isEnergy("停车费"))
+        assertFalse(Categories.isEnergy(null))
+        // 纯电只改显示名，存储分类仍是 9 类里的「油费」
+        assertEquals(9, Categories.ALL.size)
+        assertFalse(Categories.ALL.contains("电费"))
+    }
+
+    @Test
     fun `theme colors and custom hash color`() {
         assertEquals("#55758b", Categories.color("blue", "油费"))
         assertEquals("#7e9eaf", Categories.color("blue", "保险"))

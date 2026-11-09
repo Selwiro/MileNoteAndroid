@@ -1,5 +1,6 @@
 package com.milenote.android.domain.calc
 
+import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.blankLedger
 import org.junit.Assert.assertEquals
@@ -74,5 +75,60 @@ class ServiceProjectCatalogTest {
         assertTrue(all.contains("交强险"))
         assertTrue(all.contains("玻璃险"))
         assertTrue(all.contains("补胎"))
+    }
+
+    // ---- 纯电项目库 ----
+
+    @Test
+    fun `ev maintenance group has ev projects and no fuel only items`() {
+        val evLedger = blankLedger(POWERTRAIN_EV)
+        val options = serviceProjectOptions(evLedger, "保养")
+        assertTrue(options.contains("三电诊断"))
+        assertTrue(options.contains("空调滤芯"))
+        assertTrue(options.contains("刹车油"))
+        assertTrue(options.contains("冷却液"))
+        assertTrue(options.contains("轮胎"))
+        listOf("机油机滤", "空气滤芯", "灰滤", "火花塞", "冷却模块", "变速器油", "皮带").forEach {
+            assertFalse("纯电保养组不应含 $it", options.contains(it))
+        }
+        // 分组由 6 项方案去掉首保派生 = 5 项
+        val group = serviceProjectGroups(ev = true).first { it.title == "保养" }
+        assertEquals(5, group.projects.size)
+        assertEquals(listOf("三电诊断", "空调滤芯", "刹车油", "冷却液", "轮胎"), group.projects)
+        // 燃油组保持 11 项且不含纯电专属项
+        val fuelGroup = serviceProjectGroups(ev = false).first { it.title == "保养" }
+        assertEquals(11, fuelGroup.projects.size)
+        assertFalse(fuelGroup.projects.contains("三电诊断"))
+    }
+
+    @Test
+    fun `ev project options drop fuel only history and keep other categories`() {
+        val evLedger = blankLedger(POWERTRAIN_EV).copy(
+            serviceProjects = listOf("机油机滤", "天窗轨道润滑"),
+            records = listOf(
+                Record(
+                    id = "old-fuel",
+                    date = "2026-01-01",
+                    category = "保养",
+                    amount = 480.0,
+                    projects = "机油机滤、三电诊断",
+                ),
+                Record(id = "repair", date = "2026-01-02", category = "维修", amount = 80.0, projects = "补胎"),
+            ),
+        )
+        val options = serviceProjectOptions(evLedger, "保养")
+        assertFalse(options.contains("机油机滤"))
+        assertTrue(options.contains("三电诊断"))
+        assertTrue(options.contains("天窗轨道润滑"))
+
+        // 维修组与动力类型无关
+        val repair = serviceProjectOptions(evLedger, "维修")
+        assertTrue(repair.contains("补胎"))
+        assertFalse(repair.contains("三电诊断"))
+
+        // 不传分类时也不出现燃油专属项
+        val all = serviceProjectOptions(evLedger)
+        assertFalse(all.contains("机油机滤"))
+        assertTrue(all.contains("三电诊断"))
     }
 }

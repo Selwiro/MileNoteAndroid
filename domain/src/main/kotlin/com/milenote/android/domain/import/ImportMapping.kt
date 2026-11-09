@@ -2,7 +2,7 @@ package com.milenote.android.domain.import
 
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
-import com.milenote.android.domain.calc.fillFuelAmounts
+import com.milenote.android.domain.calc.fillEnergyAmounts
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.validateRecord
@@ -43,13 +43,14 @@ val FIELDS: Map<String, List<String>> = linkedMapOf(
     "amount" to listOf("实付金额", "金额", "money", "支出金额", "机显金额"),
     "payable" to listOf("应付金额", "应付", "原价", "应收金额"),
     "discount" to listOf("优惠金额", "优惠", "折扣", "减免"),
-    "unitPrice" to listOf("油价", "单价", "油单价", "元/升", "价格"),
+    "unitPrice" to listOf("油价", "电价", "单价", "油单价", "电单价", "元/升", "元/度", "元/kWh", "价格"),
     "fuelGrade" to listOf("燃油标号", "标号", "油品", "汽油标号", "fuelGrade"),
     "odometer" to listOf("总里程", "里程", "公里数", "odometer"),
     "liters" to listOf("加油量", "油量", "升数", "liters"),
-    "full" to listOf("加满", "是否加满", "full"),
+    "kwh" to listOf("充电量", "电量", "千瓦时", "度电", "kWh"),
+    "full" to listOf("加满", "是否加满", "充满", "是否充满", "满充", "full"),
     "missed" to listOf("漏记", "是否漏记", "missed"),
-    "rate" to listOf("油耗", "百公里油耗", "rate"),
+    "rate" to listOf("油耗", "百公里油耗", "电耗", "百公里电耗", "能耗", "rate"),
     "distance" to listOf("行驶里程", "本次里程", "distance"),
     "note" to listOf("备注", "remark", "note"),
     "type" to listOf("类型", "收支", "收支类型", "type"),
@@ -69,7 +70,7 @@ fun detectMap(headers: List<String>): Map<String, Int?> {
 }
 
 private val TYPE_SKIP = Regex("收入|转账|转入|转出")
-private val FULL_TRUE = Regex("^(是|满|加满|已加满|true|1|yes)$", RegexOption.IGNORE_CASE)
+private val FULL_TRUE = Regex("^(是|满|加满|已加满|充满|已充满|满电|true|1|yes)$", RegexOption.IGNORE_CASE)
 private val MISSED_TRUE = Regex("^(是|true|1|yes)$", RegexOption.IGNORE_CASE)
 
 private fun rawCell(row: List<Any?>, map: Map<String, Int?>, key: String): Any? {
@@ -121,6 +122,7 @@ fun importRows(
         amount = amount ?: 0.0,
         odometer = Numbers.parse(rawCell(row, map, "odometer")),
         liters = Numbers.parse(rawCell(row, map, "liters")),
+        kwh = Numbers.parse(rawCell(row, map, "kwh")),
         unitPrice = Numbers.parse(rawCell(row, map, "unitPrice")),
         payable = Numbers.parse(rawCell(row, map, "payable")),
         discount = Numbers.parse(rawCell(row, map, "discount")),
@@ -132,11 +134,11 @@ fun importRows(
         source = if (source == "bear") "小熊油耗" else "钱迹",
         kind = "expense",
     )
-    if ((record.rate ?: 0.0) > 0 && (record.liters ?: 0.0) == 0.0) {
+    if ((record.rate ?: 0.0) > 0 && (record.liters ?: 0.0) == 0.0 && (record.kwh ?: 0.0) == 0.0) {
         record = record.copy(kind = "manual")
     }
     // 小熊/钱迹新导出可能只有部分金额字段，空白项按「量×价=应付，应付-优惠=实付」补齐。
-    record = fillFuelAmounts(record)
+    record = fillEnergyAmounts(record)
     val error = if (TYPE_SKIP.containsMatchIn(type)) {
         "非支出记录，已跳过"
     } else {
@@ -163,6 +165,7 @@ fun normalizeImport(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
+    ev: Boolean = false,
 ): List<ImportItem> = importRows(rows, map, source, defaultCategory, customCategories)
     .mapIndexed { i, item ->
         var record = inferServiceNote(
@@ -170,6 +173,7 @@ fun normalizeImport(
                 projects = textOrEmpty(rows[i], map, "projects"),
                 location = textOrEmpty(rows[i], map, "location"),
             ),
+            ev = ev,
         )
         record = record.copy(
             sourceId = textCell(rows[i], map, "sourceId"),
@@ -196,12 +200,14 @@ fun normalizeImport(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
+    ev: Boolean = false,
 ): List<ImportItem> = normalizeImport(
     data.rows,
     detectMap(data.headers),
     source,
     defaultCategory,
     customCategories,
+    ev,
 )
 
 private val MILEAGE = Regex(
@@ -212,7 +218,7 @@ private val PLAN_WORDS = Regex("下次|周期|间隔|每|还剩|再跑|行驶|�
 private val EXPLICIT_ODOMETER = Regex("总里程|表显|仪表|当前里程|累计里程")
 private val NEGATIVE_CLAUSE = Regex("(?:未|没|不|无需|暂不|下次|建议|计划|检查|咨询|报价)")
 
-private val PROJECT_ALIASES: List<Pair<String, Regex>> = listOf(
+private val PROJECT_ALIASES_FUEL: List<Pair<String, Regex>> = listOf(
     "机油机滤" to Regex("机油|机滤|机油滤芯|机油滤清器"),
     "空气滤芯" to Regex("空气滤芯|空气滤清器|空滤"),
     "空调滤芯" to Regex("空调滤芯|空调滤清器"),
@@ -235,14 +241,21 @@ private val PROJECT_ALIASES: List<Pair<String, Regex>> = listOf(
     "内饰清洁" to Regex("内饰清洁|清洗内饰"),
 )
 
+/** 纯电项目别名：刹车油沿用燃油正则但写成纯电方案标题，并新增三电诊断。 */
+private val PROJECT_ALIASES_EV: List<Pair<String, Regex>> = PROJECT_ALIASES_FUEL.map { (title, pattern) ->
+    if (title == "制动液") "刹车油" to pattern else title to pattern
+} + ("三电诊断" to Regex("三电|电池健康|电池检测|电机|电控|高压系统|三电系统"))
+
 /**
  * 从备注中识别保养里程与项目（Web `inferServiceNote`）。
  *
  * 保守策略：有「下次 / 周期 / 间隔 / 行驶 / 建议」等前缀的里程不算；
  * 多个不同候选不猜测；已有明确字段优先保留；否定从句里的项目不算。
  * 仅对保养 / 维修 / 汽车美容类记录生效，其余原样返回。
+ *
+ * @param ev true=纯电（项目名用纯电方案标题，如「刹车油」「三电诊断」）
  */
-fun inferServiceNote(record: Record): Record {
+fun inferServiceNote(record: Record, ev: Boolean = false): Record {
     if (record.category !in setOf("保养", "维修保养", "维修", "汽车美容")) return record
     val note = record.note
     var result = record
@@ -276,7 +289,8 @@ fun inferServiceNote(record: Record): Record {
         val clauses = note
             .split(Regex("[，,。；;\\n、]+"))
             .filterNot { NEGATIVE_CLAUSE.containsMatchIn(it) }
-        val projects = PROJECT_ALIASES
+        val aliases = if (ev) PROJECT_ALIASES_EV else PROJECT_ALIASES_FUEL
+        val projects = aliases
             .filter { (_, pattern) -> clauses.any { pattern.containsMatchIn(it) } }
             .joinToString("、") { it.first }
         result = result.copy(projects = projects)

@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.maintenance
 
+import com.milenote.android.domain.calc.defaultServicePlan
 import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.model.Reminder
@@ -7,6 +8,8 @@ import com.milenote.android.i18n.I18n
 import java.time.LocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -95,5 +98,41 @@ class ReminderStatusTextTest {
         I18n.applyEnglish(true)
         val r = reminder(dueKm = 40_000.0, intervalKm = 10_000.0, intervalMonths = 12)
         assertEquals("Overdue · over by 2,000 km", statusLine(r))
+    }
+
+    // ---- 纯电保养方案（12 项 → 6 项，燃油专属项目不出现） ----
+
+    @Test
+    fun `fuel default plan keeps twelve items`() {
+        val plan = defaultServicePlan(ev = false)
+        assertEquals(12, plan.size)
+        assertEquals("首保", plan.first().title)
+        assertTrue("机油机滤" in plan.mapNotNull { it.title })
+    }
+
+    @Test
+    fun `ev default plan exposes six items without fuel-only ones`() {
+        val plan = defaultServicePlan(ev = true)
+        assertEquals(6, plan.size)
+        val titles = plan.mapNotNull { it.title }
+        assertTrue("三电诊断" in titles)
+        assertTrue("刹车油" in titles)
+        assertEquals(listOf("三电诊断"), plan.first { it.key == "first" }.projects)
+        assertFalse("机油机滤" in titles)
+        assertFalse("空气滤芯" in titles)
+        assertFalse("火花塞" in titles)
+        assertFalse("变速器油" in titles)
+    }
+
+    @Test
+    fun `ev service items stay in the maintenance category`() {
+        assertEquals("保养", inferServiceCategory(Reminder(id = "r-ev-diag", title = "三电诊断")))
+        assertEquals("保养", inferServiceCategory(Reminder(id = "r-ev-brake", title = "刹车油")))
+    }
+
+    @Test
+    fun `ev reminder uses the same status wording`() {
+        val r = reminder(title = "三电诊断", dueDate = null, dueKm = 52_000.0, intervalKm = 10_000.0)
+        assertEquals("计划中 · 还剩 10,000 公里", statusLine(r))
     }
 }

@@ -2,6 +2,8 @@ package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.model.blankLedger
 
+import com.milenote.android.domain.evLedger
+import com.milenote.android.domain.evRecord
 import com.milenote.android.domain.fuelRecord
 
 import com.milenote.android.domain.d
@@ -46,9 +48,9 @@ class StatsTest {
         val result = stats(ledger)
         assertEquals(1000.0, result.total, 1e-9)
         assertEquals(1.0, result.perKm!!, 1e-9)
-        assertEquals(7.5, result.fuelRate!!, 1e-9)
+        assertEquals(7.5, result.energyRate!!, 1e-9)
         assertNull(stats(blankLedger()).perKm)
-        assertNull(stats(blankLedger()).fuelRate)
+        assertNull(stats(blankLedger()).energyRate)
         assertEquals(0.0, stats(blankLedger()).distance, 1e-9)
     }
 
@@ -106,7 +108,7 @@ class StatsTest {
         )
         val jan = stats(ledger, "2026-01-01", "2026-01-31")
         assertEquals(1, jan.intervals.size)
-        assertEquals(8.0, jan.fuelRate!!, 1e-9)
+        assertEquals(8.0, jan.energyRate!!, 1e-9)
     }
 
     @Test
@@ -133,5 +135,62 @@ class StatsTest {
         assertEquals(66.0, stats(ledger).categories.first { it.name == "充电费" }.value, 1e-9)
         assertNotNull(stats(ledger).categories.firstOrNull { it.name == "充电费" })
         assertEquals(10, stats(ledger).categories.size)
+    }
+
+    @Test
+    fun `ev stats use kwh intervals and ignore fuel manual records`() {
+        val ledger = evLedger(
+            records = listOf(
+                evRecord("2026-01-01", 1000.0, 50.0),
+                evRecord("2026-01-10", 1500.0, 40.0),
+                // 燃油历史手填油耗不应进入纯电能耗
+                Record(
+                    id = "legacy",
+                    date = "2026-01-11",
+                    category = "油费",
+                    amount = 0.0,
+                    kind = "manual",
+                    rate = 7.0,
+                    distance = 100.0,
+                ),
+            ),
+        )
+        val result = stats(ledger)
+        assertEquals(1, result.intervals.size)
+        // 40 kWh / 500 km * 100 = 8.0 kWh/100km
+        assertEquals(8.0, result.energyRate!!, 1e-9)
+        assertEquals("满电法", result.intervals[0].source)
+        assertNull(result.estimatedEnergyRate)
+    }
+
+    @Test
+    fun `ev estimated energy rate when no full charge interval exists`() {
+        // 全部未充满 → 满电法不产区间，退回累计充电量估算
+        val ledger = evLedger(
+            records = listOf(
+                evRecord("2026-01-01", 1000.0, 40.0, full = false),
+                evRecord("2026-01-05", 1250.0, 20.0, full = false),
+                evRecord("2026-01-10", 1500.0, 30.0, full = false),
+            ),
+        )
+        val result = stats(ledger)
+        assertEquals(0, result.intervals.size)
+        assertNull(result.energyRate)
+        // 首条只作基准：(20 + 30) / 500 km * 100 = 10.0
+        assertEquals(10.0, result.estimatedEnergyRate!!, 1e-9)
+        assertEquals(10.0, estimateEnergyRate(ledger.records)!!, 1e-9)
+        assertNull(estimateEnergyRate(ledger.records.take(1)))
+        assertNull(estimateEnergyRate(emptyList()))
+    }
+
+    @Test
+    fun `fuel ledger has no estimated energy rate`() {
+        val ledger = testLedger(
+            records = listOf(
+                fuelRecord("2026-01-01", 1000.0, 40.0, full = false),
+                fuelRecord("2026-01-10", 1500.0, 40.0, full = false),
+            ),
+        )
+        assertNull(stats(ledger).estimatedEnergyRate)
     }
 }

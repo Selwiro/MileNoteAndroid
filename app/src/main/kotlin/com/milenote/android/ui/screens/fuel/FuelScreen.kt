@@ -74,14 +74,16 @@ import com.milenote.android.data.fuelprice.FuelLocation
 import com.milenote.android.data.fuelprice.FuelRegions
 import com.milenote.android.platform.location.LocationResolver
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.calc.EnergyInterval
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
-import com.milenote.android.domain.calc.fuelIntervals
-import com.milenote.android.domain.calc.fuelRateByRecord
-import com.milenote.android.domain.calc.manualFuelIntervals
+import com.milenote.android.domain.calc.energyIntervals
+import com.milenote.android.domain.calc.energyRateByRecord
+import com.milenote.android.domain.calc.manualEnergyIntervals
 import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.LoadingState
@@ -105,16 +107,19 @@ import kotlinx.coroutines.launch
 import java.time.ZoneOffset
 
 /**
- * 油耗分析页（Web `fuelPage`，`app.mjs:45`）。
+ * 能耗分析页（燃油=油耗分析，纯电=能耗分析；页面名与路由名保留 `fuel`）。
  *
  * 结构（自上→下，三块内容统一为 SectionCard 卡片风格，卡内只有标题、无副标题）：
- * 1. 「油耗概览」卡：右上角时间筛选（全部 / 本月 / 今年 / 自定义 DateRangePicker）+ 卡内 2×2 纯文字指标
- *    （平均油耗 / 油费支出 / 平均油费 / 行驶里程）；
- * 2. 「油耗走势」卡：右上角独立时间筛选（只控制走势区间）+ 平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
+ * 1. 「油耗/能耗概览」卡：右上角时间筛选（全部 / 本月 / 今年 / 自定义 DateRangePicker）+ 卡内 2×2 纯文字指标
+ *    （平均油耗/能耗 / 油费·电费支出 / 每公里平均油费·电费 / 行驶里程）；
+ * 2. 「油耗/能耗走势」卡：右上角独立时间筛选（只控制走势区间）+ 平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
  * - 顶部「统计 / 明细」两个固定页签；
- * - 统计：今日油价 + 油耗概览 + 油耗走势；
+ * - 统计：今日油价（仅燃油）+ 概览 + 走势；
  * - 明细：搜索、时间筛选、汇总、按月份分组的独立记录卡片，点卡片看详情；
- * - 底部可折叠「满箱法说明」。
+ * - 底部可折叠「满箱法 / 满电+累计口径说明」。
+ *
+ * 纯电车辆：不显示今日油价卡、不创建油价仓库、不抓取、不注册定位权限；
+ * 单位与文案全部按动力类型切换（单位见 [Units.energyUnit] / [Units.energyConsumption]）。
  *
  * 新增记录统一由底栏「记一笔」承担；导入入口在「设置 → 外部导入」。
  * 只输出内容，不含 Scaffold / 顶栏 / 底栏；底部由外层 Scaffold 预留。
@@ -137,16 +142,20 @@ fun FuelScreen(
         return
     }
 
+    // 动力类型：燃油=油耗页（今日油价卡 + L/100km），纯电=能耗页（无油价卡、kWh/100km）。
+    val ev = ledger.isEv
     val context = LocalContext.current
-    val priceRepo = remember { FuelPriceRepository() }
+    // 纯电车辆整页不显示「今日油价」：不创建油价仓库、不读取缓存定位、不注册定位权限 launcher。
+    val priceRepo = remember(ev) { if (ev) null else FuelPriceRepository() }
     val scope = rememberCoroutineScope()
-    val savedLocation = remember { loadSavedFuelLocation(context) }
-    var fuelLocation by remember { mutableStateOf(savedLocation ?: FuelLocation()) }
-    var locationRemembered by remember { mutableStateOf(savedLocation != null) }
-    var priceInfo by remember { mutableStateOf<FuelPriceInfo?>(null) }
-    var priceLoading by remember { mutableStateOf(true) }
+    val savedLocation = remember(ev) { if (ev) null else loadSavedFuelLocation(context) }
+    var fuelLocation by remember(ev) { mutableStateOf(savedLocation ?: FuelLocation()) }
+    var locationRemembered by remember(ev) { mutableStateOf(savedLocation != null) }
+    var priceInfo by remember(ev) { mutableStateOf<FuelPriceInfo?>(null) }
+    var priceLoading by remember(ev) { mutableStateOf(!ev) }
 
     fun refreshPrice(reLocate: Boolean) {
+        val repo = priceRepo ?: return
         scope.launch {
             priceLoading = true
             if (reLocate) {
@@ -158,19 +167,23 @@ fun FuelScreen(
                     locationRemembered = true
                 }
             }
-            priceInfo = priceRepo.fetch(fuelLocation)
+            priceInfo = repo.fetch(fuelLocation)
             priceLoading = false
         }
     }
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) refreshPrice(reLocate = true)
+    val locationPermissionLauncher = if (!ev) {
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            if (granted) refreshPrice(reLocate = true)
+        }
+    } else {
+        null
     }
 
-    // 打开油耗页时自动刷新当前记住位置的油价；不重新定位。
-    LaunchedEffect(Unit) { refreshPrice(reLocate = false) }
+    // 打开油耗页时自动刷新当前记住位置的油价；不重新定位。纯电车辆不发起任何油价抓取。
+    LaunchedEffect(ev) { if (!ev) refreshPrice(reLocate = false) }
 
     val today = Dates.today()
     val period = state.period
@@ -178,16 +191,18 @@ fun FuelScreen(
     val range = remember(period, customRange, today) { state.effectiveRange(today) }
     val statsResult = remember(ledger, range) { stats(ledger, range.from, range.to) }
     // 概览指标 / 走势跟随顶部筛选（state.period / customRange）。
-    val overviewFuelRecords = remember(statsResult) {
+    val overviewEnergyRecords = remember(statsResult) {
         statsResult.records
-            .filter { Categories.normalize(it.category) == "油费" }
+            .filter { Categories.isEnergy(it.category) }
             .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.odometer ?: 0.0 })
     }
-    val fuelCost = remember(overviewFuelRecords, ledger) { overviewFuelRecords.sumOf { costOf(it, ledger) } }
-    val perKmFuel = if (statsResult.distance > 0) fuelCost / statsResult.distance else null
-    // 走势卡独立时间筛选：有效区间按日期过滤，不影响概览 / 明细。
-    val allIntervals = remember(ledger.records) {
-        (fuelIntervals(ledger.records) + manualFuelIntervals(ledger.records))
+    val energyCost = remember(overviewEnergyRecords, ledger) { overviewEnergyRecords.sumOf { costOf(it, ledger) } }
+    val perKmEnergy = if (statsResult.distance > 0) energyCost / statsResult.distance else null
+    // 走势卡独立时间筛选：有效能耗区间按日期过滤，不影响概览 / 明细。
+    // 纯电只统计 kwh 满电区间；历史手填油耗是燃油字段，不参与纯电统计。
+    val allIntervals = remember(ledger.records, ev) {
+        (energyIntervals(ledger.records, ev) +
+            if (ev) emptyList<EnergyInterval>() else manualEnergyIntervals(ledger.records))
             .sortedBy { it.date }
     }
     var chartPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
@@ -202,9 +217,9 @@ fun FuelScreen(
     // 展示筛选范围内的全部区间（不再固定截断为最近 12 个）。
     val intervals = remember(chartFilteredIntervals) { chartFilteredIntervals }
     // 明细列表使用独立的时间筛选（只影响本次列表，不影响概览 / 走势）。
-    val allFuelRecords = remember(ledger.records) {
+    val allEnergyRecords = remember(ledger.records) {
         ledger.records
-            .filter { Categories.normalize(it.category) == "油费" }
+            .filter { Categories.isEnergy(it.category) }
             .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.odometer ?: 0.0 })
     }
     var detailPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
@@ -212,9 +227,9 @@ fun FuelScreen(
     var detailQuery by rememberSaveable { mutableStateOf("") }
     val detailRange = detailCustomRange ?: Dates.range(detailPeriod, today)
     // 搜索（备注 / 日期）+ 时间范围共同过滤明细列表；汇总按过滤后的记录统计。
-    val detailRecords = remember(allFuelRecords, detailRange, detailQuery) {
+    val detailRecords = remember(allEnergyRecords, detailRange, detailQuery) {
         val query = detailQuery.trim()
-        allFuelRecords
+        allEnergyRecords
             .filter { it.date >= detailRange.from && it.date <= detailRange.to }
             .filter { record ->
                 query.isEmpty() || matchesDetailQuery(record, query)
@@ -223,10 +238,13 @@ fun FuelScreen(
     val detailGroups = remember(detailRecords) {
         detailRecords.groupBy { monthKey(it.date) }.entries.toList()
     }
-    val detailLiters = remember(detailRecords) { detailRecords.sumOf { it.liters ?: 0.0 } }
+    // 明细汇总的能量量：燃油累计升数，纯电累计充电度数（含未充满记录）。
+    val detailEnergyAmount = remember(detailRecords, ev) {
+        detailRecords.sumOf { if (ev) it.kwh ?: 0.0 else it.liters ?: 0.0 }
+    }
     val detailAmount = remember(detailRecords) { detailRecords.sumOf { it.amount } }
-    // 每条记录对应的满箱区间油耗（domain 纯函数；未加满 / 基准记录无值 → 显示「—」）。
-    val rateByRecord = remember(ledger.records) { fuelRateByRecord(ledger.records) }
+    // 每条记录对应的满箱/满电区间能耗（domain 纯函数；未加满 / 基准记录无值 → 显示「—」）。
+    val rateByRecord = remember(ledger.records, ev) { energyRateByRecord(ledger.records, ev) }
     // 点击记录卡先看详情，详情内「编辑」才进入编辑。
     var detailRecord by remember { mutableStateOf<Record?>(null) }
     var rangeMenuExpanded by remember { mutableStateOf(false) }
@@ -258,8 +276,9 @@ fun FuelScreen(
             verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
         ) {
         if (selectedTab == 0) {
-        // 英文界面不显示「今日油价」：数据源是中文油价站点，对英文用户没有意义。
-        if (!I18n.english) {
+        // 英文界面不显示「今日油价」：数据源是中文油价站点，对英文用户没有意义；
+        // 纯电车辆没有油价，整卡不显示（也不发起抓取 / 不请求定位）。
+        if (!I18n.english && !ev) {
         item(key = "fuel-price") {
             FuelPriceCard(
                 info = priceInfo,
@@ -274,16 +293,16 @@ fun FuelScreen(
                     if (LocationResolver.hasPermission(context)) {
                         refreshPrice(reLocate = true)
                     } else {
-                        locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        locationPermissionLauncher?.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                     }
                 },
             )
         }
         }
-        // ---- 油耗概览（卡内 2×2 指标 + 右上角时间筛选） ----
+        // ---- 油耗/能耗概览（卡内 2×2 指标 + 右上角时间筛选） ----
         item(key = "overview") {
             SectionCard(
-                title = tr("油耗概览", "Fuel overview"),
+                title = if (ev) tr("能耗概览", "Energy overview") else tr("油耗概览", "Fuel overview"),
                 action = {
                     RangeFilterPill(
                         label = rangeLabel(period, customRange),
@@ -328,18 +347,20 @@ fun FuelScreen(
                 },
             ) {
                 FuelMetrics(
-                    fuelRate = statsResult.fuelRate,
-                    fuelCost = fuelCost,
-                    perKmFuel = perKmFuel,
+                    energyRate = statsResult.energyRate,
+                    estimatedRate = if (ev) statsResult.estimatedEnergyRate else null,
+                    ev = ev,
+                    energyCost = energyCost,
+                    perKmEnergy = perKmEnergy,
                     distance = statsResult.distance,
                 )
             }
         }
 
-        // ---- 油耗走势（一张卡） ----
+        // ---- 油耗/能耗走势（一张卡） ----
         item(key = "chart") {
             SectionCard(
-                title = tr("油耗走势", "Fuel trend"),
+                title = if (ev) tr("能耗走势", "Energy trend") else tr("油耗走势", "Fuel trend"),
                 action = {
                     RangeFilterPill(
                         label = rangeLabel(chartPeriod, chartCustomRange),
@@ -389,8 +410,19 @@ fun FuelScreen(
                 if (intervals.isEmpty()) {
                     EmptyState(
                         illustration = painterResource(R.drawable.ill_empty_fuel),
-                        title = tr("至少需要两次有里程、加油量的加满记录", "At least two full-tank records with mileage and fuel amount are needed"),
-                        description = tr("导入加油记录后也会自动计算；导入入口在 设置 → 外部导入。", "Imported fuel records are calculated automatically too; import is in Settings → Import from other apps."),
+                        title = if (ev) {
+                            tr("至少需要两次有里程、充电量的充满记录", "At least two full-charge records with mileage and charge amount are needed")
+                        } else {
+                            tr("至少需要两次有里程、加油量的加满记录", "At least two full-tank records with mileage and fuel amount are needed")
+                        },
+                        description = if (ev) {
+                            tr(
+                                "满电法：两次充满之间的累计充电量 ÷ 里程差 × 100；没有充满记录时按累计充电量估算（含充电损耗）。导入充电记录后也会自动计算；导入入口在 设置 → 外部导入。",
+                                "Full-charge method: total energy between two full charges ÷ distance × 100; without a full charge it falls back to a cumulative estimate (includes charging loss). Imported charging records are calculated automatically too; import is in Settings → Import from other apps.",
+                            )
+                        } else {
+                            tr("导入加油记录后也会自动计算；导入入口在 设置 → 外部导入。", "Imported fuel records are calculated automatically too; import is in Settings → Import from other apps.")
+                        },
                     )
                 } else {
                     FuelTrendChart(
@@ -398,6 +430,7 @@ fun FuelScreen(
                         rangeStartIso = if (chartHasExplicitRange) chartRange.from else null,
                         rangeEndIso = if (chartHasExplicitRange) chartRange.to else null,
                         modifier = Modifier.fillMaxWidth(),
+                        unit = if (ev) Units.energyConsumption else Units.consumption,
                     )
                 }
             }
@@ -487,8 +520,8 @@ fun FuelScreen(
                             text = tr(
                                 "筛选合计 %s %s · %s %s",
                                 "Filtered total %s %s · %s %s",
-                                Format.fmt(detailLiters),
-                                Units.volumeUnit,
+                                Format.fmt(detailEnergyAmount),
+                                if (ev) Units.energyUnit else Units.volumeUnit,
                                 Units.currencySymbol,
                                 Format.money(detailAmount),
                             ),
@@ -503,12 +536,16 @@ fun FuelScreen(
                     EmptyState(
                         icon = MileNoteIcons.Fuel,
                         title = if (detailQuery.isBlank()) {
-                            tr("还没有加油记录", "No fuel records yet")
+                            if (ev) tr("还没有充电记录", "No charging records yet") else tr("还没有加油记录", "No fuel records yet")
                         } else {
-                            tr("没有匹配的加油记录", "No matching fuel records")
+                            if (ev) tr("没有匹配的充电记录", "No matching charging records") else tr("没有匹配的加油记录", "No matching fuel records")
                         },
                         description = if (detailQuery.isBlank()) {
-                            tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 外部导入。", "Add fuel from Add entry in the bottom bar; import is in Settings → Import from other apps.")
+                            if (ev) {
+                                tr("可在底栏中间「记一笔」记录充电；导入入口在 设置 → 外部导入。", "Add charging from Add entry in the bottom bar; import is in Settings → Import from other apps.")
+                            } else {
+                                tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 外部导入。", "Add fuel from Add entry in the bottom bar; import is in Settings → Import from other apps.")
+                            }
                         } else {
                             tr("试试清空搜索关键词或调整时间范围。", "Try clearing the search keyword or changing the date range.")
                         },
@@ -527,14 +564,15 @@ fun FuelScreen(
                         FuelRecordCard(
                             record = record,
                             rate = rateByRecord[record.id],
+                            ev = ev,
                             onClick = { detailRecord = record },
                         )
                     }
                 }
             }
-            // ---- 明细底部：满箱法说明 ----
+            // ---- 明细底部：满箱法 / 满电+累计口径说明 ----
             item(key = "footnote") {
-                FuelFootnote()
+                FuelFootnote(ev = ev)
             }
         }
     }
@@ -544,6 +582,7 @@ fun FuelScreen(
         FuelRecordDetailDialog(
             record = record,
             rate = rateByRecord[record.id],
+            ev = ev,
             onDismiss = { detailRecord = null },
             onEdit = {
                 detailRecord = null
@@ -727,25 +766,29 @@ private fun FuelPriceCard(
 
 @Composable
 private fun FuelMetrics(
-    fuelRate: Double?,
-    fuelCost: Double,
-    perKmFuel: Double?,
+    energyRate: Double?,
+    estimatedRate: Double?,
+    ev: Boolean,
+    energyCost: Double,
+    perKmEnergy: Double?,
     distance: Double,
 ) {
+    // 纯电没有满充区间时回退到累计估算口径（值与标注一起出现）。
+    val shownRate = energyRate ?: estimatedRate
     Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             StatCell(
-                label = tr("平均油耗", "Fuel economy"),
-                value = fuelRate?.let { Format.money(it) } ?: "—",
-                unit = if (fuelRate != null) Units.consumption else null,
+                label = if (ev) tr("平均能耗", "Energy economy") else tr("平均油耗", "Fuel economy"),
+                value = shownRate?.let { Format.money(it) } ?: "—",
+                unit = if (shownRate == null) null else if (ev) Units.energyConsumption else Units.consumption,
                 modifier = Modifier.weight(1f),
             )
             StatCell(
-                label = tr("油费支出", "Fuel expense"),
-                value = Format.money(fuelCost),
+                label = if (ev) tr("电费支出", "Charging expense") else tr("油费支出", "Fuel expense"),
+                value = Format.money(energyCost),
                 unit = Units.money,
                 modifier = Modifier.weight(1f),
             )
@@ -755,9 +798,13 @@ private fun FuelMetrics(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             StatCell(
-                label = tr("每%s平均油费", "Cost per %s", Units.distanceUnit),
-                value = perKmFuel?.let { Format.money(it) } ?: "—",
-                unit = if (perKmFuel != null) Units.costPerDistance else null,
+                label = if (ev) {
+                    tr("每%s平均电费", "Cost per %s", Units.distanceUnit)
+                } else {
+                    tr("每%s平均油费", "Cost per %s", Units.distanceUnit)
+                },
+                value = perKmEnergy?.let { Format.money(it) } ?: "—",
+                unit = if (perKmEnergy != null) Units.costPerDistance else null,
                 modifier = Modifier.weight(1f),
             )
             StatCell(
@@ -765,6 +812,17 @@ private fun FuelMetrics(
                 value = Format.fmt(distance),
                 unit = Units.distanceUnit,
                 modifier = Modifier.weight(1f),
+            )
+        }
+        if (energyRate == null && estimatedRate != null) {
+            // 估算口径说明：只有在概览卡使用估算值时出现（纯电无满充区间）。
+            Text(
+                text = tr(
+                    "无满充记录，当前为累计估算口径（含充电损耗）。",
+                    "No full-charge interval yet; showing the cumulative estimate (includes charging loss).",
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -1005,9 +1063,9 @@ private fun matchesDetailQuery(record: Record, query: String): Boolean {
     ).any { it.contains(query, ignoreCase = true) }
 }
 
-/** 明细页单条加油记录：独立白色圆角卡（阴影、无内嵌卡片）。 */
+/** 明细页单条加油/充电记录：独立白色圆角卡（阴影、无内嵌卡片）。 */
 @Composable
-private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
+private fun FuelRecordCard(record: Record, rate: Double?, ev: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val dark = LocalMileNoteDarkTheme.current
     Surface(
@@ -1032,22 +1090,25 @@ private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                val (statusLabel, statusKind) = fuelStatus(record)
+                val (statusLabel, statusKind) = fuelStatus(record, ev)
                 StatusPill(text = statusLabel, status = statusKind)
             }
-            // 油耗最大，公里数次之，升数与金额最小。
+            // 燃油：油耗最大，公里数次之，升数与金额最小；
+            // 纯电：单次充电不覆盖可计算里程，不显示单次能耗，只保留公里数。
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = rate?.let { Format.money(it) } ?: "—",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = scheme.onSurface,
-                )
-                Text(
-                    text = " ${Units.consumption}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 3.dp),
-                )
+                if (!ev) {
+                    Text(
+                        text = rate?.let { Format.money(it) } ?: "—",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = scheme.onSurface,
+                    )
+                    Text(
+                        text = " ${Units.consumption}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 3.dp),
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     text = record.odometer?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.distanceUnit) }
@@ -1058,8 +1119,13 @@ private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = record.liters?.let { tr("+%s %s", "+%s %s", Format.fmt(it), Units.volumeUnit) }
-                        ?: tr("— %s", "— %s", Units.volumeUnit),
+                    text = if (ev) {
+                        record.kwh?.let { tr("+%s %s", "+%s %s", Format.fmt(it), Units.energyUnit) }
+                            ?: tr("— %s", "— %s", Units.energyUnit)
+                    } else {
+                        record.liters?.let { tr("+%s %s", "+%s %s", Format.fmt(it), Units.volumeUnit) }
+                            ?: tr("— %s", "— %s", Units.volumeUnit)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
@@ -1075,7 +1141,7 @@ private fun FuelRecordCard(record: Record, rate: Double?, onClick: () -> Unit) {
 }
 
 /**
- * 时间轴状态点：手填油耗 info 实心 / 漏记 warning 实心 / 已加满 success 实心 / 未加满 outline 空心。
+ * 时间轴状态点：手填能耗 info 实心 / 漏记 warning 实心 / 已加满(充满) success 实心 / 未加满 outline 空心。
  */
 private fun fuelDot(
     record: Record,
@@ -1089,31 +1155,33 @@ private fun fuelDot(
 }
 
 
-/** 加油记录状态：已加满 / 未加满 / 漏记后重置 / 手填油耗。 */
-private fun fuelStatus(record: Record): Pair<String, StatusKind> = when {
+/** 加油/充电记录状态：已加满(充满) / 未加满(充满) / 漏记后重置 / 手填油耗(能耗)。 */
+private fun fuelStatus(record: Record, ev: Boolean): Pair<String, StatusKind> = when {
     record.missed -> tr("漏记后重置", "Baseline reset after a missed entry") to StatusKind.SOON
-    record.kind == "manual" -> tr("手填油耗", "Manual fuel entry") to StatusKind.NORMAL
-    record.full -> tr("已加满", "Filled up") to StatusKind.DONE
-    else -> tr("未加满", "Not filled up") to StatusKind.NORMAL
+    record.kind == "manual" -> (if (ev) tr("手填能耗", "Manual energy entry") else tr("手填油耗", "Manual fuel entry")) to StatusKind.NORMAL
+    record.full -> (if (ev) tr("已充满", "Full charge") else tr("已加满", "Filled up")) to StatusKind.DONE
+    else -> (if (ev) tr("未充满", "Not fully charged") else tr("未加满", "Not filled up")) to StatusKind.NORMAL
 }
 
 // ---------------------------------------------------------------------------------------------
-// 加油记录详情（点击记录卡先看详情，「编辑」才进入编辑）
+// 加油/充电记录详情（点击记录卡先看详情，「编辑」才进入编辑）
 // ---------------------------------------------------------------------------------------------
 
 /**
- * 单条加油 / 油耗记录详情弹层。
+ * 单条加油 / 充电记录详情弹层。
  *
- * 保留记录卡上的全部信息并补充「百公里油耗」：日期、来源、金额、加油量、总里程、
- * 是否加满 / 漏记、该次满箱区间百公里油耗、备注。
+ * 保留记录卡上的全部信息并补充该次区间能耗：日期、来源、金额、能量量（加油量/充电量）、
+ * 总里程、是否加满/充满、漏记、备注。纯电不显示燃油标号与单次能耗行（单次充电不覆盖可计算里程）。
  * 底部「编辑」才走 `vm.openEditor(recordId)`，「关闭」不修改任何数据。
  *
- * @param rate 该记录的满箱法区间油耗；无有效区间为 null（显示「—」）。
+ * @param rate 该记录的满箱/满电法区间能耗；无有效区间为 null（显示「—」）。
+ * @param ev 当前车辆是否纯电。
  */
 @Composable
 private fun FuelRecordDetailDialog(
     record: Record,
     rate: Double?,
+    ev: Boolean,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
 ) {
@@ -1123,7 +1191,10 @@ private fun FuelRecordDetailDialog(
         shape = MaterialTheme.shapes.extraLarge,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(text = tr("加油详情", "Fuel entry details"), style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    text = if (ev) tr("充电详情", "Charge details") else tr("加油详情", "Fuel entry details"),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
                 Text(
                     text = monthDayLabel(record.date),
                     style = MaterialTheme.typography.bodySmall,
@@ -1148,26 +1219,41 @@ private fun FuelRecordDetailDialog(
                 )
                 DetailRow(tr("实付金额", "Amount paid"), "${Units.currencySymbol} ${Format.money(record.amount)}")
                 DetailRow(
-                    tr("加油量", "Fuel amount"),
-                    record.liters?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.volumeUnit) } ?: "—",
+                    if (ev) tr("充电量", "Charge amount") else tr("加油量", "Fuel amount"),
+                    if (ev) {
+                        record.kwh?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.energyUnit) } ?: "—"
+                    } else {
+                        record.liters?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.volumeUnit) } ?: "—"
+                    },
                 )
-                record.fuelGrade?.takeIf { it.isNotBlank() }?.let { grade ->
-                    DetailRow(tr("燃油标号", "Fuel grade"), if (grade == "0#") tr("0# 柴油", "0# diesel") else grade)
+                if (!ev) {
+                    record.fuelGrade?.takeIf { it.isNotBlank() }?.let { grade ->
+                        DetailRow(tr("燃油标号", "Fuel grade"), if (grade == "0#") tr("0# 柴油", "0# diesel") else grade)
+                    }
                 }
                 DetailRow(
                     tr("总里程", "Odometer"),
                     record.odometer?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.distanceUnit) } ?: "—",
                 )
-                DetailRow(tr("加满状态", "Full tank"), buildString {
-                    append(if (record.full) tr("已加满", "Filled up") else tr("未加满", "Not filled up"))
+                DetailRow(if (ev) tr("充满状态", "Full charge") else tr("加满状态", "Full tank"), buildString {
+                    append(
+                        if (record.full) {
+                            if (ev) tr("已充满", "Full charge") else tr("已加满", "Filled up")
+                        } else {
+                            if (ev) tr("未充满", "Not fully charged") else tr("未加满", "Not filled up")
+                        },
+                    )
                     append(" · ")
                     append(if (record.missed) tr("有漏记", "Missed entry") else tr("无漏记", "No missed entry"))
                 })
-                DetailRow(
-                    tr("油耗", "Fuel economy"),
-                    rate?.let { tr("%s %s", "%s %s", Format.money(it), Units.consumption) } ?: "—",
-                )
-                val (statusLabel, _) = fuelStatus(record)
+                if (!ev) {
+                    // 纯电单次充电不覆盖可计算里程：不展示单次能耗行。
+                    DetailRow(
+                        tr("油耗", "Fuel economy"),
+                        rate?.let { tr("%s %s", "%s %s", Format.money(it), Units.consumption) } ?: "—",
+                    )
+                }
+                val (statusLabel, _) = fuelStatus(record, ev)
                 DetailRow(tr("状态", "Status"), statusLabel)
                 DetailRow(tr("备注", "Note"), record.note.ifBlank { "—" })
             }
@@ -1213,7 +1299,7 @@ private fun DetailRow(label: String, value: String) {
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-private fun FuelFootnote() {
+private fun FuelFootnote(ev: Boolean) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1236,7 +1322,10 @@ private fun FuelFootnote() {
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(text = tr("满箱法说明", "Full-tank method"), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = if (ev) tr("满电/累计口径说明", "Full-charge & cumulative method") else tr("满箱法说明", "Full-tank method"),
+                    style = MaterialTheme.typography.labelLarge,
+                )
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
                     imageVector = if (expanded) MileNoteIcons.ChevronDown else MileNoteIcons.ChevronRight,
@@ -1247,12 +1336,22 @@ private fun FuelFootnote() {
             }
             if (expanded) {
                 Text(
-                    text = tr(
-                        "满箱法：两次加满之间的累计加油量 ÷ 里程差 × 100。第一次加满仅建立基准；" +
-                            "未加满的加油量累计到下次加满，漏记会重新建立基准。" +
-                            "历史油耗记录保留，并沿用原有统计口径。",
-                        "Full-tank method: total fuel between two full tanks ÷ distance × 100. The first fill-up only sets the baseline; partial fill-ups accumulate until the next full tank, and a missed entry resets the baseline. Historical fuel records are kept under the original calculation.",
-                    ),
+                    text = if (ev) {
+                        tr(
+                            "满电法：两次充满之间的累计充电量 ÷ 里程差 × 100。第一次充满仅建立基准；" +
+                                "未充满的充电量累计到下次充满，漏记会重新建立基准。" +
+                                "没有满充区间时按累计口径估算：首尾两条有里程的充电记录之间的累计充电量 ÷ 里程差 × 100。" +
+                                "充电量含充电损耗（交流约 10%），数值可能高于车机表显电耗。",
+                            "Full-charge method: total energy between two full charges ÷ distance × 100. The first full charge only sets the baseline; partial charges accumulate until the next full charge, and a missed entry resets the baseline. Without any full-charge interval it falls back to a cumulative estimate: total energy between the first and last charging records with mileage ÷ distance × 100. Charging amounts include charging losses (~10% AC), so values may read higher than the car's display.",
+                        )
+                    } else {
+                        tr(
+                            "满箱法：两次加满之间的累计加油量 ÷ 里程差 × 100。第一次加满仅建立基准；" +
+                                "未加满的加油量累计到下次加满，漏记会重新建立基准。" +
+                                "历史油耗记录保留，并沿用原有统计口径。",
+                            "Full-tank method: total fuel between two full tanks ÷ distance × 100. The first fill-up only sets the baseline; partial fill-ups accumulate until the next full tank, and a missed entry resets the baseline. Historical fuel records are kept under the original calculation.",
+                        )
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 12.dp),

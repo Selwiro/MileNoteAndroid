@@ -4,7 +4,9 @@ import com.milenote.android.domain.calc.parseDelimited
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.importRows
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.Vehicle
 import java.nio.charset.StandardCharsets
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,6 +43,26 @@ class LedgerExportsTest {
 
     private fun csvText(ledger: Ledger): String =
         String(LedgerExports.csv(ledger), StandardCharsets.UTF_8).removePrefix("\uFEFF")
+
+    private fun evLedger(record: Record): Ledger = Ledger(
+        id = "car-ev",
+        vehicle = Vehicle(name = "纯电车", powertrain = POWERTRAIN_EV),
+        records = listOf(record),
+    )
+
+    private fun evRecord(): Record = Record(
+        id = "r-charge",
+        date = "2026-11-01",
+        category = "油费",
+        amount = 28.8,
+        payable = 28.8,
+        discount = 0.0,
+        unitPrice = 0.64,
+        kwh = 45.0,
+        odometer = 12345.0,
+        full = true,
+        source = "手动记录",
+    )
 
     @Test
     fun `csv header inserts four fuel columns after amount`() {
@@ -95,6 +117,37 @@ class LedgerExportsTest {
         assertEquals("95#", item.record.fuelGrade)
         assertEquals(12345.0, item.record.odometer!!, 1e-9)
         assertEquals(40.0, item.record.liters!!, 1e-9)
+    }
+
+    @Test
+    fun `ev csv header switches energy columns and keeps 17 columns`() {
+        val headers = parseDelimited(csvText(evLedger(evRecord()))).first()
+        assertEquals(
+            listOf(
+                "日期", "地点", "项目", "分类", "金额",
+                "应付金额", "优惠金额", "电价", "标号",
+                "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源",
+            ),
+            headers,
+        )
+    }
+
+    @Test
+    fun `ev csv row exports kwh and imports back`() {
+        val rows = parseDelimited(csvText(evLedger(evRecord())))
+        val row = rows[1]
+        assertEquals("油费", row[3])
+        assertEquals("0.64", row[7])
+        assertEquals("", row[8])
+        assertEquals("45", row[10])
+        assertEquals("是", row[11])
+
+        val item = importRows(rows.drop(1), detectMap(rows.first()), "qianji").single()
+        assertEquals("", item.error)
+        assertEquals(45.0, item.record.kwh!!, 1e-9)
+        assertEquals(null, item.record.liters)
+        assertEquals(0.64, item.record.unitPrice!!, 1e-9)
+        assertTrue(item.record.full)
     }
 
     @Test

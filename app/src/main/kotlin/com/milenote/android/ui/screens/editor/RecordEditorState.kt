@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
-import com.milenote.android.domain.calc.fillFuelAmounts
+import com.milenote.android.domain.calc.fillEnergyAmounts
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.SERVICE_CATEGORIES
@@ -13,8 +13,10 @@ import com.milenote.android.domain.calc.serviceProjectOptions
 import com.milenote.android.domain.calc.splitProjects
 import com.milenote.android.domain.calc.validateRecord
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.i18n.DataLabels
 import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -44,6 +46,9 @@ internal class RecordEditorState(
     /** 记录 id（新增时生成，编辑时保留）。 */
     val recordId: String = original?.id ?: Ids.newId()
 
+    /** 当前车辆是否纯电（决定标题、能量字段与「电费」显示）。 */
+    val isEv: Boolean = ledger.vehicle.isEv
+
     /** 历史手填油耗记录（编辑时不显示分类网格，改为油耗 + 行驶里程）。 */
     val isManual: Boolean = original?.kind == "manual"
 
@@ -57,6 +62,7 @@ internal class RecordEditorState(
     var category by mutableStateOf(original?.category ?: target.category)
     var odometer by mutableStateOf(numberText(original?.odometer))
     var liters by mutableStateOf(numberText(original?.liters))
+    var kwh by mutableStateOf(numberText(original?.kwh))
     var unitPrice by mutableStateOf(numberText(original?.unitPrice))
     var fuelGrade by mutableStateOf(
         original?.fuelGrade?.takeIf { it in FuelGradeOptions }
@@ -108,9 +114,9 @@ internal class RecordEditorState(
     val categoryOptions: List<String>
         get() = (Categories.options(ledger) + draftCategories).distinct()
 
-    /** 当前是否为油费（手填油耗视为油费，但不显示加油字段）。 */
+    /** 当前是否为能源费（燃油「油费」/ 纯电显示「电费」；手填油耗视为油费，但不显示能量字段）。 */
     val isFuel: Boolean
-        get() = !isManual && Categories.normalize(category) == "油费"
+        get() = !isManual && Categories.isEnergy(category)
 
     /** 当前是否为服务类（保养 / 维修 / 汽车美容 / 旧维修保养）。 */
     val isService: Boolean
@@ -127,11 +133,11 @@ internal class RecordEditorState(
     val effectiveCategory: String
         get() = if (isManual) "油费" else Categories.normalize(category)
 
-    /** 弹层标题：编辑 / 记录加油 / 记一笔。 */
+    /** 弹层标题：编辑 / 记录加油（纯电为记录充电）/ 记一笔。 */
     val title: String
         get() = when {
             original != null -> tr("编辑记录", "Edit record")
-            isFuel -> tr("记录加油", "Log refuel")
+            isFuel -> if (isEv) tr("记录充电", "Log charging") else tr("记录加油", "Log refuel")
             else -> tr("记一笔", "Add entry")
         }
 
@@ -242,22 +248,28 @@ internal class RecordEditorState(
     }
 
     /**
-     * 油费字段联动：加油量 × 油价 = 应付金额，应付金额 - 优惠金额 = 实付金额。
-     * 只补空字段或上一次自动填出来的字段，不覆盖用户手写内容。
+     * 能源字段联动：能量量 × 单价 = 应付金额，应付金额 - 优惠金额 = 实付金额。
+     * 燃油用「加油量 × 油价」，纯电用「充电量 × 电价」；只补空字段或上一次自动填出来的字段。
      */
     private fun autoFillFuel() {
         if (!isFuel) return
         // 自动填过的字段先置空再重算，避免输入变化后沿用旧的派生值。
+        val energyValue = Numbers.parse(if (isEv) kwh else liters)
         val seed = Record(
             category = "油费",
             amount = Numbers.parse(amount) ?: 0.0,
-            liters = Numbers.parse(liters),
+            liters = if (isEv) null else energyValue,
+            kwh = if (isEv) energyValue else null,
             unitPrice = Numbers.parse(unitPrice).takeUnless { "unitPrice" in autoFuelFields },
             payable = Numbers.parse(payable).takeUnless { "payable" in autoFuelFields },
             discount = Numbers.parse(discount).takeUnless { "discount" in autoFuelFields },
         )
-        val filled = fillFuelAmounts(seed)
-        applyAuto("liters", liters, filled.liters) { liters = it }
+        val filled = fillEnergyAmounts(seed)
+        if (isEv) {
+            applyAuto("kwh", kwh, filled.kwh) { kwh = it }
+        } else {
+            applyAuto("liters", liters, filled.liters) { liters = it }
+        }
         applyAuto("unitPrice", unitPrice, filled.unitPrice) { unitPrice = it }
         applyAuto("payable", payable, filled.payable) { payable = it }
         applyAuto("discount", discount, filled.discount) { discount = it }
@@ -282,9 +294,10 @@ internal class RecordEditorState(
             category = effectiveCategory,
             amount = Numbers.parse(amount) ?: 0.0,
             odometer = Numbers.parse(odometer),
-            liters = if (isFuel) Numbers.parse(liters) else null,
+            liters = if (isFuel && !isEv) Numbers.parse(liters) else null,
+            kwh = if (isFuel && isEv) Numbers.parse(kwh) else null,
             unitPrice = if (isFuel) Numbers.parse(unitPrice) else null,
-            fuelGrade = if (isFuel) fuelGrade.takeIf { it in FuelGradeOptions } else null,
+            fuelGrade = if (isFuel && !isEv) fuelGrade.takeIf { it in FuelGradeOptions } else null,
             payable = if (isFuel) Numbers.parse(payable) else null,
             discount = if (isFuel) Numbers.parse(discount) else null,
             rate = if (isManual) Numbers.parse(rate) else null,
@@ -303,7 +316,7 @@ internal class RecordEditorState(
             kind = if (isManual) "manual" else "expense",
             time = null,
         )
-        return fillFuelAmounts(record)
+        return fillEnergyAmounts(record)
     }
 
     /**
@@ -315,8 +328,17 @@ internal class RecordEditorState(
      */
     fun validate(): String? {
         val reminder = serviceReminder
-        if (reminder?.firstOnly == true && !projects.contains("机油机滤")) {
-            return tr("首保项目需包含机油机滤", "The first service item must include Oil & filter")
+        if (reminder?.firstOnly == true) {
+            // 首保完成判定项目由方案决定：燃油=机油机滤，纯电=三电诊断（不再硬编码）。
+            val required = splitProjects(reminder.projects)
+            val missing = required.filterNot { projects.contains(it) }
+            if (missing.isNotEmpty()) {
+                return tr(
+                    "首保项目需包含：%s",
+                    "The first service must include: %s",
+                    missing.joinToString("、") { DataLabels.serviceItem(it) },
+                )
+            }
         }
         if (isService && projects.isEmpty()) return tr("请填写维修保养项目", "Add at least one service item")
         if (reminder != null && (reminder.intervalKm ?: 0.0) > 0.0 && Numbers.parse(odometer) == null) {

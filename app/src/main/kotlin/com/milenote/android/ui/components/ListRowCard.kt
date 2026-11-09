@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteDimens
@@ -49,6 +50,8 @@ import com.milenote.android.ui.theme.MileNoteTheme
  * @param trailing 行尾内容（金额 / 状态 / 箭头）。
  * @param onClick 点按整行。
  * @param showDivider 是否显示底部分隔线（用于同一分组内的行）。
+ * @param ev 当前车是否纯电：标题里「 · 」分隔的分类名按 [DataLabels.category] 做显示层映射
+ *   （纯电「油费」→「电费 / Charging」）；传原始分类名即可，数据值不变。
  */
 @Composable
 fun ListRowCard(
@@ -62,6 +65,7 @@ fun ListRowCard(
     showDivider: Boolean = false,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     shape: Shape = MileNoteShapes.large,
+    ev: Boolean = false,
 ) {
     Surface(
         modifier = modifier
@@ -87,7 +91,7 @@ fun ListRowCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
-                        text = title,
+                        text = displayTitle(title, ev),
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -123,6 +127,13 @@ fun ListRowCard(
         }
     }
 }
+
+/**
+ * 标题显示层映射：按「 · 」分段，分类名走 [DataLabels.category]（数据值本身不变）。
+ * 非分类段（日期、行号等）原样返回。
+ */
+private fun displayTitle(title: String, ev: Boolean): String =
+    title.split(" · ").joinToString(" · ") { segment -> DataLabels.category(segment, ev) }
 
 @Preview(showBackground = true, widthDp = 360)
 @Composable

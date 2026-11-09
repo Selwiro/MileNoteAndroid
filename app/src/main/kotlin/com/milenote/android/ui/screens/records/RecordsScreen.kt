@@ -62,6 +62,7 @@ import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
 import com.milenote.android.ui.components.CategoryBadge
@@ -143,6 +144,8 @@ private fun RecordsContent(
     // 用空串表示「全部分类」，避免 rememberSaveable 处理 null 的兼容问题。
     var categoryFilter by rememberSaveable { mutableStateOf("") }
     var lastCarId by rememberSaveable { mutableStateOf(ledger.id) }
+    // 动力类型：纯电把「油费」显示为「电费」，手填历史记录叫「手填能耗」。
+    val ev = ledger.isEv
 
     // 进入记录页 / 从编辑页或其它 tab 返回时：不自动聚焦搜索框，主动清焦点并收起输入法。
     // 只有用户点击搜索框（或其它输入框）时才由系统弹出键盘。
@@ -213,6 +216,7 @@ private fun RecordsContent(
                             period = state.period,
                             customRange = state.customRange,
                             statsResult = feeStats,
+                            ev = ev,
                             onSelectPeriod = onSelectPeriod,
                             onSelectCustomRange = onSelectCustomRange,
                         )
@@ -237,6 +241,7 @@ private fun RecordsContent(
                 period = state.period,
                 category = categoryFilter.ifEmpty { null },
                 categories = categoryOptions,
+                ev = ev,
                 onSelectPeriod = onSelectPeriod,
                 onSelectCategory = { categoryFilter = it.orEmpty() },
                 onReset = {
@@ -301,6 +306,7 @@ private fun RecordsSearchFilterRow(
     period: Period,
     category: String?,
     categories: List<String>,
+    ev: Boolean,
     onSelectPeriod: (Period) -> Unit,
     onSelectCategory: (String?) -> Unit,
     onReset: () -> Unit,
@@ -335,7 +341,7 @@ private fun RecordsSearchFilterRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = filterPillLabel(period = period, category = category),
+                        text = filterPillLabel(period = period, category = category, ev = ev),
                         style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -375,7 +381,7 @@ private fun RecordsSearchFilterRow(
                 )
                 categories.forEach { name ->
                     DropdownMenuItem(
-                        text = { Text(DataLabels.category(name)) },
+                        text = { Text(DataLabels.category(name, ev)) },
                         trailingIcon = filterCheckIcon(category == name),
                         onClick = {
                             onSelectCategory(name)
@@ -425,15 +431,15 @@ private fun filterCheckIcon(selected: Boolean): (@Composable () -> Unit)? =
         }
     }
 
-/** 筛选胶囊文案：无筛选「筛选」；否则「本月」「油费」「本月 · 油费」。 */
-private fun filterPillLabel(period: Period, category: String?): String {
+/** 筛选胶囊文案：无筛选「筛选」；否则「本月」「油费/电费」「本月 · 油费/电费」。 */
+private fun filterPillLabel(period: Period, category: String?, ev: Boolean): String {
     val parts = buildList {
         when (period) {
             Period.ALL -> Unit
             Period.MONTH -> add(tr("本月", "This month"))
             Period.YEAR -> add(tr("今年", "This year"))
         }
-        category?.takeIf { it.isNotBlank() }?.let { add(DataLabels.category(it)) }
+        category?.takeIf { it.isNotBlank() }?.let { add(DataLabels.category(it, ev)) }
     }
     return if (parts.isEmpty()) tr("筛选", "Filter") else parts.joinToString(" · ")
 }
@@ -583,7 +589,7 @@ private fun RecordRowCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = recordTitle(record),
+                    text = recordTitle(record, ledger.isEv),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -644,9 +650,13 @@ private fun RecordRowCard(
     }
 }
 
-/** 记录行标题：手填油耗单独显示（与 Web 记录表一致）。 */
-private fun recordTitle(record: Record): String =
-    if (record.kind == "manual") tr("手填油耗", "Manual fuel entry") else DataLabels.category(Categories.normalize(record.category))
+/** 记录行标题：手填油耗/能耗单独显示（与 Web 记录表一致）；「油费」在纯电车上显示为「电费」。 */
+private fun recordTitle(record: Record, ev: Boolean): String =
+    if (record.kind == "manual") {
+        if (ev) tr("手填能耗", "Manual energy entry") else tr("手填油耗", "Manual fuel entry")
+    } else {
+        DataLabels.category(Categories.normalize(record.category), ev)
+    }
 
 /** 记录行副标题：日期 + 备注（不再展示记录来源）。 */
 private fun recordSubtitle(record: Record): String {

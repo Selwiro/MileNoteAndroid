@@ -245,4 +245,68 @@ class ImportMappingTest {
         assertEquals(7.5, item.record.unitPrice!!, 1e-9)
         assertEquals("95#", item.record.fuelGrade)
     }
+
+    // ---- 纯电：充电量 / 电价 / 电费归类 ----
+
+    @Test
+    fun `charging and electricity price columns are detected`() {
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "充电量"))["kwh"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "电量"))["kwh"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "千瓦时"))["kwh"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "度电"))["kwh"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "kWh"))["kwh"])
+        assertNull(detectMap(listOf("日期", "分类", "金额"))["kwh"])
+
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "电价"))["unitPrice"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "电单价"))["unitPrice"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "元/度"))["unitPrice"])
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "元/kWh"))["unitPrice"])
+        // 燃油别名仍然可用
+        assertEquals(3, detectMap(listOf("日期", "分类", "金额", "油价"))["unitPrice"])
+    }
+
+    @Test
+    fun `charging rows fill kwh price and payable without liters`() {
+        val items = normalizeImport(
+            listOf(
+                listOf("2026-11-01", "电费", 62, 40, 1.55),
+                listOf("2026-11-02", "充电", 36, 30, null),
+            ),
+            detectMap(listOf("日期", "分类", "金额", "充电量", "电价")),
+            "qianji",
+        )
+        val first = items[0]
+        assertEquals("", first.error)
+        // 「电费」归一为能源分类（存储仍是 9 类里的「油费」）
+        assertEquals("油费", first.record.category)
+        assertEquals(40.0, first.record.kwh!!, 1e-9)
+        assertEquals(1.55, first.record.unitPrice!!, 1e-9)
+        assertEquals(62.0, first.record.payable!!, 1e-9)
+        assertNull(first.record.liters)
+
+        // 只有金额 + 充电量：补单价（36 / 30 = 1.2 元/度）
+        val second = items[1]
+        assertEquals("", second.error)
+        assertEquals("油费", second.record.category)
+        assertEquals(30.0, second.record.kwh!!, 1e-9)
+        assertEquals(1.2, second.record.unitPrice!!, 1e-9)
+        assertEquals(36.0, second.record.payable!!, 1e-9)
+        assertNull(second.record.liters)
+    }
+
+    @Test
+    fun `ev service note inference uses ev titles`() {
+        val ev = inferServiceNote(
+            Record(category = "保养", note = "表显18000km，三电诊断、刹车油、空调滤芯"),
+            ev = true,
+        )
+        assertEquals(18000.0, ev.odometer!!, 1e-9)
+        assertTrue(ev.projects!!.contains("三电诊断"))
+        assertTrue(ev.projects!!.contains("刹车油"))
+        assertFalse(ev.projects!!.contains("制动液"))
+
+        // 默认（燃油）口径不识别三电诊断
+        val fuel = inferServiceNote(Record(category = "保养", note = "三电诊断、制动液"))
+        assertEquals("制动液", fuel.projects)
+    }
 }

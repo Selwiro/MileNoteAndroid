@@ -33,4 +33,11 @@ data class Vehicle(
     val image: String? = null,
     /** 图片显示方式：`contain` / `cover`。 */
     val imageFit: String? = null,
+    /**
+     * 动力类型：`"fuel"`（燃油）/ `"ev"`（纯电）。
+     *
+     * 缺省（null）视为燃油，保证历史备份与老版本 App 兼容；
+     * 新增字段不升账本版本（`explicitNulls = false`，null 不写入 JSON）。
+     */
+    val powertrain: String? = null,
 )

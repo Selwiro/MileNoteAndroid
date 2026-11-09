@@ -5,6 +5,7 @@ import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.blankLedger
@@ -38,6 +39,35 @@ fun fuelRecord(
     kind = "expense",
 )
 
+/** 一条纯电充电记录（`kwh` 而非 `liters`），字段语义与 [fuelRecord] 对称。 */
+fun evRecord(
+    date: String,
+    odometer: Double?,
+    kwh: Double?,
+    full: Boolean = true,
+    missed: Boolean = false,
+    amount: Double = 60.0,
+    id: String = Ids.newId(),
+    source: String = "",
+    sourceId: String? = null,
+    fuelCounted: Boolean? = null,
+    unitPrice: Double? = null,
+): Record = Record(
+    id = id,
+    date = date,
+    category = "油费",
+    amount = amount,
+    odometer = odometer,
+    kwh = kwh,
+    unitPrice = unitPrice,
+    full = full,
+    missed = missed,
+    source = source,
+    sourceId = sourceId,
+    fuelCounted = fuelCounted,
+    kind = "expense",
+)
+
 fun importedItem(
     record: Record,
     error: String = "",
@@ -49,6 +79,12 @@ fun testLedger(
     records: List<Record> = emptyList(),
     reminders: List<Reminder> = emptyList(),
 ): Ledger = blankLedger().copy(records = records, reminders = reminders)
+
+/** 纯电账本（`vehicle.powertrain = "ev"`），用于计算层纯电分支断言。 */
+fun evLedger(
+    records: List<Record> = emptyList(),
+    reminders: List<Reminder> = emptyList(),
+): Ledger = blankLedger(POWERTRAIN_EV).copy(records = records, reminders = reminders)
 
 fun assertClose(expected: Double?, actual: Double?, delta: Double = 1e-9, message: String = "") {
     if (expected == null || actual == null) {

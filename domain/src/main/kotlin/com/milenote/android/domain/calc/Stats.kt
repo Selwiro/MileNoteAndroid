@@ -2,6 +2,7 @@ package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.isEv
 
 /** 某分类的统计金额。 */
 data class CategoryValue(val name: String, val value: Double)
@@ -14,8 +15,10 @@ data class CategoryValue(val name: String, val value: Double)
  * @property categories 全量分类聚合（9 类 + 自定义，无记录为 0）
  * @property distance 记录行驶里程（全部 = 当前里程 − 起始里程；区间 = 区间里程差）
  * @property perKm 平均用车成本（元/km），`distance <= 0` 时为 null
- * @property fuelRate 里程加权综合油耗，无有效区间时为 null
- * @property intervals 区间内有效油耗区间（满箱法 + 手填）
+ * @property energyRate 里程加权综合能耗（满箱法/满电法 + 手填），无有效区间时为 null；
+ *   燃油单位 L/100km，纯电单位 kWh/100km
+ * @property estimatedEnergyRate 纯电且无满电区间时的累计估算能耗（kWh/100km），否则 null
+ * @property intervals 区间内有效能耗区间（满箱法 + 手填）
  */
 data class StatsResult(
     val records: List<Record>,
@@ -23,8 +26,9 @@ data class StatsResult(
     val categories: List<CategoryValue>,
     val distance: Double,
     val perKm: Double?,
-    val fuelRate: Double?,
-    val intervals: List<FuelInterval>,
+    val energyRate: Double?,
+    val estimatedEnergyRate: Double?,
+    val intervals: List<EnergyInterval>,
 )
 
 /** 统计指定时间范围（闭区间，`YYYY-MM-DD`）。 */
@@ -41,7 +45,13 @@ fun stats(ledger: Ledger, from: String = "", to: String = "9999-12-31"): StatsRe
         )
     }
 
-    val allIntervals = fuelIntervals(ledger.records) + manualFuelIntervals(ledger.records)
+    val ev = ledger.isEv
+    // 手填能耗（kind == manual）是燃油历史字段；纯电只统计 kWh 满电区间。
+    val allIntervals = if (ev) {
+        energyIntervals(ledger.records, ev = true)
+    } else {
+        energyIntervals(ledger.records) + manualEnergyIntervals(ledger.records)
+    }
     val intervals = allIntervals.filter { (from.isEmpty() || it.date >= from) && it.date <= to }
 
     val distance = if (from.isEmpty() && to == "9999-12-31") {
@@ -62,8 +72,8 @@ fun stats(ledger: Ledger, from: String = "", to: String = "9999-12-31"): StatsRe
         }
     }
 
-    val distanceFuel = intervals.sumOf { it.distance }
-    val fuelLiters = intervals.sumOf { it.liters }
+    val distanceEnergy = intervals.sumOf { it.distance }
+    val intervalAmount = intervals.sumOf { it.amount }
 
     return StatsResult(
         records = records,
@@ -71,9 +81,28 @@ fun stats(ledger: Ledger, from: String = "", to: String = "9999-12-31"): StatsRe
         categories = categories,
         distance = distance,
         perKm = if (distance > 0) total / distance else null,
-        fuelRate = if (distanceFuel != 0.0) fuelLiters / distanceFuel * 100.0 else null,
+        energyRate = if (distanceEnergy != 0.0) intervalAmount / distanceEnergy * 100.0 else null,
+        estimatedEnergyRate = if (ev && intervals.isEmpty()) estimateEnergyRate(records) else null,
         intervals = intervals,
     )
+}
+
+/**
+ * 纯电累计口径估算：范围内首尾两条「有里程的充电记录」之间的累计充电量 ÷ 里程差 × 100。
+ * 首条记录只作基准（其充电量不计，与满电法一致）；不足两条或里程差 ≤ 0 时返回 null。
+ */
+fun estimateEnergyRate(records: List<Record>): Double? {
+    val points = records
+        .filter { Categories.isEnergy(it.category) && it.kind != "manual" && it.kwh != null && it.odometer != null }
+        .sortedWith(compareBy<Record> { it.date }.thenBy { it.odometer ?: 0.0 })
+    if (points.size < 2) return null
+    val first = points.first()
+    val last = points.last()
+    val distance = (last.odometer ?: 0.0) - (first.odometer ?: 0.0)
+    if (distance <= 0) return null
+    val amount = points.drop(1).sumOf { it.kwh ?: 0.0 }
+    if (amount <= 0) return null
+    return amount / distance * 100.0
 }
 
 /** 计入成本的费用笔数（Web 指标卡「N 笔费用」）。 */

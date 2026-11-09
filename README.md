@@ -64,7 +64,7 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 ## 测试
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 195 项领域 + 38 项 app 测试
+./gradlew :domain:test :app:testDebugUnitTest  # 241 项领域 + 63 项 app 测试
 ./gradlew :app:assembleDebug                   # 构建 + 编译检查
 ```
 
@@ -74,15 +74,16 @@ release APK 归档为 `milenote-<versionName>-android.apk`（附 `.sha256`，可
 |---|---|
 | `app/src/main/kotlin/com/milenote/android/ui/theme/` | 5 皮肤 × 浅/深 M3 ColorScheme、字阶、形状、动效 |
 | `.../ui/components/` | StatusPill / 表单 / 空状态 / 图表容器等 12 个组件 |
-| `.../ui/screens/` | 总览 / 记录 / 记一笔 / 油耗 / 保养 / 车辆与设置 / 导入向导 / OCR |
+| `.../ui/screens/` | 总览 / 记录 / 记一笔 / 能耗（原油耗） / 保养 / 车辆与设置 / 导入向导 / OCR |
 | `.../data/garage/` | 账本 JSON 快照（原子写入）、演示模式、备份恢复 |
 | `.../platform/` | OCR 识别、CSV/ICS/备份导出、SAF/分享 |
-| `domain/src/main/kotlin/.../domain/` | Web 同源的算法/备份/导入/OCR 解析（192 tests） |
+| `domain/src/main/kotlin/.../domain/` | 算法/备份/导入/OCR 解析（241 tests；燃油 12/纯电 6 项保养方案） |
 | `keystore/` | 自签发布密钥与口令文件（**不入库**，需单独备份） |
 
 ## 说明
 
-- 账本存储采用与 Web 完全同构的 `version:2` 单文件 JSON（图片 base64 dataURL 内嵌），保证与 Web 版备份双向互通；不使用 Room 分表。
+- 账本存储采用 `version:2` 单文件 JSON（图片 base64 dataURL 内嵌），历史 Web 备份仍可导入；不使用 Room 分表。
+- 支持燃油 / 纯电两种动力类型：每辆车在「编辑车辆 → 动力类型」选择，纯电改用充电量/电价记账、6 项纯电保养方案与能耗分析（kWh/100km，不显示今日油价）。
 - 本仓库只含 Android 端代码；功能范围、验收记录、已知限制与更早版本历史保存在作者本机工作区，不在本仓库。
 - WebDAV 同步已实现：仅前台自动同步，远端保存明文 JSON，**暂不支持 Web 端的加密同步格式**（跨端互传请用明文）；桌面小组件 / 应用锁 / 平板双栏明确不做。
-- 桌面长按快捷方式（记一笔 / 记加油 / 扫加油票）；界面锁竖屏；release 包禁止明文 HTTP，调试包放行（详见 `AGENTS.md` 与 `docs/decisions.md`）。
+- 桌面长按快捷方式（记一笔 / 扫小票；纯电当前车下小票识别退回普通记一笔）；界面锁竖屏；release 包禁止明文 HTTP，调试包放行（详见 `AGENTS.md` 与 `docs/decisions.md`）。

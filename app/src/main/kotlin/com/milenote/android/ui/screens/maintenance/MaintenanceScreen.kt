@@ -52,6 +52,7 @@ import com.milenote.android.domain.calc.PlanRow
 import com.milenote.android.domain.calc.ReminderLevel
 import com.milenote.android.domain.calc.ServiceProgress
 import com.milenote.android.domain.calc.currentKm
+import com.milenote.android.domain.calc.defaultServicePlan
 import com.milenote.android.domain.calc.groupReminders
 import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.servicePlanRows
@@ -59,6 +60,7 @@ import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -108,6 +110,7 @@ fun MaintenanceScreen(
     }
 
     val today = Dates.today()
+    val ev = ledger.isEv
     val km = remember(ledger) { currentKm(ledger) }
     val groups = remember(ledger.reminders, today) { groupReminders(ledger.reminders, today) }
     val overdueCount = remember(groups.near, km, today) {
@@ -215,12 +218,14 @@ fun MaintenanceScreen(
                         action = {
                             ServiceHistoryFilter(
                                 filter = historyFilter,
+                                ev = ev,
                                 onSelect = { historyFilter = it },
                             )
                         },
                     ) {
                         ServiceHistoryFlatList(
                             records = filteredHistory,
+                            ev = ev,
                             filterActive = historyFilter != "全部" && history.isNotEmpty(),
                             onEdit = { vm.openEditor(recordId = it.id) },
                         )
@@ -251,6 +256,7 @@ fun MaintenanceScreen(
                     ) {
                         if (!configured) {
                             EnableDefaultPlanGuide(
+                                ev = ev,
                                 onEnableDefault = { showDefaultPlan = true },
                                 onCustomize = { vm.openServicePlanEditor() },
                             )
@@ -368,6 +374,7 @@ fun MaintenanceScreen(
 @Composable
 private fun ServiceHistoryFlatList(
     records: List<Record>,
+    ev: Boolean,
     filterActive: Boolean,
     onEdit: (Record) -> Unit,
 ) {
@@ -394,6 +401,7 @@ private fun ServiceHistoryFlatList(
         records.forEachIndexed { index, record ->
             ServiceHistoryCard(
                 record = record,
+                ev = ev,
                 onClick = { onEdit(record) },
             )
             if (index != records.lastIndex) FlatDivider()
@@ -410,7 +418,7 @@ private val SERVICE_HISTORY_FILTERS = listOf("全部", "维修", "保养", "汽�
 
 /** 记录卡右上角筛选胶囊 + 下拉菜单（全部 / 维修 / 保养 / 汽车美容）。 */
 @Composable
-private fun ServiceHistoryFilter(filter: String, onSelect: (String) -> Unit) {
+private fun ServiceHistoryFilter(filter: String, ev: Boolean, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     Box {
@@ -426,7 +434,7 @@ private fun ServiceHistoryFilter(filter: String, onSelect: (String) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = if (filter == "全部") tr("筛选", "Filter") else DataLabels.category(filter),
+                    text = if (filter == "全部") tr("筛选", "Filter") else DataLabels.category(filter, ev),
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                 )
@@ -441,7 +449,7 @@ private fun ServiceHistoryFilter(filter: String, onSelect: (String) -> Unit) {
             SERVICE_HISTORY_FILTERS.forEach { option ->
                 DropdownMenuItem(
                     text = {
-                        Text(if (option == "全部") tr("全部", "All") else DataLabels.category(option))
+                        Text(if (option == "全部") tr("全部", "All") else DataLabels.category(option, ev))
                     },
                     trailingIcon = historyFilterCheckIcon(selected = option == filter),
                     onClick = {
@@ -648,7 +656,9 @@ private fun sortPlanRows(rows: List<PlanRow>, km: Double, today: LocalDate): Lis
     )
 
 @Composable
-private fun EnableDefaultPlanGuide(onEnableDefault: () -> Unit, onCustomize: () -> Unit) {
+private fun EnableDefaultPlanGuide(ev: Boolean, onEnableDefault: () -> Unit, onCustomize: () -> Unit) {
+    // 项数随动力类型变化：燃油 12 项（首保 + 11 项常规）/ 纯电 6 项（首保 + 5 项常规）。
+    val planSize = defaultServicePlan(ev).size
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -662,9 +672,11 @@ private fun EnableDefaultPlanGuide(onEnableDefault: () -> Unit, onCustomize: () 
             Text(text = tr("尚未启用保养方案", "Service plan not enabled"), style = MaterialTheme.typography.titleMedium)
             Text(
                 text = tr(
-                    "可一键启用默认 12 项周期（首保 + 11 项常规保养），也可以逐项自定义里程与时长。",
-                    "Enable the 12 default intervals (first service + 11 routine services) in one tap, " +
+                    "可一键启用默认 %d 项周期（首保 + %d 项常规保养），也可以逐项自定义里程与时长。",
+                    "Enable the %d default intervals (first service + %d routine services) in one tap, " +
                         "or customize mileage and duration for each item.",
+                    planSize,
+                    planSize - 1,
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f),
@@ -1034,7 +1046,7 @@ private fun progressSummary(progress: ServiceProgress): String {
 }
 
 @Composable
-private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
+private fun ServiceHistoryCard(record: Record, ev: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val projects = record.projects?.takeIf { it.isNotBlank() }
     // 地点为空时用「-」占位，保证第三行存在、编辑按钮有对齐基准。
@@ -1069,7 +1081,7 @@ private fun ServiceHistoryCard(record: Record, onClick: () -> Unit) {
             Text(
                 text = projects?.let { raw ->
                     raw.split("、").joinToString(tr("、", ", ")) { DataLabels.serviceItem(it) }
-                } ?: DataLabels.category(record.category),
+                } ?: DataLabels.category(record.category, ev),
                 style = MaterialTheme.typography.titleMedium,
                 color = scheme.onSurface,
                 maxLines = 1,

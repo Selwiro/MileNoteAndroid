@@ -35,7 +35,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.milenote.android.domain.calc.Dates
-import com.milenote.android.domain.calc.FuelInterval
+import com.milenote.android.domain.calc.EnergyInterval
 import com.milenote.android.domain.format.Format
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -44,27 +44,30 @@ import java.time.LocalDate
 import kotlin.math.abs
 
 /**
- * 油耗走势图（Canvas 自绘，对应 Web `fuelPage` 的 `.fuel-chart` 折线）。
+ * 能耗走势图（Canvas 自绘，对应 Web `fuelPage` 的 `.fuel-chart` 折线）。
  *
  * 视觉规格（本轮增强）：
  * - 平滑曲线（Catmull-Rom → 三次贝塞尔），下方主色 0.25 → 透明的面积渐变；
- * - 圆点 + 最近一次油耗的 pill（`最近 7.38`），点按数据点显示「数值 · 日期」气泡；
+ * - 圆点 + 最近一次能耗的 pill（`最近 7.38 升/百公里` / `最近 18.2 度/百公里`），
+ *   点按数据点显示「数值 · 日期」气泡；
  * - 网格线弱化到 `outlineVariant × 0.5`；
  * - 横轴[monthAxis]：筛选范围 > 31 天显示月份（6月 / 7月…），≤ 31 天显示 5 天一个的 MM-DD 刻度；
- * - 纵轴下限 10 L/100km（与 Web 一致，避免小波动被放大）；
- * - 线/点使用主题分类色中的「油费」色，深色与 5 套皮肤自动适配；
+ * - 纵轴下限 10（与 Web 一致，避免小波动被放大）；
+ * - 线/点使用主题分类色中的「油费/电费」色，深色与 5 套皮肤自动适配；
  * - 数据为空时不应调用（由页面渲染 `EmptyState`）。
  *
- * @param intervals 已按筛选范围过滤的有效油耗区间（建议 ≤ 12）。
+ * @param intervals 已按筛选范围过滤的有效能耗区间（燃油 L/100km，纯电 kWh/100km）。
  * @param rangeStartIso 筛选范围起始日（ISO）；null 时取数据首/末区间日期作为横轴范围。
  * @param rangeEndIso 筛选范围结束日（ISO）；null 时取数据首/末区间日期作为横轴范围。
+ * @param unit 能耗单位（燃油 [Units.consumption]，纯电 [Units.energyConsumption]）。
  */
 @Composable
 fun FuelTrendChart(
-    intervals: List<FuelInterval>,
+    intervals: List<EnergyInterval>,
     modifier: Modifier = Modifier,
     rangeStartIso: String? = null,
     rangeEndIso: String? = null,
+    unit: String = Units.consumption,
 ) {
     if (intervals.isEmpty()) return
     // 展示筛选范围内的全部区间（不再截断为最近 12 个），按日期排序保证曲线顺序。
@@ -105,9 +108,9 @@ fun FuelTrendChart(
 
     val density = LocalDensity.current
     val description = tr(
-        "油耗走势：最近 %d 个有效区间，最近一次 %s %s。点按数据点查看数值。",
-        "Fuel trend: last %d valid intervals, latest %s %s. Tap a data point to see its value.",
-        points.size, Format.money(latest.rate), Units.consumption,
+        "能耗走势：最近 %d 个有效区间，最近一次 %s %s。点按数据点查看数值。",
+        "Energy trend: last %d valid intervals, latest %s %s. Tap a data point to see its value.",
+        points.size, Format.money(latest.rate), unit,
     )
 
     BoxWithConstraints(
@@ -304,13 +307,13 @@ fun FuelTrendChart(
                 }
             }
 
-            // 最近一次油耗 pill（选中最后一点时由气泡替代，避免重复）
+            // 最近一次能耗 pill（选中最后一点时由气泡替代，避免重复）
             if (selectedIndex != count - 1) {
                 val lastX = xOf(count - 1)
                 val lastY = yOf(latest.rate)
                 drawPill(
                     textMeasurer = textMeasurer,
-                    text = tr("最近 %s", "Latest %s", Format.money(latest.rate)),
+                    text = tr("最近 %s %s", "Latest %s %s", Format.money(latest.rate), unit),
                     style = pillStyle,
                     centerX = lastX,
                     anchorY = lastY,

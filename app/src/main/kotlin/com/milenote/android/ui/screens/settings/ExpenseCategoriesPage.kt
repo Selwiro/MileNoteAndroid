@@ -40,8 +40,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.PROJECT_CATEGORIES
-import com.milenote.android.domain.calc.SERVICE_PROJECT_GROUPS
+import com.milenote.android.domain.calc.serviceProjectGroups
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
@@ -64,9 +65,9 @@ private val ProjectCategories: List<String> =
 /** 保险默认项目（domain 尚未提供「保险」组时的兜底）。 */
 private val FallbackInsuranceProjects: List<String> = listOf("交强险", "车损险", "三者险")
 
-/** 取某分类的内置项目：优先 domain，其次本地兜底。 */
-private fun builtinProjects(category: String): List<String> =
-    SERVICE_PROJECT_GROUPS.firstOrNull { it.title == category }?.projects
+/** 取某分类的内置项目：优先 domain（按动力类型：燃油 12 项 / 纯电 6 项），其次本地兜底。 */
+private fun builtinProjects(category: String, ev: Boolean): List<String> =
+    serviceProjectGroups(ev).firstOrNull { it.title == category }?.projects
         ?: if (category == "保险") FallbackInsuranceProjects else emptyList()
 
 /** 项目库说明（页面底部注释统一口径）。 */
@@ -95,6 +96,7 @@ internal fun ExpenseCategoriesPage(
     onAddProject: (category: String, name: String) -> Unit,
     onRemoveProject: (category: String, name: String) -> Unit,
 ) {
+    val ev = ledger?.vehicle?.isEv == true
     val customCategories = remember(ledger?.customCategories) {
         ledger?.customCategories.orEmpty()
             .map { it.trim() }
@@ -120,6 +122,7 @@ internal fun ExpenseCategoriesPage(
             item(key = "tab-$tab") {
                 if (tab == 1) {
                     ProjectsCard(
+                        ev = ev,
                         projectsByCategory = projectsByCategory,
                         onRequestAdd = { addTarget = it },
                         onAddProject = onAddProject,
@@ -127,6 +130,7 @@ internal fun ExpenseCategoriesPage(
                     )
                 } else {
                     CategoriesCard(
+                        ev = ev,
                         themeId = themeId,
                         customCategories = customCategories,
                         onRequestAdd = { addTarget = it },
@@ -149,6 +153,7 @@ internal fun ExpenseCategoriesPage(
 /** 费用分类页签：9 类内置分类（只读）+ 自定义分类（可删）+ 新增入口。 */
 @Composable
 private fun CategoriesCard(
+    ev: Boolean,
     themeId: String,
     customCategories: List<String>,
     onRequestAdd: (AddNameTarget) -> Unit,
@@ -170,6 +175,7 @@ private fun CategoriesCard(
         Categories.ALL.forEachIndexed { index, name ->
             if (index > 0) CategoryDivider()
             BuiltinCategoryRow(
+                ev = ev,
                 name = name,
                 color = parseCategoryColor(Categories.color(themeId, name), scheme.primary),
                 icon = MileNoteIcons.Category.getOrNull(index),
@@ -224,6 +230,7 @@ private fun CategoriesCard(
 /** 项目库页签：四组项目，内置只读 + 自定义删除 + 分组新增。 */
 @Composable
 private fun ProjectsCard(
+    ev: Boolean,
     projectsByCategory: Map<String, List<String>>,
     onRequestAdd: (AddNameTarget) -> Unit,
     onAddProject: (category: String, name: String) -> Unit,
@@ -243,20 +250,21 @@ private fun ProjectsCard(
         ProjectCategories.forEachIndexed { index, category ->
             if (index > 0) CategoryDivider()
             ProjectGroupBlock(
+                ev = ev,
                 category = category,
-                builtin = builtinProjects(category),
+                builtin = builtinProjects(category, ev),
                 custom = projectsByCategory[category].orEmpty()
                     .map { it.trim() }
-                    .filter { it.isNotEmpty() && it !in builtinProjects(category) }
+                    .filter { it.isNotEmpty() && it !in builtinProjects(category, ev) }
                     .distinct(),
                 onAdd = {
-                    val existing = (builtinProjects(category) + projectsByCategory[category].orEmpty())
+                    val existing = (builtinProjects(category, ev) + projectsByCategory[category].orEmpty())
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
                         .toSet()
                     onRequestAdd(
                         AddNameTarget(
-                            title = tr("新增%s项目", "Add %s item", DataLabels.category(category)),
+                            title = tr("新增%s项目", "Add %s item", DataLabels.category(category, ev)),
                             label = tr("项目名称", "Item name"),
                             placeholder = when (category) {
                                 "保险" -> tr("例如：划痕险、玻璃险", "e.g. Scratch coverage, Glass coverage")
@@ -288,6 +296,7 @@ private fun ProjectsCard(
 /** 内置分类行：色点 + 类别图标 + 名称 +「内置」小标（只读）。 */
 @Composable
 private fun BuiltinCategoryRow(
+    ev: Boolean,
     name: String,
     color: Color,
     icon: androidx.compose.ui.graphics.vector.ImageVector?,
@@ -327,7 +336,7 @@ private fun BuiltinCategoryRow(
                     .background(color),
             )
             Text(
-                text = DataLabels.category(name),
+                text = DataLabels.category(name, ev),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -414,6 +423,7 @@ private fun CustomCategoryRow(
 /** 一个分类的项目分组：内置 chips（只读）+ 自定义 chips（可删）+ 新增按钮。 */
 @Composable
 private fun ProjectGroupBlock(
+    ev: Boolean,
     category: String,
     builtin: List<String>,
     custom: List<String>,
@@ -428,7 +438,7 @@ private fun ProjectGroupBlock(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = DataLabels.category(category),
+                text = DataLabels.category(category, ev),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )

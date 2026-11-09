@@ -67,6 +67,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
@@ -90,19 +91,34 @@ private data class BottomTab(
         get() = com.milenote.android.i18n.tr(labelZh, labelEn)
 }
 
-private val bottomTabs = listOf(
+/**
+ * 底栏 tab 列表：文案在组合内按当前车动力类型求值（燃油「油耗 / Fuel」，纯电「能耗 / Energy」），
+ * 不再使用顶层静态文案；pager 索引与 Routes 契约不变。
+ */
+private fun bottomTabsFor(ev: Boolean): List<BottomTab> = listOf(
     BottomTab(Routes.DASHBOARD, "总览", "Overview", MileNoteIcons.Home, MileNoteIcons.HomeFilled),
     BottomTab(Routes.RECORDS, "记录", "Records", MileNoteIcons.Records, MileNoteIcons.RecordsFilled),
-    BottomTab(Routes.FUEL, "油耗", "Fuel", MileNoteIcons.Fuel, MileNoteIcons.FuelFilled),
+    BottomTab(
+        Routes.FUEL,
+        if (ev) "能耗" else "油耗",
+        if (ev) "Energy" else "Fuel",
+        MileNoteIcons.Fuel,
+        MileNoteIcons.FuelFilled,
+    ),
     BottomTab(Routes.MAINTENANCE, "保养", "Maintenance", MileNoteIcons.Maintenance, MileNoteIcons.MaintenanceFilled),
 )
 
 private data class TopBarCopy(val title: String, val subtitle: String)
 
-private fun topBarCopy(route: String?): TopBarCopy? = when (route) {
+/** 顶栏标题：油耗分析 / 能耗分析按当前车动力类型切换（其余路由与语言无关逻辑不变）。 */
+private fun topBarCopy(route: String?, ev: Boolean): TopBarCopy? = when (route) {
     Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
     Routes.RECORDS -> TopBarCopy(tr("费用统计", "Analytics"), "")
-    Routes.FUEL -> TopBarCopy(tr("油耗分析", "Fuel"), "")
+    Routes.FUEL -> if (ev) {
+        TopBarCopy(tr("能耗分析", "Energy"), "")
+    } else {
+        TopBarCopy(tr("油耗分析", "Fuel"), "")
+    }
     Routes.MAINTENANCE -> TopBarCopy(tr("维修保养", "Service"), "")
     else -> null
 }
@@ -115,6 +131,9 @@ fun MileNoteApp(vm: MileNoteViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    // 当前车动力类型：底栏 / 顶栏文案在组合内求值（切换车辆后自动更新）。
+    val ev = state.activeCar?.isEv == true
+    val bottomTabs = bottomTabsFor(ev)
     val pagerState = rememberPagerState(pageCount = { bottomTabs.size })
     val scope = rememberCoroutineScope()
     val isTabs = currentRoute == Routes.DASHBOARD
@@ -127,7 +146,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             navController.navigate(Routes.IMPORTER)
         }
     }
-    val copy = if (isTabs) topBarCopy(bottomTabs[currentPage].route) else null
+    val copy = if (isTabs) topBarCopy(bottomTabs[currentPage].route, ev) else null
 
     // 四个底部 tab 支持左右滑动切换；在非首个 tab 按返回先回总览。
     BackHandler(enabled = isTabs && currentPage != 0) {
@@ -215,6 +234,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     HomeTabs(
                         vm = vm,
                         pagerState = pagerState,
+                        tabs = bottomTabs,
                         onNavigate = { route ->
                             val tabIndex = bottomTabs.indexOfFirst { it.route == route }
                             if (tabIndex >= 0) {
@@ -305,7 +325,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "${Dates.displayDots(record.date)} · ${com.milenote.android.i18n.DataLabels.category(record.category)}" +
+                        "${Dates.displayDots(record.date)} · ${com.milenote.android.i18n.DataLabels.category(record.category, ev)}" +
                             " · ¥${Format.money(record.amount)}",
                     )
                     Text(
@@ -371,6 +391,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
 private fun HomeTabs(
     vm: MileNoteViewModel,
     pagerState: PagerState,
+    tabs: List<BottomTab>,
     onNavigate: (String) -> Unit,
 ) {
     val holder = rememberSaveableStateHolder()
@@ -379,7 +400,7 @@ private fun HomeTabs(
         modifier = Modifier.fillMaxSize(),
         beyondViewportPageCount = 1,
     ) { page ->
-        holder.SaveableStateProvider(bottomTabs[page].route) {
+        holder.SaveableStateProvider(tabs[page].route) {
             when (page) {
                 0 -> DashboardScreen(vm = vm, onNavigate = onNavigate)
                 1 -> RecordsScreen(vm = vm, onNavigate = onNavigate)

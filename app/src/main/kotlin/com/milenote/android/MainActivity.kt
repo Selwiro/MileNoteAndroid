@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
                 val shortcut = pendingShortcut ?: return@LaunchedEffect
                 container.pendingShortcut.value = null
                 vm.state.first { it.garage != null }
+                // 快捷方式统一按「油费 + 直接 OCR」传入；纯电当前车由 VM 降级为普通记一笔并提示
+                // （加油票识别只认油票），此处不需要判断动力类型，避免把账本状态的判断散到 Activity。
                 when (shortcut) {
                     AppShortcut.NEW_ENTRY -> vm.openEditor()
                     AppShortcut.OCR -> vm.openEditor(category = "油费", startOcr = true)

@@ -29,7 +29,10 @@ import com.milenote.android.domain.calc.applyServicePlan
 import com.milenote.android.domain.calc.completeService
 import com.milenote.android.domain.calc.restoreServiceRemindersAfterRecordDelete
 import com.milenote.android.domain.calc.currentKm
+import com.milenote.android.domain.calc.defaultServicePlan
 import com.milenote.android.domain.calc.defaultServiceReminders
+import com.milenote.android.domain.calc.EV_ONLY_SERVICE_TITLES
+import com.milenote.android.domain.calc.FUEL_ONLY_SERVICE_TITLES
 import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
@@ -38,6 +41,7 @@ import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankLedger
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.calc.completeImportedServices
@@ -273,13 +277,21 @@ class MileNoteViewModel(
         startOcr: Boolean = false,
     ) {
         val record = recordId?.let { id -> _state.value.activeCar?.records?.firstOrNull { it.id == id } }
+        // 纯电车辆不支持加油票识别（OCR 解析器只认油票）：快捷方式降级为普通「记一笔」并提示。
+        // 分类存储值仍是「油费」，纯电界面上由 DataLabels 显示为「电费」。
+        val ocrUnsupported = startOcr && _state.value.activeCar?.isEv == true
         _state.value = _state.value.copy(
             editor = EditorTarget(
                 record = record,
                 category = category,
                 serviceReminderId = serviceReminderId,
-                startOcr = startOcr,
+                startOcr = startOcr && !ocrUnsupported,
             ),
+            message = if (ocrUnsupported) {
+                tr("纯电车辆不支持加油票识别，已打开记一笔", "Fuel receipt scanning isn't available for EVs — opened a new entry instead.")
+            } else {
+                _state.value.message
+            },
         )
     }
 
@@ -288,6 +300,8 @@ class MileNoteViewModel(
     }
 
     fun saveRecord(record: Record) {
+        // 纯电车的「油费」在界面上显示为「电费 / Charging」；燃油车保持原提示文案不变。
+        val ev = _state.value.activeCar?.isEv == true
         viewModelScope.launch {
             repository.update(syncHistory = true) { garage ->
                 updateActive(garage) { ledger ->
@@ -300,7 +314,14 @@ class MileNoteViewModel(
                     ledger.copy(records = records)
                 }
             }
-            _state.value = _state.value.copy(editor = null, message = tr("已保存", "Saved"))
+            _state.value = _state.value.copy(
+                editor = null,
+                message = if (ev) {
+                    tr("已保存 · %s", "Saved · %s", DataLabels.category(record.category, ev = ev))
+                } else {
+                    tr("已保存", "Saved")
+                },
+            )
         }
     }
 
@@ -375,19 +396,50 @@ class MileNoteViewModel(
         _state.value = _state.value.copy(showVehicleEditor = false, vehicleEditorId = null)
     }
 
-    fun saveVehicle(vehicle: Vehicle) {
+    /**
+     * 保存车辆信息。
+     *
+     * 动力类型相对当前账本改变时执行迁移（设计 §6.3）：
+     * `servicePlan` 只丢弃「旧动力类型专属」的 key（共用 key 的周期覆盖与自定义 key 保留）；
+     * [prunePowertrainReminders] 为 true 时删除「未完成且只属于旧动力类型」的提醒，
+     * 已完成提醒与历史记录保留为历史，`currentKm / startKm` 不变。
+     *
+     * @param prunePowertrainReminders 切换动力类型时是否一并删除不再适用的未完成保养提醒
+     *   （默认 false，保持既有调用点行为不变）。
+     */
+    fun saveVehicle(vehicle: Vehicle, prunePowertrainReminders: Boolean = false) {
+        // 纯电车辆不保留旧版油费成本口径（否则电费会被小熊/钱迹口径判成 0）。
+        val nextVehicle = if (vehicle.isEv) vehicle.copy(fuelCostSource = null) else vehicle
         viewModelScope.launch {
             repository.update(syncHistory = false) { garage ->
-                updateActive(garage) { it.copy(vehicle = vehicle) }
+                updateActive(garage) { ledger ->
+                    var next = ledger.copy(vehicle = nextVehicle)
+                    if (ledger.isEv != nextVehicle.isEv) {
+                        next = migratePowertrain(
+                            ledger = next,
+                            fromEv = ledger.isEv,
+                            toEv = nextVehicle.isEv,
+                            pruneReminders = prunePowertrainReminders,
+                        )
+                    }
+                    next
+                }
             }
             _state.value = _state.value.copy(showVehicleEditor = false, message = tr("车辆信息已保存", "Vehicle saved"))
         }
     }
 
     fun addVehicle(vehicle: Vehicle) {
+        // 新账本没有历史可保留：纯电车清掉燃油标号与旧版油费口径；燃油车保持表单值。
+        val nextVehicle = if (vehicle.isEv) {
+            vehicle.copy(fuelCostSource = null, fuelGrade = null)
+        } else {
+            vehicle
+        }
         viewModelScope.launch {
             repository.update(syncHistory = false) { garage ->
-                val ledger = blankLedger().copy(id = Ids.newId(), vehicle = vehicle)
+                val ledger = blankLedger(powertrain = nextVehicle.powertrain)
+                    .copy(id = Ids.newId(), vehicle = nextVehicle)
                 garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
             }
             _state.value = _state.value.copy(showVehicleEditor = false, vehicleSwitcher = false, message = tr("已添加车辆", "Vehicle added"))
@@ -557,7 +609,7 @@ class MileNoteViewModel(
             try {
                 repository.update(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
-                        val reminders = defaultServiceReminders(baseDate, baseKm, includeFirst)
+                        val reminders = defaultServiceReminders(baseDate, baseKm, includeFirst, ev = ledger.isEv)
                         val existing = ledger.reminders.filter { r ->
                             reminders.none { n -> n.presetKey == r.presetKey || n.title == r.title }
                         }
@@ -1024,6 +1076,38 @@ class MileNoteViewModel(
         val active = garage.activeCar ?: return garage
         val updated = transform(active)
         return garage.copy(cars = garage.cars.map { if (it.id == active.id) updated else it })
+    }
+
+    /**
+     * 动力类型切换后的账本迁移（设计 §6.3）。
+     *
+     * 1. `servicePlan` 只丢弃旧动力类型专属的 key（燃油→纯电 7 项、纯电→燃油 `ev-diag`）；
+     *    共用 key 的用户周期覆盖与自定义 key 保留（与 `resolveServicePlan` 的取舍一致）；
+     * 2. [pruneReminders] 时删除未完成且只属于旧动力类型的提醒（按旧方案 key / 旧类型专属标题）；
+     *    已完成提醒与费用记录保留为历史；
+     * 3. `currentKm / startKm / records` 不动。
+     */
+    private fun migratePowertrain(
+        ledger: Ledger,
+        fromEv: Boolean,
+        toEv: Boolean,
+        pruneReminders: Boolean,
+    ): Ledger {
+        if (fromEv == toEv) return ledger
+        val oldKeys = defaultServicePlan(fromEv).map { it.key }.toSet()
+        val newKeys = defaultServicePlan(toEv).map { it.key }.toSet()
+        val staleKeys = oldKeys - newKeys
+        val staleTitles = if (toEv) FUEL_ONLY_SERVICE_TITLES else EV_ONLY_SERVICE_TITLES
+        val plan = ledger.servicePlan?.filter { it.key in newKeys || it.key !in oldKeys }
+        val reminders = if (pruneReminders) {
+            ledger.reminders.filterNot { reminder ->
+                reminder.done != true &&
+                    (reminder.presetKey?.let { it in staleKeys } == true || reminder.title in staleTitles)
+            }
+        } else {
+            ledger.reminders
+        }
+        return ledger.copy(servicePlan = plan, reminders = reminders)
     }
 
     companion object {

@@ -3,6 +3,7 @@ package com.milenote.android.platform
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.domain.model.isEv
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -19,22 +20,36 @@ import java.time.format.DateTimeFormatter
  */
 object LedgerExports {
 
-    private val CSV_HEADERS = listOf(
+    /** 燃油车 CSV 表头：保持历史 17 列与列序不变（测试与 CSV 回读都依赖）。 */
+    private val CSV_HEADERS_FUEL = listOf(
         "日期", "地点", "项目", "分类", "金额",
         "应付金额", "优惠金额", "油价", "燃油标号",
         "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源",
     )
 
-    /** 当前车辆全部记录 → CSV 字节（含 BOM）。 */
+    /**
+     * 纯电 CSV 表头：列数与列序不变，只把能源相关列改成充电语义，
+     * 第 9 列保留为通用「标号」（纯电无值，留空），保证导出/导入列位置稳定。
+     */
+    private val CSV_HEADERS_EV = listOf(
+        "日期", "地点", "项目", "分类", "金额",
+        "应付金额", "优惠金额", "电价", "标号",
+        "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源",
+    )
+
+    /** 当前车辆全部记录 → CSV 字节（含 BOM）；表头与能量列按动力类型切换。 */
     fun csv(ledger: Ledger): ByteArray {
+        val ev = ledger.vehicle.isEv
+        val headers = if (ev) CSV_HEADERS_EV else CSV_HEADERS_FUEL
         val sorted = ledger.records.sortedWith(
             compareByDescending<com.milenote.android.domain.model.Record> { it.date }
                 .thenByDescending { it.odometer ?: 0.0 },
         )
         val lines = buildString {
-            append(CSV_HEADERS.joinToString(",") { cell(it) })
+            append(headers.joinToString(",") { cell(it) })
             append("\r\n")
             for (r in sorted) {
+                val energy = if (ev) r.kwh else r.liters
                 val values = listOf(
                     r.date,
                     r.location.orEmpty(),
@@ -46,7 +61,7 @@ object LedgerExports {
                     r.unitPrice?.let { numberCell(it) } ?: "",
                     r.fuelGrade.orEmpty(),
                     r.odometer?.let { numberCell(it) } ?: "",
-                    r.liters?.let { numberCell(it) } ?: "",
+                    energy?.let { numberCell(it) } ?: "",
                     if (r.full) "是" else "否",
                     if (r.missed) "是" else "否",
                     (r.rate ?: r.reportedRate)?.let { numberCell(it) } ?: "",

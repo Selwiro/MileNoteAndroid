@@ -1,6 +1,8 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.d
+import com.milenote.android.domain.evLedger
+import com.milenote.android.domain.import.inferServiceNote
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.blankLedger
@@ -224,5 +226,74 @@ class ServiceHistoryTest {
         val cleared = syncServiceHistory(synced.copy(records = emptyList()))
         assertEquals(0, cleared.reminders.size)
         assertEquals("2026-05-01", d("2026-05-01").toString())
+    }
+
+    // ---- 纯电：首保/历史反算 ----
+
+    @Test
+    fun `ev qianji first service completes and reschedules diagnostics`() {
+        val ledger = evLedger(
+            records = listOf(
+                Record(
+                    id = "ev-first",
+                    source = "钱迹",
+                    category = "保养",
+                    date = "2026-03-01",
+                    odometer = 5000.0,
+                    projects = "三电诊断",
+                    note = "5000km 首保三电诊断",
+                    amount = 0.0,
+                ),
+            ),
+        ).copy(reminders = defaultServiceReminders("2026-01-01", 0.0, true, ev = true))
+
+        val result = completeImportedServices(ledger, listOf("ev-first"))
+        assertEquals(1, result.completed)
+        assertTrue(result.reminders.first { it.firstOnly == true }.done)
+        assertEquals(
+            15000.0,
+            result.reminders.first { it.presetKey == "ev-diag" && !it.done }.dueKm!!,
+            1e-9,
+        )
+        // 同一记录不会重复完成三电诊断循环项
+        assertEquals(
+            0,
+            completeImportedServices(ledger.copy(reminders = result.reminders), listOf("ev-first")).completed,
+        )
+    }
+
+    @Test
+    fun `ev history sync rolls diagnostics cycle from records`() {
+        val ledger = evLedger(
+            records = listOf(
+                Record(
+                    id = "diag",
+                    date = "2026-05-01",
+                    category = "保养",
+                    amount = 320.0,
+                    odometer = 15000.0,
+                    projects = "三电诊断",
+                ),
+            ),
+        ).copy(reminders = defaultServiceReminders("2026-01-01", 0.0, false, ev = true))
+        val next = syncServiceHistory(ledger)
+        val diag = next.reminders.first { it.title == "三电诊断" && !it.done }
+        assertEquals(25000.0, diag.dueKm!!, 1e-9)
+        assertEquals("2027-05-01", diag.dueDate)
+        // 燃油专属项目不会被历史反算凭空生成
+        assertTrue(next.reminders.none { it.title == "机油机滤" })
+    }
+
+    @Test
+    fun `ev infer service note uses ev project titles`() {
+        val record = Record(category = "保养", note = "表显20000km，三电诊断、刹车油")
+        val result = inferServiceNote(record, ev = true)
+        assertEquals(20000.0, result.odometer!!, 1e-9)
+        assertEquals("刹车油、三电诊断", result.projects)
+        // 燃油口径仍输出「制动液」
+        assertEquals(
+            "制动液",
+            inferServiceNote(Record(category = "保养", note = "更换刹车油")).projects,
+        )
     }
 }

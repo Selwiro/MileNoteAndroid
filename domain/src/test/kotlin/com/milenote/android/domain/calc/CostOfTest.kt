@@ -1,5 +1,6 @@
 package com.milenote.android.domain.calc
 
+import com.milenote.android.domain.evLedger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.testLedger
 import org.junit.Assert.assertEquals
@@ -91,6 +92,60 @@ class CostOfTest {
             assertEquals(9000.0, currentKm(ledger.copy(vehicle = it.copy(currentKm = 5000.0, startKm = 1000.0))), 1e-9)
             assertEquals(5000.0, currentKm(ledger.copy(vehicle = it.copy(currentKm = 5000.0, startKm = 1000.0), records = emptyList())), 1e-9)
         }
+    }
+
+    @Test
+    fun `qianji charging is not swallowed by legacy bear basis`() {
+        // 旧车 fuelCostSource="bear"：钱迹电费没有升数，旧逻辑会判成 0。
+        val ledger = testLedger(
+            records = listOf(
+                Record(
+                    id = "ev-q",
+                    date = "2026-01-01",
+                    category = "油费",
+                    amount = 50.0,
+                    kwh = 30.0,
+                    source = "钱迹",
+                ),
+            ),
+        )
+        assertEquals("bear", ledger.vehicle.fuelCostSource)
+        assertEquals(50.0, costOf(ledger.records[0], ledger), 1e-9)
+
+        // 纯电账本：任何来源的能源费都按金额计入，不套小熊/钱迹口径。
+        val ev = evLedger(
+            records = listOf(
+                Record(id = "manual", date = "2026-01-01", category = "油费", amount = 36.0, source = "钱迹"),
+            ),
+        )
+        assertEquals(36.0, costOf(ev.records[0], ev), 1e-9)
+    }
+
+    @Test
+    fun `ev energy counted flag still wins`() {
+        val ev = evLedger(
+            records = listOf(
+                Record(
+                    id = "a",
+                    date = "2026-01-01",
+                    category = "油费",
+                    amount = 50.0,
+                    kwh = 30.0,
+                    fuelCounted = false,
+                ),
+                Record(
+                    id = "b",
+                    date = "2026-01-01",
+                    category = "油费",
+                    amount = 20.0,
+                    kwh = 12.0,
+                    fuelCounted = true,
+                ),
+            ),
+        )
+        assertEquals(0.0, costOf(ev.records[0], ev), 1e-9)
+        assertEquals(20.0, costOf(ev.records[1], ev), 1e-9)
+        assertEquals(20.0, stats(ev).total, 1e-9)
     }
 
     private fun blankLedgerVehicle(fuelCostSource: String) =

@@ -80,6 +80,7 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -208,7 +209,12 @@ private fun DashboardContent(
             item(key = "empty") {
                 EmptyState(
                     title = tr("从第一笔记录开始", "Start with your first record"),
-                    description = tr("手动记账，或导入你已有的小熊油耗、钱迹数据。", "Add entries manually, or import your existing Bear or Qianji data."),
+                    description = if (ledger.isEv) {
+                        // 纯电没有「小熊油耗」可导入，引导只用钱迹/手动。
+                        tr("手动记账，或导入你已有的钱迹数据。", "Add entries manually, or import your existing Qianji data.")
+                    } else {
+                        tr("手动记账，或导入你已有的小熊油耗、钱迹数据。", "Add entries manually, or import your existing Bear or Qianji data.")
+                    },
                     illustration = painterResource(R.drawable.ill_empty_records),
                     actionLabel = tr("记一笔", "Add entry"),
                     onAction = onAddRecord,
@@ -224,6 +230,7 @@ private fun DashboardContent(
                 period = state.period,
                 customRange = state.customRange,
                 statsResult = periodStats,
+                ev = ledger.isEv,
                 onSelectPeriod = onSelectPeriod,
                 onSelectCustomRange = onSelectCustomRange,
             )
@@ -589,12 +596,15 @@ private fun VehicleStatsCard(
     period: Period,
     customRange: DateRange?,
     statsResult: StatsResult,
+    ev: Boolean = false,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
+    // 平均油耗/能耗：满箱/满电区间加权；纯电没有满充区间时回退累计估算口径。
+    val energyRate = statsResult.energyRate ?: if (ev) statsResult.estimatedEnergyRate else null
 
     DashboardCard(
         modifier = modifier,
@@ -648,9 +658,9 @@ private fun VehicleStatsCard(
                     modifier = Modifier.weight(1f),
                 )
                 StatCell(
-                    label = tr("平均油耗", "Fuel economy"),
-                    value = statsResult.fuelRate?.let { Numbers.toFixed2(it) } ?: "—",
-                    unit = if (statsResult.fuelRate == null) null else Units.consumption,
+                    label = if (ev) tr("平均能耗", "Energy economy") else tr("平均油耗", "Fuel economy"),
+                    value = energyRate?.let { Numbers.toFixed2(it) } ?: "—",
+                    unit = if (energyRate == null) null else if (ev) Units.energyConsumption else Units.consumption,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -870,7 +880,7 @@ internal fun ExpenseTrendCard(ledger: Ledger, today: LocalDate) {
             }
         },
     ) {
-        ExpenseTrendChart(bars = bars)
+        ExpenseTrendChart(bars = bars, ev = ledger.isEv)
     }
 
     if (showMonthPicker) {
@@ -1082,6 +1092,7 @@ internal fun CompositionCard(
     period: Period,
     customRange: DateRange?,
     statsResult: StatsResult,
+    ev: Boolean = false,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
 ) {
@@ -1112,6 +1123,7 @@ internal fun CompositionCard(
         CategoryBreakdown(
             categories = statsResult.categories,
             total = statsResult.total,
+            ev = ev,
         )
     }
 

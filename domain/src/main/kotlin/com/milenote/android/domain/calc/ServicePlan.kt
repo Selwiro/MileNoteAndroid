@@ -4,30 +4,46 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanBase
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.domain.model.isEv
 import java.time.LocalDate
 
 /**
  * 解析用户保养方案（Web `resolveServicePlan`）。
  *
- * 以 [DEFAULT_SERVICE_PLAN] 为底按 key 合并，留空字段回退默认；
- * 自定义 key 追加。标题不能空 / 重复；公里须为正数、月数 1–600 整数；
- * 自定义项目公里与月至少一项。
+ * 以 [defaultServicePlan]（按动力类型：燃油 12 项 / 纯电 6 项）为底按 key 合并，
+ * 留空字段回退默认；自定义 key 追加。
+ * 另一种动力类型专属的 key 会被丢弃（燃油↔纯电切换后计划表不会凭空多出旧项目）。
+ * 标题不能空 / 重复；公里须为正数、月数 1–600 整数；自定义项目公里与月至少一项。
  */
-fun resolveServicePlan(entries: List<PlanEntry>? = null): List<PlanEntry> {
+fun resolveServicePlan(entries: List<PlanEntry>? = null, ev: Boolean = false): List<PlanEntry> {
     val input = entries.orEmpty()
-    val defaults = DEFAULT_SERVICE_PLAN.map { plan ->
+    val otherTypeKeys = defaultServicePlan(!ev).map { it.key }.toSet()
+    val otherDefaults = defaultServicePlan(!ev).associateBy { it.key }
+    val defaults = defaultServicePlan(ev).map { plan ->
         val entry = input.firstOrNull { it.key == plan.key }
+        // 共用 key（如首保/刹车油）在两种方案里的完成判定项目不同：
+        // 若保存的 projects 仍是「另一种动力类型的默认值」，切换后回退到当前类型的默认，
+        // 避免纯电车首保仍要求「机油机滤」；用户真正自定义过的 projects 保留。
+        val savedProjects = entry?.projects
+        val otherDefaultProjects = otherDefaults[plan.key]?.projects
+        val projects = if (savedProjects != null && otherDefaultProjects != null &&
+            savedProjects == otherDefaultProjects
+        ) {
+            plan.projects
+        } else {
+            savedProjects ?: plan.projects
+        }
         PlanEntry(
             key = plan.key,
             title = plan.title,
             intervalKm = entry?.intervalKm ?: plan.intervalKm,
             intervalMonths = entry?.intervalMonths ?: plan.intervalMonths,
             firstOnly = plan.firstOnly == true,
-            projects = entry?.projects ?: plan.projects,
+            projects = projects,
         )
     }
     val custom = input
-        .filter { entry -> DEFAULT_SERVICE_PLAN.none { it.key == entry.key } }
+        .filter { entry -> defaultServicePlan(ev).none { it.key == entry.key } && entry.key !in otherTypeKeys }
         .map {
             PlanEntry(
                 key = it.key,
@@ -40,7 +56,7 @@ fun resolveServicePlan(entries: List<PlanEntry>? = null): List<PlanEntry> {
         }
     val titles = mutableSetOf<String>()
     return (defaults + custom).map { plan ->
-        val fallback = DEFAULT_SERVICE_PLAN.firstOrNull { it.key == plan.key }
+        val fallback = defaultServicePlan(ev).firstOrNull { it.key == plan.key }
         val title = plan.title.orEmpty().trim()
         if (title.isEmpty() || !titles.add(title)) {
             throw IllegalArgumentException("项目名称不能为空或重复")
@@ -73,7 +89,7 @@ fun applyServicePlan(
     if (Dates.dateValue(baseDate).isEmpty() || baseKm == null || !baseKm.isFinite() || baseKm < 0) {
         throw IllegalArgumentException("请填写有效基准日期和里程")
     }
-    val plan = resolveServicePlan(entries)
+    val plan = resolveServicePlan(entries, ledger.isEv)
     var next = ledger.copy(
         servicePlan = plan,
         servicePlanBase = PlanBase(date = baseDate, km = baseKm, includeFirst = includeFirst),
@@ -104,7 +120,11 @@ fun applyServicePlan(
             dueKm = if (p.intervalKm != null && p.intervalKm > 0) baseKm + p.intervalKm else null,
             done = false,
             source = "自定义保养方案",
-            note = if (firstOnly) "首保包含机油机滤，仅一次" else "日期或公里数先到为准",
+            note = if (firstOnly) {
+                if (ledger.isEv) "首保包含三电诊断，仅一次" else "首保包含机油机滤，仅一次"
+            } else {
+                "日期或公里数先到为准"
+            },
         )
         val oldIndex = next.reminders.indexOfFirst {
             !it.done && (it.presetKey == p.key || it.title == p.title.orEmpty())
@@ -178,7 +198,7 @@ data class PlanRow(
  * 状态区分「上次已做」与「本轮待做」，过期按日期或公里任一判断，保留远期项目。
  */
 fun servicePlanRows(ledger: Ledger, date: LocalDate, km: Double): List<PlanRow> {
-    val definitions = resolveServicePlan(ledger.servicePlan.orEmpty())
+    val definitions = resolveServicePlan(ledger.servicePlan.orEmpty(), ledger.isEv)
         .map {
             PlanDefinition(
                 key = it.key,

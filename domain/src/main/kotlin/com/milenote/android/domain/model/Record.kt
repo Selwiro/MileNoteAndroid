@@ -23,9 +23,16 @@ data class Record(
     val amount: Double = 0.0,
     /** 总里程 km。 */
     val odometer: Double? = null,
-    /** 加油量 L。 */
+    /** 加油量 L（仅燃油记录；纯电记录为 null）。 */
     val liters: Double? = null,
-    /** 加油单价（元/L），仅油费记录；手工填写/OCR 回填，不参与油耗计算。 */
+    /**
+     * 充电量 kWh（度，仅纯电记录；燃油记录为 null）。
+     *
+     * 与 [liters] 互斥，保证一条记录的能量量纲自描述：
+     * 切换车辆动力类型时历史数据不会被按另一种单位重新解释。
+     */
+    val kwh: Double? = null,
+    /** 能源单价：燃油=元/L，纯电=元/kWh；手工填写/OCR 回填，不参与能耗计算。 */
     val unitPrice: Double? = null,
     /** 应付金额（元），仅油费记录；用于和实付金额、优惠金额对照。 */
     val payable: Double? = null,

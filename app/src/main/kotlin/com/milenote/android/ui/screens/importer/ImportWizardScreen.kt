@@ -58,7 +58,7 @@ import kotlinx.coroutines.cancel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
-import com.milenote.android.i18n.DataLabels
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
@@ -79,9 +79,9 @@ import com.milenote.android.ui.theme.MileNoteDimens
 /**
  * 导入向导（二级页）：三步完成从文件到账本的导入。
  *
- * 1. 选择来源：小熊油耗 XLS-XLSX / 钱迹 TXT-JSON-CSV；
+ * 1. 选择来源：小熊油耗 XLS-XLSX / 钱迹 TXT-JSON-CSV（纯电当前车隐藏小熊）；
  * 2. 读取与预览：SAF 选文件（≤10 MB）→ 字段映射 → 逐行预览 / 排除 →
- *    油费冲突选择（默认小熊）→ 钱迹默认分类；
+ *    油费冲突选择（默认小熊；纯电不显示，字段改用电价 / 充电量）→ 钱迹默认分类；
  * 3. 确认：调用 `vm.applyImport` / `vm.restoreBackup`，展示结果。
  *
  * 账本备份 JSON 不在手动来源列表里：只在系统分享 JSON 进来时自动识别并恢复。
@@ -102,6 +102,8 @@ fun ImportWizardScreen(
     val context = LocalContext.current
     val ui by vm.state.collectAsStateWithLifecycle()
     val ledger = ui.activeCar
+    // 当前车是否纯电：影响来源列表（隐藏小熊）、字段标签与油费口径相关选项。
+    val isEv = ledger?.isEv == true
     // 不用 rememberCoroutineScope：系统文件选择器返回后，remember 的 scope 可能已离开 composition，
     // 再 launch 会抛 “The coroutine scope left the composition”。这里用页面自持 scope，
     // 只在页面真正 dispose 时取消，文件读取仍由 LaunchedEffect 驱动。
@@ -150,7 +152,8 @@ fun ImportWizardScreen(
     LaunchedEffect(initial) {
         if (initial != null && !autoLaunched && ui.sharedImport == null) {
             autoLaunched = true
-            wizard.selectSource(initial)
+            // 纯电车辆不支持小熊来源时 selectSource 返回 false：只显示错误，不打开文件选择器。
+            if (!wizard.selectSource(initial)) return@LaunchedEffect
             runCatching { picker.launch(arrayOf("*/*")) }
                 .onFailure {
                     wizard.updateError(
@@ -187,12 +190,14 @@ fun ImportWizardScreen(
             when (wizard.step) {
                 0 -> SourceStep(
                     wizard = wizard,
+                    ev = isEv,
                     onPick = { picker.launch(arrayOf("*/*")) },
                 )
 
                 1 -> PreviewStep(
                     wizard = wizard,
                     ledger = ledger,
+                    ev = isEv,
                     onPick = { picker.launch(arrayOf("*/*")) },
                 )
 
@@ -394,7 +399,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
+private fun SourceStep(wizard: ImportWizardState, ev: Boolean, onPick: () -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = MileNoteDimens.PageBottom),
@@ -433,25 +438,34 @@ private fun SourceStep(wizard: ImportWizardState, onPick: () -> Unit) {
         if (wizard.busy) {
             item { LoadingState(label = wizard.busyMessage ?: tr("正在处理…", "Working…")) }
         }
-        MANUAL_IMPORT_SOURCES.forEach { source ->
+        manualImportSources(ev).forEach { source ->
             item(key = source.key) {
                 SourceCard(
                     source = source,
                     onClick = {
-                        wizard.selectSource(source)
-                        onPick()
+                        if (wizard.selectSource(source)) onPick()
                     },
                 )
             }
         }
         item {
             Text(
-                text = tr(
-                    "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；账本备份 JSON（version 2 多车或旧版单车）" +
-                        "仅在系统分享导入时自动识别。",
-                    "Bear: XLS / XLSX; Qianji: TXT / JSON / CSV. Ledger backup JSON (version 2 multi-car " +
-                        "or legacy single-car) is only auto-detected when imported via system share.",
-                ),
+                text = if (ev) {
+                    tr(
+                        "钱迹：TXT / JSON / CSV；账本备份 JSON（version 2 多车或旧版单车）" +
+                            "仅在系统分享导入时自动识别。纯电车辆不提供小熊油耗（加油记录）导入。",
+                        "Qianji: TXT / JSON / CSV. Ledger backup JSON (version 2 multi-car or legacy " +
+                            "single-car) is only auto-detected when imported via system share. Bear fuel " +
+                            "imports aren't available for EVs.",
+                    )
+                } else {
+                    tr(
+                        "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；账本备份 JSON（version 2 多车或旧版单车）" +
+                            "仅在系统分享导入时自动识别。",
+                        "Bear: XLS / XLSX; Qianji: TXT / JSON / CSV. Ledger backup JSON (version 2 multi-car " +
+                            "or legacy single-car) is only auto-detected when imported via system share.",
+                    )
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -526,6 +540,7 @@ private fun SharedImportBanner(
 private fun PreviewStep(
     wizard: ImportWizardState,
     ledger: com.milenote.android.domain.model.Ledger?,
+    ev: Boolean,
     onPick: () -> Unit,
 ) {
     LazyColumn(
@@ -561,19 +576,19 @@ private fun PreviewStep(
             }
 
             ImportSource.BEAR, ImportSource.QIANJI -> {
-                item { TableOptionsCard(wizard = wizard, ledger = ledger) }
+                item { TableOptionsCard(wizard = wizard, ledger = ledger, ev = ev) }
                 item {
                     MappingCard(
                         wizard = wizard,
-                        fields = IMPORT_FIELD_ORDER,
-                        labels = importFieldLabels(),
+                        fields = importFieldOrder(ev),
+                        labels = importFieldLabels(ev),
                         requiredHint = tr("日期与实付金额是导入的必填字段。", "Date and amount paid are required."),
                     )
                 }
                 item { TableStatsCard(wizard = wizard) }
                 val shown = minOf(wizard.tableItems.size, PREVIEW_ROW_LIMIT)
                 items(shown) { index ->
-                    TablePreviewRow(wizard = wizard, index = index)
+                    TablePreviewRow(wizard = wizard, index = index, ev = ev)
                 }
                 if (wizard.tableItems.size > shown) {
                     item { PreviewLimitNote(total = wizard.tableItems.size, shown = shown) }
@@ -683,51 +698,65 @@ private fun BackupSummaryCard(wizard: ImportWizardState) {
 private fun TableOptionsCard(
     wizard: ImportWizardState,
     ledger: com.milenote.android.domain.model.Ledger?,
+    ev: Boolean,
 ) {
     SectionCard(title = tr("导入选项", "Import options")) {
         if (wizard.source == ImportSource.QIANJI) {
             WizardDropdown(
                 label = tr("无法识别的分类统一归入", "Group unrecognized categories as"),
                 selected = wizard.defaultCategory,
-                options = defaultCategoryOptions(ledger),
+                options = defaultCategoryOptions(ledger, ev),
                 onSelect = { value -> wizard.changeDefaultCategory(value ?: "") },
             )
             Spacer(modifier = Modifier.height(12.dp))
         }
-        val conflict = wizard.fuelConflict
-        if (conflict == null) {
+        if (ev) {
+            // 纯电：导入的是充电支出，不存在「油费按哪个来源计成本」的口径选择。
             Text(
                 text = tr(
-                    "本次未检测到跨来源油费冲突，油费默认按小熊实付计入成本。",
-                    "No cross-source fuel conflict detected; fuel costs use Bear's amount paid by default.",
+                    "纯电车辆按充电量与电价记账，导入记录计入电费，无需选择油费口径。",
+                    "EVs are tracked by charge amount and price; imported records count as charging " +
+                        "cost, so there's no fuel-basis choice.",
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            MessageBar(
-                message = tr(
-                    "两个来源都含油费，请选择统计方式（只影响成本统计，原始记录全部保留）。",
-                    "Both sources contain fuel expenses. Choose how to count costs (this only affects " +
-                        "cost analytics; all original records are kept).",
-                ),
-                kind = MessageKind.WARNING,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = tr(
-                    "小熊实付 %s%s · 钱迹 %s%s",
-                    "Bear paid %s%s · Qianji %s%s",
-                    Units.currencySymbol,
-                    Format.money(conflict.bear),
-                    Units.currencySymbol,
-                    Format.money(conflict.qianji),
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            FuelBasisOption("bear", tr("以小熊实付为准（默认）", "Use Bear's amount paid (default)"), wizard)
-            FuelBasisOption("qianji", tr("以钱迹金额为准", "Use Qianji's amount"), wizard)
-            FuelBasisOption("both", tr("两个来源都计入", "Count both sources"), wizard)
+            val conflict = wizard.fuelConflict
+            if (conflict == null) {
+                Text(
+                    text = tr(
+                        "本次未检测到跨来源油费冲突，油费默认按小熊实付计入成本。",
+                        "No cross-source fuel conflict detected; fuel costs use Bear's amount paid by default.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                MessageBar(
+                    message = tr(
+                        "两个来源都含油费，请选择统计方式（只影响成本统计，原始记录全部保留）。",
+                        "Both sources contain fuel expenses. Choose how to count costs (this only affects " +
+                            "cost analytics; all original records are kept).",
+                    ),
+                    kind = MessageKind.WARNING,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = tr(
+                        "小熊实付 %s%s · 钱迹 %s%s",
+                        "Bear paid %s%s · Qianji %s%s",
+                        Units.currencySymbol,
+                        Format.money(conflict.bear),
+                        Units.currencySymbol,
+                        Format.money(conflict.qianji),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                FuelBasisOption("bear", tr("以小熊实付为准（默认）", "Use Bear's amount paid (default)"), wizard)
+                FuelBasisOption("qianji", tr("以钱迹金额为准", "Use Qianji's amount"), wizard)
+                FuelBasisOption("both", tr("两个来源都计入", "Count both sources"), wizard)
+            }
         }
     }
 }
@@ -856,7 +885,7 @@ private fun TableStatsCard(wizard: ImportWizardState) {
 }
 
 @Composable
-private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
+private fun TablePreviewRow(wizard: ImportWizardState, index: Int, ev: Boolean) {
     val item: ImportItem = wizard.tableItems.getOrNull(index) ?: return
     val hasError = item.error.isNotEmpty()
     val duplicate = index in wizard.duplicates
@@ -873,11 +902,10 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
             "%s · %s",
             "%s · %s",
             item.record.date.ifBlank { tr("日期无效", "Invalid date") },
-            DataLabels.category(
-                item.record.category.ifBlank {
-                    item.rawCategory.ifBlank { tr("未知分类", "Unknown category") }
-                },
-            ),
+            // 传原始分类名，由 ListRowCard 按 ev 做显示层映射（纯电「油费」→「电费」）。
+            item.record.category.ifBlank {
+                item.rawCategory.ifBlank { tr("未知分类", "Unknown category") }
+            },
         ),
         subtitle = tr("第 %d 行 · %s", "Row %d · %s", item.row, importSourceLabel(item.record.source)) +
             (item.record.odometer?.let { tr(" · %s %s", " · %s %s", Format.fmt(it), Units.distanceUnit) } ?: ""),
@@ -913,6 +941,7 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int) {
         } else {
             MaterialTheme.colorScheme.surfaceContainerLow
         },
+        ev = ev,
     )
 }
 

@@ -60,8 +60,11 @@ fun duplicateOf(records: List<Record>, record: Record): Record? {
             continue
         }
         if (signature(x) == signature(record)) return x
-        if (record.category == "油费" && x.category == "油费" && record.date == x.date &&
-            kotlin.math.abs(x.amount - record.amount) < 0.005 && x.source != record.source
+        // 跨源同额只在「同为燃油」或「同为纯电」时视为同一笔，升与度不互相判重。
+        if (Categories.isEnergy(record.category) && Categories.isEnergy(x.category) &&
+            (record.kwh == null) == (x.kwh == null) &&
+            record.date == x.date && kotlin.math.abs(x.amount - record.amount) < 0.005 &&
+            x.source != record.source
         ) {
             return x
         }
@@ -92,7 +95,9 @@ fun mergeImported(records: List<Record>, items: List<ImportItem>): MergeResult {
             val keys = LinkedHashSet(old.importedKeys.orEmpty())
             if (key.isNotEmpty()) keys.add(key)
             val index = indexOfSame(result, old)
-            if (r.category == "油费" && (r.liters ?: 0.0) != 0.0 && (old.liters ?: 0.0) == 0.0) {
+            val newEnergy = r.liters ?: r.kwh
+            val oldEnergy = old.liters ?: old.kwh
+            if (Categories.isEnergy(r.category) && (newEnergy ?: 0.0) != 0.0 && (oldEnergy ?: 0.0) == 0.0) {
                 val oldKey = if (!old.sourceId.isNullOrEmpty()) "${old.source}:${old.sourceId}" else ""
                 if (oldKey.isNotEmpty()) keys.add(oldKey)
                 val note = listOf(old.note, r.note).filter { it.isNotEmpty() }.joinToString(" / ")

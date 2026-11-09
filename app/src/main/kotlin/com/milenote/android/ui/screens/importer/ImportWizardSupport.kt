@@ -87,6 +87,15 @@ internal val MANUAL_IMPORT_SOURCES: List<ImportSource> = listOf(
     ImportSource.QIANJI,
 )
 
+/**
+ * 「手动选择来源」列表（按动力类型过滤）。
+ *
+ * 纯电当前车不提供小熊油耗：小熊是加油记录（升/满箱法），对纯电无意义；
+ * 钱迹 / 账本备份不受影响。
+ */
+internal fun manualImportSources(ev: Boolean): List<ImportSource> =
+    if (ev) MANUAL_IMPORT_SOURCES.filter { it != ImportSource.BEAR } else MANUAL_IMPORT_SOURCES
+
 /** 备份文件上限（Web 恢复备份 20 MB）。 */
 internal const val BACKUP_MAX_BYTES: Long = 20L * 1024 * 1024
 
@@ -130,28 +139,45 @@ internal class ImportFileException(message: String, cause: Throwable? = null) :
 // 字段标签（对齐 Web fieldNames）
 // ---------------------------------------------------------------------------------------------
 
-/** 费用导入字段标签，顺序与 Web `fieldNames` 一致（随语言切换，故用函数）。 */
-internal fun importFieldLabels(): Map<String, String> = linkedMapOf(
-    "projects" to tr("项目（保养 / 维修 / 美容）", "Items (service / repair / detailing)"),
-    "location" to tr("地点 / 门店", "Location / shop"),
-    "date" to tr("日期 *", "Date *"),
-    "category" to tr("费用分类", "Expense category"),
-    "amount" to tr("实付金额 *", "Amount paid *"),
-    "payable" to tr("应付金额", "Amount due"),
-    "discount" to tr("优惠金额", "Discount"),
-    "unitPrice" to tr("油价（%s）", "Fuel price (%s)", Units.pricePerVolume),
-    "fuelGrade" to tr("燃油标号", "Fuel grade"),
-    "odometer" to tr("总里程（%s）", "Odometer (%s)", Units.distanceUnit),
-    "liters" to tr("加油量（%s）", "Fuel amount (%s)", Units.volumeUnit),
-    "full" to tr("是否加满", "Full tank"),
-    "missed" to tr("是否漏记", "Missed entry"),
-    "rate" to tr("原始 / 手填油耗", "Original / manual fuel economy"),
-    "distance" to tr("手填油耗对应里程", "Mileage for manual fuel economy"),
-    "note" to tr("备注", "Note"),
-    "type" to tr("收支类型", "Income / expense type"),
-    "sourceId" to tr("记录唯一编号", "Record unique ID"),
-    "currency" to tr("币种", "Currency"),
-)
+/**
+ * 费用导入字段标签，顺序与 Web `fieldNames` 一致（随语言切换，故用函数）。
+ *
+ * @param ev 当前车是否纯电：纯电用「电价 / 充电量 / 能耗」措辞，并隐藏燃油专属的标号 / 加油量；
+ *   燃油保持原有文案逐字不变（充电量 `kwh` 字段是纯电专属，燃油不展示）。
+ */
+internal fun importFieldLabels(ev: Boolean = false): Map<String, String> {
+    val labels = linkedMapOf(
+        "projects" to tr("项目（保养 / 维修 / 美容）", "Items (service / repair / detailing)"),
+        "location" to tr("地点 / 门店", "Location / shop"),
+        "date" to tr("日期 *", "Date *"),
+        "category" to tr("费用分类", "Expense category"),
+        "amount" to tr("实付金额 *", "Amount paid *"),
+        "payable" to tr("应付金额", "Amount due"),
+        "discount" to tr("优惠金额", "Discount"),
+        "unitPrice" to tr("油价（%s）", "Fuel price (%s)", Units.pricePerVolume),
+        "fuelGrade" to tr("燃油标号", "Fuel grade"),
+        "odometer" to tr("总里程（%s）", "Odometer (%s)", Units.distanceUnit),
+        "liters" to tr("加油量（%s）", "Fuel amount (%s)", Units.volumeUnit),
+        "full" to tr("是否加满", "Full tank"),
+        "missed" to tr("是否漏记", "Missed entry"),
+        "rate" to tr("原始 / 手填油耗", "Original / manual fuel economy"),
+        "distance" to tr("手填油耗对应里程", "Mileage for manual fuel economy"),
+        "note" to tr("备注", "Note"),
+        "type" to tr("收支类型", "Income / expense type"),
+        "sourceId" to tr("记录唯一编号", "Record unique ID"),
+        "currency" to tr("币种", "Currency"),
+    )
+    if (ev) {
+        labels.remove("fuelGrade")
+        labels.remove("liters")
+        labels["unitPrice"] = tr("电价（%s）", "Price (%s)", Units.pricePerEnergy)
+        labels["kwh"] = tr("充电量（%s）", "Charge amount (%s)", Units.energyUnit)
+        labels["full"] = tr("是否充满", "Full charge")
+        labels["rate"] = tr("原始 / 手填能耗", "Original / manual energy consumption")
+        labels["distance"] = tr("手填能耗对应里程", "Mileage for manual energy consumption")
+    }
+    return labels
+}
 
 // ---------------------------------------------------------------------------------------------
 // 文件读取
@@ -332,10 +358,13 @@ internal fun inspectBackup(text: String): BackupPreview {
 // ---------------------------------------------------------------------------------------------
 
 /** 默认费用分类选项：空值=跳过 + 9 类 + 本车自定义/已出现分类。 */
-internal fun defaultCategoryOptions(ledger: com.milenote.android.domain.model.Ledger?): List<Pair<String, String>> {
+internal fun defaultCategoryOptions(
+    ledger: com.milenote.android.domain.model.Ledger?,
+    ev: Boolean = false,
+): List<Pair<String, String>> {
     val options = mutableListOf("" to tr("跳过未识别分类", "Skip unrecognized categories"))
     val names = ledger?.let { Categories.options(it) } ?: Categories.ALL
-    names.forEach { name -> options += name to DataLabels.category(name) }
+    names.forEach { name -> options += name to DataLabels.category(name, ev) }
     return options
 }
 
@@ -358,5 +387,8 @@ internal fun headerLabel(headers: List<String>, index: Int): String {
     return if (header.isNullOrBlank()) tr("第 %d 列", "Column %d", index + 1) else header
 }
 
-/** 费用导入字段键顺序（与 Web fieldNames 一致）。 */
-internal val IMPORT_FIELD_ORDER: List<String> = FIELDS.keys.toList()
+/** 费用导入字段键顺序（与 Web fieldNames 一致）；按动力类型隐藏另一动力类型的专属字段。 */
+internal fun importFieldOrder(ev: Boolean = false): List<String> {
+    val hidden = if (ev) setOf("liters", "fuelGrade") else setOf("kwh")
+    return FIELDS.keys.filter { it !in hidden }
+}

@@ -1,5 +1,6 @@
 package com.milenote.android.domain.demo
 
+import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
@@ -9,11 +10,12 @@ import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
-import com.milenote.android.domain.model.PlanEntry
+import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankLedger
+import com.milenote.android.domain.model.isEv
 import java.time.LocalDate
 
 /** 演示账本数据（移植 Web `demo.mjs`），只生成内存对象，不落盘。 */
@@ -46,25 +48,24 @@ object DemoData {
         val dateText = Dates.iso(date)
         val companionDate = Dates.addMonths(date, -25)
 
-        var ledger = blankLedger().copy(
+        // 副车（城市通勤）为纯电示例：车型/充电记录/保养方案都按纯电口径生成。
+        val ev = secondary
+        var ledger = blankLedger(if (ev) POWERTRAIN_EV else null).copy(
             id = if (secondary) "demo-city" else "demo-weekend",
             vehicle = Vehicle(
                 name = if (secondary) tr("城市通勤", "City commute") else tr("周末出逃计划", "Weekend escape plan"),
-                model = if (secondary) "Toyota · Corolla" else "Volkswagen · Golf",
+                model = if (ev) "BYD · Dolphin" else "Volkswagen · Golf",
                 plate = if (secondary) tr("B 号车", "Car B") else tr("A 号车", "Car A"),
                 companionDate = Dates.iso(companionDate),
                 startKm = offset,
                 currentKm = km(42000),
-                fuelCostSource = "combined",
+                fuelCostSource = if (ev) null else "combined",
+                powertrain = if (ev) POWERTRAIN_EV else null,
             ),
         )
 
-        val plan = if (secondary) {
-            listOf(PlanEntry(key = "oil", intervalKm = 7500.0, intervalMonths = 9))
-        } else {
-            emptyList()
-        }
-        ledger = applyServicePlan(ledger, plan, Dates.iso(companionDate), offset, true)
+        // 燃油车启用默认 12 项方案；纯电车启用默认 6 项方案（三电诊断等）。
+        ledger = applyServicePlan(ledger, emptyList(), Dates.iso(companionDate), offset, true)
 
         val records = mutableListOf<Record>()
         var reminders = ledger.reminders
@@ -75,6 +76,7 @@ object DemoData {
             day: String,
             odometer: Double? = null,
             liters: Double? = null,
+            kwh: Double? = null,
             full: Boolean = false,
             missed: Boolean = false,
             source: String = "演示数据",
@@ -91,6 +93,7 @@ object DemoData {
                 amount = amount,
                 odometer = odometer,
                 liters = liters,
+                kwh = kwh,
                 full = full,
                 missed = missed,
                 note = note,
@@ -111,21 +114,34 @@ object DemoData {
             0.0,
             Dates.addMonths(dateText, -23),
             odometer = km(5000),
-            projects = "机油机滤",
+            projects = if (ev) "三电诊断" else "机油机滤",
             location = tr("品牌服务中心", "Authorized service center"),
-            note = tr("首保免费 · 机油机滤", "Free first service · Oil & filter"),
+            note = if (ev) {
+                tr("首保免费 · 三电诊断", "Free first service · EV system check")
+            } else {
+                tr("首保免费 · 机油机滤", "Free first service · Oil & filter")
+            },
         )
         ledger.reminders.firstOrNull { it.firstOnly == true }?.let {
             reminders = completeService(reminders, it, first)
         }
 
-        // 4 条已完成的常规保养
-        val completions = listOf(
-            ServiceCompletion("机油机滤", "Oil & filter", -8, 33000, 480.0),
-            ServiceCompletion("空气滤芯", "Air filter", -11, 30000, 90.0),
-            ServiceCompletion("空调滤芯", "Cabin filter", -6, 34000, 120.0),
-            ServiceCompletion("制动液", "Brake fluid", -12, 28000, 280.0),
-        )
+        // 4 条已完成的常规保养（纯电用三电诊断/刹车油等纯电方案项目）
+        val completions = if (ev) {
+            listOf(
+                ServiceCompletion("三电诊断", "EV system check", -8, 33000, 320.0),
+                ServiceCompletion("刹车油", "Brake fluid", -12, 28000, 280.0),
+                ServiceCompletion("空调滤芯", "Cabin filter", -6, 34000, 120.0),
+                ServiceCompletion("冷却液", "Coolant", -10, 31000, 360.0),
+            )
+        } else {
+            listOf(
+                ServiceCompletion("机油机滤", "Oil & filter", -8, 33000, 480.0),
+                ServiceCompletion("空气滤芯", "Air filter", -11, 30000, 90.0),
+                ServiceCompletion("空调滤芯", "Cabin filter", -6, 34000, 120.0),
+                ServiceCompletion("制动液", "Brake fluid", -12, 28000, 280.0),
+            )
+        }
         for (spec in completions) {
             val record = add(
                 "保养",
@@ -141,7 +157,7 @@ object DemoData {
             }
         }
 
-        // 6 个月油费序列：含未加满、漏记
+        // 6 个月能源序列：燃油=加油（含未加满、漏记）；纯电=充电（家充/快充、含未充满、漏记）
         var odometer = km(34000)
         var fuelIndex = 0
         val currentMonth = date.withDayOfMonth(1)
@@ -152,26 +168,51 @@ object DemoData {
                 val whenText = "$key-${day.toString().padStart(2, '0')}"
                 if (whenText > dateText) continue
                 val partial = fuelIndex == 3
-                val liters = if (partial) 20.0 else 38.0 + (fuelIndex % 3) * 2
-                val price = 7.35 + (fuelIndex % 3) * 0.08
-                add(
-                    "油费",
-                    Math.round(liters * price).toDouble(),
-                    whenText,
-                    odometer = odometer,
-                    liters = liters,
-                    full = !partial,
-                    missed = fuelIndex == 6,
-                    source = "小熊油耗",
-                    sourceId = "demo-bear-${ledger.id}-$fuelIndex",
-                    fuelCounted = true,
-                    note = when {
-                        partial -> tr("中途未加满，累计到下次满箱计算", "Partial fill — carried over to the next full tank")
-                        fuelIndex == 6 -> tr("此前漏记，本次满箱重新建立油耗基准", "Previously missed — this full tank re-establishes the fuel-economy baseline")
-                        else -> tr("92# 汽油 · 实付金额", "92# gasoline · paid amount")
-                    },
-                )
-                odometer += if (partial) 300 else 650
+                if (ev) {
+                    val kwh = if (partial) 18.0 else 38.0 + (fuelIndex % 3) * 4
+                    val home = fuelIndex % 2 == 0
+                    val price = if (home) 0.62 + (fuelIndex % 3) * 0.02 else 1.25 + (fuelIndex % 3) * 0.05
+                    add(
+                        "油费",
+                        Math.round(kwh * price * 100.0) / 100.0,
+                        whenText,
+                        odometer = odometer,
+                        kwh = kwh,
+                        full = !partial,
+                        missed = fuelIndex == 6,
+                        source = "手动记录",
+                        sourceId = "demo-ev-${ledger.id}-$fuelIndex",
+                        fuelCounted = true,
+                        note = when {
+                            partial -> tr("家充至 80%，未充满，累计到下次充满", "Home charge to 80% — carried over to the next full charge")
+                            fuelIndex == 6 -> tr("此前漏记，本次充满重新建立能耗基准", "Previously missed — this full charge re-establishes the energy baseline")
+                            home -> tr("家充 · 0.62 元/度", "Home charging · 0.62 CNY/kWh")
+                            else -> tr("快充 · 1.25 元/度", "Fast charging · 1.25 CNY/kWh")
+                        },
+                    )
+                    odometer += if (partial) 300 else 620
+                } else {
+                    val liters = if (partial) 20.0 else 38.0 + (fuelIndex % 3) * 2
+                    val price = 7.35 + (fuelIndex % 3) * 0.08
+                    add(
+                        "油费",
+                        Math.round(liters * price).toDouble(),
+                        whenText,
+                        odometer = odometer,
+                        liters = liters,
+                        full = !partial,
+                        missed = fuelIndex == 6,
+                        source = "小熊油耗",
+                        sourceId = "demo-bear-${ledger.id}-$fuelIndex",
+                        fuelCounted = true,
+                        note = when {
+                            partial -> tr("中途未加满，累计到下次满箱计算", "Partial fill — carried over to the next full tank")
+                            fuelIndex == 6 -> tr("此前漏记，本次满箱重新建立油耗基准", "Previously missed — this full tank re-establishes the fuel-economy baseline")
+                            else -> tr("92# 汽油 · 实付金额", "92# gasoline · paid amount")
+                        },
+                    )
+                    odometer += if (partial) 300 else 650
+                }
                 fuelIndex++
             }
             add("停车费", if (secondary) 220.0 else 180.0 + (m % 3) * 20, "$key-01", note = tr("月度停车", "Monthly parking"))
@@ -261,15 +302,46 @@ object DemoData {
 
     /**
      * 演示「体验钱迹导入」的原始行（Web `demoImportRows`）：
-     * 与小熊同日的两笔钱迹油费（含拆分付款）、含备注里程与项目的保养、美容。
+     * 燃油车给与小熊同日的两笔钱迹油费（含拆分付款）+ 保养 + 美容；
+     * 纯电车给同日的两笔充电付款 + 三电诊断/空调滤芯保养 + 美容（没有小熊行）。
      */
     fun demoImportRows(ledger: Ledger, date: LocalDate = Dates.today()): List<List<Any?>> {
+        val energy = ledger.records
+            .filter { Categories.isEnergy(it.category) }
+            .sortedByDescending { it.date }
+            .firstOrNull()
+            ?: throw IllegalStateException("演示账本缺少能源费记录")
+        val dateText = Dates.iso(date)
+        if (ledger.isEv) {
+            return listOf(
+                listOf("日期", "分类", "金额", "备注", "key"),
+                listOf(
+                    energy.date,
+                    "电费",
+                    36,
+                    tr("充电付款 · 与已有充电同日金额冲突", "Charging payment · same-day amount conflict"),
+                    "demo-q-charge-1",
+                ),
+                listOf(energy.date, "电费", 18, tr("充电拆分付款", "Split charging payment"), "demo-q-charge-2"),
+                listOf(
+                    dateText,
+                    "维修保养",
+                    260,
+                    tr(
+                        "总里程%skm，三电诊断、空调滤芯",
+                        "Odometer %s km — EV system check, cabin filter",
+                        Numbers.jsString(ledger.vehicle.currentKm),
+                    ),
+                    "demo-q-service",
+                ),
+                listOf(dateText, "汽车美容", 68, tr("洗车、打蜡", "Car wash, waxing"), "demo-q-beauty"),
+            )
+        }
         val fuel = ledger.records
             .filter { it.source == "小熊油耗" }
             .sortedByDescending { it.date }
             .firstOrNull()
             ?: throw IllegalStateException("演示账本缺少小熊油耗记录")
-        val dateText = Dates.iso(date)
         return listOf(
             listOf("日期", "分类", "金额", "备注", "key"),
             listOf(fuel.date, "油费", 200, tr("加油付款 · 与小熊同日金额冲突", "Fuel payment · same-day amount conflict with Bear"), "demo-q-fuel-1"),

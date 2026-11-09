@@ -8,6 +8,11 @@ package com.milenote.android.navigation
  */
 enum class AppShortcut {
     NEW_ENTRY,
+
+    /**
+     * 「扫加油票」：进入记一笔并直接打开 OCR。
+     * 纯电当前车由 `MileNoteViewModel.openEditor` 降级为普通记一笔并提示（加油票识别只认油票）。
+     */
     OCR,
     ;
 

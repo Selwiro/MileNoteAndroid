@@ -5,6 +5,7 @@ import com.milenote.android.domain.model.HistoryBaseline
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.domain.model.isEv
 
 /**
  * 按最近一次实际保养记录重算所有未完成提醒（Web `syncServiceHistory`）。
@@ -17,7 +18,7 @@ import com.milenote.android.domain.model.Reminder
  */
 fun syncServiceHistory(ledger: Ledger): Ledger {
     val records = ledger.records.filter { isServiceRecord(it) && Dates.isValid(it.date) }
-    val plans = resolveServicePlan(ledger.servicePlan.orEmpty()).filter { it.firstOnly != true }
+    val plans = resolveServicePlan(ledger.servicePlan.orEmpty(), ledger.isEv).filter { it.firstOnly != true }
     val titles = LinkedHashSet<String>()
     plans.forEach { titles.add(it.title.orEmpty()) }
     ledger.reminders
@@ -122,13 +123,17 @@ fun completeImportedServices(ledger: Ledger, recordIds: List<String>): CompleteI
             if (reminder.done) continue
 
             val required = if (reminder.firstOnly == true) {
-                listOf("机油机滤")
+                // 首保完成判定项目由方案决定：燃油=机油机滤，纯电=三电诊断。
+                splitProjects(reminder.projects).ifEmpty { listOf(reminder.title) }
             } else {
                 val projectsText = reminder.projects
                 val raw: Any = if (!projectsText.isNullOrEmpty()) {
                     projectsText
                 } else {
-                    val inferred = inferServiceNote(Record(category = "保养", note = reminder.title)).projects
+                    val inferred = inferServiceNote(
+                        Record(category = "保养", note = reminder.title),
+                        ev = ledger.isEv,
+                    ).projects
                     if (!inferred.isNullOrEmpty()) inferred else reminder.title
                 }
                 splitProjects(raw)
@@ -163,9 +168,14 @@ fun completeImportedServices(ledger: Ledger, recordIds: List<String>): CompleteI
                 .lastOrNull()
             if (latestDone != null && record.date <= latestDone) continue
 
-            // 首保完成已重设常规机油周期，不再用同一记录重复完成新的机油待办。
-            if (reminder.title == "机油机滤" &&
-                reminders.any { it.firstOnly == true && it.done && it.recordId == record.id }
+            // 首保完成已重设对应循环项（燃油=机油机滤 / 纯电=三电诊断），
+            // 不再用同一记录重复完成该循环项。
+            val firstDoneTargets = reminders
+                .filter { it.firstOnly == true && it.done && it.recordId == record.id }
+                .flatMap { splitProjects(it.projects) }
+            if (firstDoneTargets.isNotEmpty() &&
+                (reminder.title in firstDoneTargets ||
+                    splitProjects(reminder.projects).any { it in firstDoneTargets })
             ) {
                 continue
             }

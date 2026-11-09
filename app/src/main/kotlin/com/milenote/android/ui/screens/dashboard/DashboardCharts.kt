@@ -415,7 +415,11 @@ internal fun percentText(value: Double, total: Double): String {
  * @param bars [buildMonthBars] 的结果。
  */
 @Composable
-internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifier) {
+internal fun ExpenseTrendChart(
+    bars: List<MonthBar>,
+    modifier: Modifier = Modifier,
+    ev: Boolean = false,
+) {
     if (bars.isEmpty() || bars.all { it.total <= 0.0 }) {
         EmptyChartHint(text = tr("当前范围还没有支出", "No expenses in this range"), modifier = modifier)
         return
@@ -558,7 +562,7 @@ internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifi
                 val legend = remember(bars) { barLegendEntries(bars) }
                 if (legend.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    CategoryLegend(entries = legend)
+                    CategoryLegend(entries = legend, ev = ev)
                 }
             }
 
@@ -583,7 +587,7 @@ internal fun ExpenseTrendChart(bars: List<MonthBar>, modifier: Modifier = Modifi
                 val y = (segmentCenterY - bubbleH / 2f)
                     .coerceIn(0f, (rowHeightPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${DataLabels.category(category.name)} · ${Units.currencySymbol}${Format.money(category.value)}\n" +
+                    text = "${DataLabels.category(category.name, ev)} · ${Units.currencySymbol}${Format.money(category.value)}\n" +
                         percentText(category.value, bar.total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -608,6 +612,7 @@ internal fun CategoryBreakdown(
     categories: List<CategoryValue>,
     total: Double,
     modifier: Modifier = Modifier,
+    ev: Boolean = false,
 ) {
     val palette = LocalMileNoteCategoryColors.current
     val darkTheme = LocalMileNoteDarkTheme.current
@@ -665,6 +670,7 @@ internal fun CategoryBreakdown(
                     modifier = Modifier.fillMaxWidth(),
                     selected = selected,
                     onSelect = toggle,
+                    ev = ev,
                 )
             }
 
@@ -685,7 +691,7 @@ internal fun CategoryBreakdown(
                 val x = rawX.coerceIn(0f, (widthPx - bubbleW).coerceAtLeast(0f))
                 val y = (pointY - bubbleH / 2f).coerceIn(0f, (donutPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${DataLabels.category(slice.name)} · ${Units.currencySymbol}${Format.money(slice.value)}\n" +
+                    text = "${DataLabels.category(slice.name, ev)} · ${Units.currencySymbol}${Format.money(slice.value)}\n" +
                         percentText(slice.value, total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -788,6 +794,7 @@ private fun CategoryLegend(
     modifier: Modifier = Modifier,
     selected: String? = null,
     onSelect: ((String) -> Unit)? = null,
+    ev: Boolean = false,
 ) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
@@ -822,7 +829,7 @@ private fun CategoryLegend(
                         .background(color, CircleShape),
                 )
                 Text(
-                    text = DataLabels.category(name),
+                    text = DataLabels.category(name, ev),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.onSurface

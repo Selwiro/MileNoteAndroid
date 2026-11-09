@@ -9,10 +9,12 @@ import androidx.compose.runtime.setValue
 import com.milenote.android.domain.calc.duplicateOf
 import com.milenote.android.domain.calc.fuelBatchConflict
 import com.milenote.android.domain.calc.mergeFuelBatch
+import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.file.SpreadsheetData
 import com.milenote.android.domain.import.normalizeImport
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -112,12 +114,29 @@ internal class ImportWizardState(
     private val records get() = ledger?.records.orEmpty()
     private val customCategories get() = ledger?.customCategories.orEmpty()
 
+    /** 当前车是否纯电（决定来源列表、字段标签与油费口径相关计算是否参与）。 */
+    private val isEv: Boolean get() = ledger?.isEv == true
+
     // ---------- 来源与文件 ----------
 
-    fun selectSource(value: ImportSource) {
+    /**
+     * 选择导入来源。
+     *
+     * @return false 表示当前动力类型不支持该来源（原因已写入 [error]，调用方不应再打开文件选择器）。
+     */
+    fun selectSource(value: ImportSource): Boolean {
+        // 纯电当前车不提供小熊油耗（加油记录对纯电无意义）。
+        if (isEv && value == ImportSource.BEAR) {
+            error = tr(
+                "纯电车辆不支持小熊油耗导入，请选择钱迹或账本备份",
+                "Bear fuel imports aren't available for EVs — choose Qianji or a ledger backup",
+            )
+            return false
+        }
         source = value
         resetFile()
         error = null
+        return true
     }
 
     fun updateError(message: String?) {
@@ -244,6 +263,15 @@ internal class ImportWizardState(
                 readSpreadsheet(bytes, name, allowJsonFallback = true)
             }
             val detected = detectSharedSource(name, data.headers, mimeType)
+            // 纯电当前车拒绝小熊（加油）来源，避免把升/油费口径的数据导入纯电账本。
+            if (isEv && detected == ImportSource.BEAR) {
+                throw ImportFileException(
+                    tr(
+                        "纯电车辆不支持小熊油耗导入，请选择钱迹或账本备份",
+                        "Bear fuel imports aren't available for EVs — choose Qianji or a ledger backup",
+                    ),
+                )
+            }
             source = detected
             picked = PickedFile(name, bytes.size.toLong(), bytes)
             setupSheet(data)
@@ -455,6 +483,11 @@ internal class ImportWizardState(
         tableItems = tableItems.mapIndexed { i, item ->
             if (i == index) item.copy(exclude = exclude) else item
         }
+        // 纯电不参与油费口径冲突计算（导入的是充电支出，不存在跨来源油费合并）。
+        if (isEv) {
+            fuelConflict = null
+            return
+        }
         val snapshot = tableItems
         val base = records
         scope.launch {
@@ -482,12 +515,13 @@ internal class ImportWizardState(
         val currentMapping = mapping
         val currentDefault = defaultCategory
         val currentExcluded = excluded
+        val ev = isEv
         scope.launch {
             busy = true
             busyMessage = tr("正在生成预览…", "Building preview…")
             try {
                 val normalized = withContext(Dispatchers.Default) {
-                    normalizeImport(data.rows, currentMapping, src.key, currentDefault, custom)
+                    normalizeImport(data.rows, currentMapping, src.key, currentDefault, custom, ev = ev)
                 }
                 if (generation != previewGeneration) return@launch
                 val marked = normalized.mapIndexed { i, item ->
@@ -510,7 +544,10 @@ internal class ImportWizardState(
                 if (generation != previewGeneration) return@launch
                 tableItems = marked
                 duplicates = duplicateRows
-                fuelConflict = withContext(Dispatchers.Default) { fuelBatchConflict(base, marked) }
+                // 纯电不计算油费口径冲突（跨来源油费合并只对燃油车有意义）。
+                fuelConflict = if (ev) null else {
+                    withContext(Dispatchers.Default) { fuelBatchConflict(base, marked) }
+                }
             } catch (e: Exception) {
                 if (generation == previewGeneration) {
                     error = e.message ?: tr("预览生成失败", "Failed to build the preview")
@@ -584,10 +621,17 @@ internal class ImportWizardState(
                                 ),
                             )
                         }
+                        // 纯电不走油费口径（mergeFuelBatch 会把钱迹能源记录标成「不计成本」）；
+                        // 直接按普通判重合并，让充电支出全部计入电费。
+                        val ev = isEv
                         val merge = withContext(Dispatchers.Default) {
-                            mergeFuelBatch(currentLedger?.records.orEmpty(), items, fuelBasis)
+                            if (ev) {
+                                mergeImported(currentLedger?.records.orEmpty(), items)
+                            } else {
+                                mergeFuelBatch(currentLedger?.records.orEmpty(), items, fuelBasis)
+                            }
                         }
-                        vm.applyImport(items, fuelBasis, overwriteDuplicates)
+                        vm.applyImport(items, if (ev) null else fuelBasis, overwriteDuplicates)
                         result = WizardResult(
                             title = if (overwriteDuplicates) {
                                 tr("导入已提交（覆盖重复）", "Import submitted (duplicates overwritten)")

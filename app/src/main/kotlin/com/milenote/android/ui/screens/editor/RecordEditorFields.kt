@@ -101,7 +101,7 @@ internal fun AmountField(
         supportingText = error?.let {
             { Text(text = it, style = MaterialTheme.typography.bodySmall) }
         },
-        trailingIcon = if (form.isFuel && onOcrClick != null) {
+        trailingIcon = if (form.isFuel && !form.isEv && onOcrClick != null) {
             {
                 IconButton(onClick = onOcrClick) {
                     Icon(
@@ -187,7 +187,11 @@ internal fun CategoryField(
             ) {
                 row.forEach { (name, isAdd) ->
                     CategoryCell(
-                        label = if (isAdd) tr("新增分类", "Add category") else DataLabels.category(name),
+                        label = if (isAdd) {
+                            tr("新增分类", "Add category")
+                        } else {
+                            DataLabels.category(name, form.isEv)
+                        },
                         icon = when {
                             isAdd -> MileNoteIcons.Add
                             else -> {
@@ -260,7 +264,7 @@ internal fun OdometerField(
     )
 }
 
-/** 油费分组：燃油标号下拉 + 加油量 / 油价 + 应付 / 优惠 + 加满 / 漏记。 */
+/** 能源分组：燃油=燃油标号下拉 + 加油量 / 油价；纯电=充电量 / 电价 + 充满 / 漏记。 */
 @Composable
 internal fun FuelFields(
     form: RecordEditorState,
@@ -272,13 +276,18 @@ internal fun FuelFields(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FormField(
-                value = form.liters,
+                value = if (form.isEv) form.kwh else form.liters,
                 onValueChange = {
-                    form.liters = it
-                    form.onFuelFieldChanged("liters")
+                    if (form.isEv) {
+                        form.kwh = it
+                        form.onFuelFieldChanged("kwh")
+                    } else {
+                        form.liters = it
+                        form.onFuelFieldChanged("liters")
+                    }
                 },
-                label = tr("加油量", "Fuel amount"),
-                suffix = Units.volumeUnit,
+                label = if (form.isEv) tr("充电量", "Charge amount") else tr("加油量", "Fuel amount"),
+                suffix = if (form.isEv) Units.energyUnit else Units.volumeUnit,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -288,8 +297,8 @@ internal fun FuelFields(
                     form.unitPrice = it
                     form.onFuelFieldChanged("unitPrice")
                 },
-                label = tr("油价", "Unit price"),
-                suffix = Units.pricePerVolume,
+                label = if (form.isEv) tr("电价", "Unit price") else tr("油价", "Unit price"),
+                suffix = if (form.isEv) Units.pricePerEnergy else Units.pricePerVolume,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -326,7 +335,7 @@ internal fun FuelFields(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             CheckRow(
-                label = tr("本次加满", "Filled up this time"),
+                label = if (form.isEv) tr("本次充满", "Full charge this time") else tr("本次加满", "Filled up this time"),
                 checked = form.full,
                 onCheckedChange = { form.full = it },
                 fillWidth = false,
@@ -337,11 +346,13 @@ internal fun FuelFields(
                 onCheckedChange = { form.missed = it },
                 fillWidth = false,
             )
-            Spacer(modifier = Modifier.weight(1f))
-            CompactFuelGradeDropdown(
-                form = form,
-                modifier = Modifier.width(78.dp),
-            )
+            if (!form.isEv) {
+                Spacer(modifier = Modifier.weight(1f))
+                CompactFuelGradeDropdown(
+                    form = form,
+                    modifier = Modifier.width(78.dp),
+                )
+            }
         }
     }
 }
@@ -529,7 +540,11 @@ internal fun ServiceFields(
         )
         ProjectPickerSection(
             form = form,
-            title = tr("%s项目 *（可多选）", "%s items * (multi-select)", DataLabels.category(form.effectiveCategory)),
+            title = tr(
+                "%s项目 *（可多选）",
+                "%s items * (multi-select)",
+                DataLabels.category(form.effectiveCategory, form.isEv),
+            ),
         )
     }
 }

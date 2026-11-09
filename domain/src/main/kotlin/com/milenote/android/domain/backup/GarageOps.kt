@@ -10,6 +10,7 @@ import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanBase
+import com.milenote.android.domain.model.normalizePowertrain
 
 /**
  * 车库级校验、合并与删除（移植 Web `garage.mjs`）。
@@ -82,7 +83,11 @@ object GarageOps {
             if (car.id.isEmpty() || !ids.add(car.id)) throw BackupException(tr("车辆编号无效或重复", "Invalid or duplicate vehicle ID"))
         }
         val cars = input.cars.map { car ->
-            car.copy(records = car.records.map { it.copy(category = Categories.normalize(it.category)) })
+            car.copy(
+                // 动力类型只认 "fuel"/"ev"，未知值归一为 null（语义=燃油），避免坏数据把车变成怪状态。
+                vehicle = car.vehicle.copy(powertrain = normalizePowertrain(car.vehicle.powertrain)),
+                records = car.records.map { it.copy(category = Categories.normalize(it.category)) },
+            )
         }
         val activeId = if (ids.contains(input.activeId)) input.activeId else cars.first().id
         return input.copy(activeId = activeId, cars = cars)
@@ -154,8 +159,12 @@ object GarageOps {
             servicePlanConfigured = existing.servicePlanConfigured == true ||
                 incoming.servicePlanConfigured == true,
         )
-        if (existing.records.isEmpty() && existing.reminders.isEmpty()) {
-            n = n.copy(vehicle = incoming.vehicle)
+        // 车辆身份以「有记录的一侧」为准：避免把已有燃油车恢复成纯电后历史单位串掉；
+        // 空车整体采纳 incoming（含动力类型）。
+        n = if (existing.records.isEmpty() && existing.reminders.isEmpty()) {
+            n.copy(vehicle = incoming.vehicle.copy(powertrain = normalizePowertrain(incoming.vehicle.powertrain)))
+        } else {
+            n.copy(vehicle = n.vehicle.copy(powertrain = normalizePowertrain(n.vehicle.powertrain)))
         }
         return n
     }

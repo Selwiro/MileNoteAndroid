@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -67,7 +68,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.format.Format
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_FUEL
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
@@ -85,18 +89,24 @@ import kotlinx.coroutines.withContext
 /**
  * 车辆编辑全屏对话框（新增 / 编辑同一套表单）。
  *
- * 字段与 Web 版「管理车辆 → 车辆信息」一致：昵称*、车牌号、品牌/车型、当前总里程、
- * 记账起始里程、提车日期（历史字段名 `companionDate`，用于「陪伴天数」）、车辆图片与显示方式。
+ * 字段与 Web 版「管理车辆 → 车辆信息」一致：昵称*、车牌号、品牌/车型、动力类型（燃油 / 纯电）、
+ * 「燃油标号」（仅燃油车显示；纯电隐藏，切回燃油时保留原选值）、当前总里程、记账起始里程、
+ * 提车日期（历史字段名 `companionDate`，用于「陪伴天数」）、车辆图片与显示方式。
+ *
+ * 动力类型写入 `Vehicle.powertrain`（`"fuel"` / `"ev"`）；纯电车保存时清空 `fuelCostSource`
+ * （避免旧版小熊/钱迹口径把电费判成 0），燃油车保持原值。若动力类型相对 [initial] 改变且
+ * 该车已有记录（[recordCount] > 0），保存前弹确认框：历史记录保留原单位、能耗分析只统计
+ * 当前动力类型；可勾选「一并删除不再适用的保养提醒」（默认勾选，已完成提醒与记录不删）。
  *
  * 图片走 Photo Picker（无需存储权限）→ [VehicleImageCodec] 压缩成 WebP dataURL；
  * 也支持填 http(s) 图片链接（显示失败时回退默认插画）。保存交给调用方：
- * 新增走 `vm.addVehicle(vehicle)`、编辑走 `vm.saveVehicle(vehicle)`。
+ * 新增走 `vm.addVehicle(vehicle)`、编辑走 `vm.saveVehicle(vehicle, prunePowertrainReminders)`。
  *
  * @param initial 初始车辆（新增时传 `blankVehicle()`）。
  * @param title 顶栏标题（「添加车辆」/「编辑车辆」）。
- * @param recordCount 该车已有记录数（删除提示用）。
+ * @param recordCount 该车已有记录数（删除提示 / 动力类型切换确认用）。
  * @param onDismiss 关闭弹层。
- * @param onSave 校验通过后回传车辆对象。
+ * @param onSave 校验通过后回传车辆对象与「是否一并删除不再适用的保养提醒」。
  * @param onDelete 删除该车（VM 内部会再弹一次确认）；新增时为 null。
  */
 @Composable
@@ -105,7 +115,7 @@ internal fun VehicleEditorDialog(
     title: String,
     recordCount: Int,
     onDismiss: () -> Unit,
-    onSave: (Vehicle) -> Unit,
+    onSave: (Vehicle, Boolean) -> Unit,
     onDelete: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -114,6 +124,8 @@ internal fun VehicleEditorDialog(
     var name by remember(initial) { mutableStateOf(initial.name) }
     var plate by remember(initial) { mutableStateOf(initial.plate) }
     var model by remember(initial) { mutableStateOf(initial.model) }
+    // 动力类型：缺省/null 视为燃油；只在本对话框内切换，确认保存后才写回账本。
+    var powertrainEv by remember(initial) { mutableStateOf(initial.isEv) }
     var fuelGrade by remember(initial) { mutableStateOf(initial.fuelGrade ?: "92#") }
     var currentKmText by remember(initial) {
         mutableStateOf(if (initial.currentKm > 0.0) Format.fmt(initial.currentKm) else "")
@@ -131,6 +143,9 @@ internal fun VehicleEditorDialog(
     var hint by remember { mutableStateOf<String?>(null) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    // 动力类型改变且有历史记录时的待确认保存；非空即显示确认框。
+    var pendingPowertrainSave by remember { mutableStateOf<Vehicle?>(null) }
+    var prunePowertrainReminders by remember { mutableStateOf(true) }
 
     fun notifyError(text: String) {
         hint = null
@@ -185,8 +200,16 @@ internal fun VehicleEditorDialog(
             companionDate = companionDate,
             image = image,
             imageFit = imageFit,
+            powertrain = if (powertrainEv) POWERTRAIN_EV else POWERTRAIN_FUEL,
+            // 纯电不保留旧版油费成本口径（否则电费会被小熊/钱迹口径判成 0）；燃油保持原值。
+            fuelCostSource = if (powertrainEv) null else initial.fuelCostSource,
         )
-        onSave(next)
+        if (powertrainEv != initial.isEv && recordCount > 0) {
+            prunePowertrainReminders = true
+            pendingPowertrainSave = next
+        } else {
+            onSave(next, false)
+        }
     }
 
     Dialog(
@@ -312,29 +335,68 @@ internal fun VehicleEditorDialog(
                             placeholder = tr("例如：比亚迪 海豚", "e.g. BYD Dolphin"),
                         )
                     }
-                    item("fuelGrade") {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item("powertrain") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                text = tr("燃油标号", "Fuel grade"),
+                                text = tr("动力类型", "Powertrain"),
                                 style = MaterialTheme.typography.titleSmall,
                             )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("92#", "95#", "98#", "0#").forEach { grade ->
-                                    FilterChip(
-                                        selected = fuelGrade == grade,
-                                        onClick = { fuelGrade = grade },
-                                        label = { Text(if (grade == "0#") tr("0# 柴油", "0# Diesel") else grade) },
-                                    )
-                                }
+                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                listOf(false to tr("燃油", "Fuel"), true to tr("纯电", "EV"))
+                                    .forEachIndexed { index, (ev, label) ->
+                                        SegmentedButton(
+                                            selected = powertrainEv == ev,
+                                            onClick = { powertrainEv = ev },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = 2,
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = label,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    maxLines = 1,
+                                                )
+                                            },
+                                        )
+                                    }
                             }
                             Text(
                                 text = tr(
-                                    "用于「今日油价」卡显示的油品；选择柴油显示 0# 价格。",
-                                    "Fuel type shown on the today's fuel price card; choosing diesel shows the 0# price.",
+                                    "纯电车型改用充电量与电价记账，保养方案与能耗分析随动力类型切换。",
+                                    "EVs record charging amount and price instead; the service plan and energy analysis follow the powertrain.",
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                    }
+                    // 「燃油标号」只对燃油车有意义；纯电隐藏但保留选值，切回燃油时原样显示。
+                    if (!powertrainEv) {
+                        item("fuelGrade") {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = tr("燃油标号", "Fuel grade"),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("92#", "95#", "98#", "0#").forEach { grade ->
+                                        FilterChip(
+                                            selected = fuelGrade == grade,
+                                            onClick = { fuelGrade = grade },
+                                            label = { Text(if (grade == "0#") tr("0# 柴油", "0# Diesel") else grade) },
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = tr(
+                                        "用于「今日油价」卡显示的油品；选择柴油显示 0# 价格。纯电车辆不显示此项。",
+                                        "Fuel type shown on the today's fuel price card; choosing diesel shows the 0# price. Hidden for EVs.",
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                     item("currentKm") {
@@ -468,6 +530,56 @@ internal fun VehicleEditorDialog(
                 }
             }
         }
+    }
+
+    // 动力类型切换确认：已有记录时说明历史单位与能耗口径，并可选清理不再适用的提醒。
+    pendingPowertrainSave?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingPowertrainSave = null },
+            shape = MileNoteShapes.extraLarge,
+            title = { Text(tr("切换动力类型？", "Switch powertrain?")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        tr(
+                            "历史记录保留原单位，能耗分析只统计当前动力类型的记录；已完成的保养提醒与费用记录不受影响。",
+                            "Existing records keep their original units. Energy analysis only counts records of the current powertrain. Completed service reminders and expenses are kept.",
+                        ),
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Checkbox(
+                            checked = prunePowertrainReminders,
+                            onCheckedChange = { prunePowertrainReminders = it },
+                        )
+                        Text(
+                            text = tr(
+                                "一并删除不再适用的保养提醒",
+                                "Also delete service reminders that no longer apply",
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingPowertrainSave = null
+                        onSave(pending, prunePowertrainReminders)
+                    },
+                ) {
+                    Text(tr("保存", "Save"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPowertrainSave = null }) {
+                    Text(tr("取消", "Cancel"))
+                }
+            },
+        )
     }
 
     if (showUrlDialog) {

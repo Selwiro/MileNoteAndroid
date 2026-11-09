@@ -25,12 +25,15 @@ fun validateRecord(record: Record, customCategories: List<String> = emptyList())
     ) {
         return tr("金额必须大于 0", "Amount must be greater than 0")
     }
-    val numericFields = listOf(record.odometer, record.liters, record.rate, record.distance)
+    val numericFields = listOf(record.odometer, record.liters, record.kwh, record.rate, record.distance)
     for (value in numericFields) {
         if (value != null && (!value.isFinite() || value < 0)) {
-            return tr("里程、加油量、油耗必须是有效非负数", "Mileage, fuel amount and fuel economy must be valid non-negative numbers")
+            return tr(
+                "里程、加油量/充电量、能耗必须是有效非负数",
+                "Mileage, energy amount and energy economy must be valid non-negative numbers",
+            )
         }
     }
-    if (record.kind == "manual" && !((record.rate ?: 0.0) > 0)) return tr("请填写有效油耗", "Enter a valid fuel economy")
+    if (record.kind == "manual" && !((record.rate ?: 0.0) > 0)) return tr("请填写有效油耗/电耗", "Enter a valid fuel/energy economy")
     return ""
 }
