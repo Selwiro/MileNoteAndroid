@@ -1,6 +1,7 @@
 package com.milenote.android.ui.screens.maintenance
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -73,6 +73,7 @@ import com.milenote.android.ui.components.StatusPill
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.MileNoteDimens
+import com.milenote.android.ui.theme.MileNoteShapes
 import com.milenote.android.ui.theme.MileNoteShapeTokens
 import java.time.LocalDate
 
@@ -189,7 +190,7 @@ fun MaintenanceScreen(
                             PendingEmptyState(onAdd = { addReminder = true })
                         } else {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                groups.near.forEachIndexed { index, reminder ->
+                                groups.near.forEach { reminder ->
                                     ReminderCard(
                                         reminder = reminder,
                                         km = km,
@@ -197,7 +198,6 @@ fun MaintenanceScreen(
                                         onComplete = { completeTarget = it },
                                         onEdit = { editReminder = it },
                                     )
-                                    if (index != groups.near.lastIndex) FlatDivider()
                                 }
                             }
                         }
@@ -485,92 +485,115 @@ private fun ReminderCard(
     val semantic = LocalMileNoteSemanticColors.current
     val state = reminderState(reminder, km, today)
     val progress = serviceProgress(reminder, km, today)
-    val railColor = when (state.level) {
-        ReminderLevel.OVERDUE -> scheme.error
+    val statusColor = when (state.level) {
+        ReminderLevel.OVERDUE -> semantic.danger.content
         ReminderLevel.SOON -> semantic.warning.content
         ReminderLevel.DONE -> semantic.success.content
-        ReminderLevel.NORMAL -> scheme.primary
+        ReminderLevel.NORMAL -> scheme.onSurfaceVariant
     }
-    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .fillMaxHeight()
-                .background(railColor),
+    // 计划中的圆点要够深才看得见（outlineVariant 只有 1.7:1）。
+    val dotColor = if (state.level == ReminderLevel.NORMAL) scheme.outline else statusColor
+    val progressColor = if (progress?.overdue == true) semantic.danger.content else scheme.primary
+    val actionColor = if (state.level == ReminderLevel.OVERDUE) semantic.danger.content else scheme.primary
+    val absolute = reminderAbsoluteDeadline(reminder)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MileNoteShapes.medium)
+            .clickable(onClickLabel = tr("编辑提醒", "Edit reminder")) { onEdit(reminder) }
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CategoryBadge(
+            categoryName = inferServiceCategory(reminder),
+            size = 40.dp,
+            modifier = Modifier.align(Alignment.Top),
         )
         Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            Text(
+                text = DataLabels.serviceItem(reminder.title),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                CategoryBadge(categoryName = inferServiceCategory(reminder))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(text = DataLabels.serviceItem(reminder.title), style = MaterialTheme.typography.titleMedium)
-                    // 日期行 / 里程行各自单行省略：不换行，超宽时在卡片右侧截断。
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Format.reminderDeadline(reminder, state, Units.distanceUnit).split('\n').forEach { line ->
-                            Text(
-                                text = line,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = scheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-                StatusPill(
-                    text = reminderLevelLabel(state.level),
-                    status = reminderLevelStatus(state.level),
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(dotColor, CircleShape),
+                )
+                Text(
+                    text = reminderStatusLine(reminder, state, progress),
+                    style = MaterialTheme.typography.bodySmallEmphasized,
+                    color = statusColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (progress != null) {
-                ServiceProgressBar(progress = progress)
+            if (absolute.isNotEmpty()) {
+                Text(
+                    text = absolute,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             reminderNote(reminder)?.let { note ->
                 Text(
                     text = note,
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+            // 每行恰好一条进度条：取 serviceProgress() 的单一结果（日期 / 里程先到维度）。
+            LinearProgressIndicator(
+                progress = { ((progress?.percent ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 3.dp)
+                    .height(4.dp)
+                    .clip(MileNoteShapeTokens.full),
+                color = progressColor,
+                trackColor = scheme.surfaceContainerHighest,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+            )
+        }
+        // 行尾唯一动作：完成并记录（视觉 40dp 圆，触控 48dp）。
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(MileNoteShapeTokens.full)
+                .clickable { onComplete(reminder) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .border(
+                        width = 1.dp,
+                        color = actionColor.copy(alpha = if (state.level == ReminderLevel.OVERDUE) 0.45f else 0.5f),
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                if (!reminder.done) {
-                    FilledTonalButton(
-                        onClick = { onComplete(reminder) },
-                        modifier = Modifier.height(MileNoteDimens.ButtonSmallHeight),
-                    ) {
-                        Icon(
-                            imageVector = MileNoteIcons.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(tr("完成并记录", "Complete & log"), style = MaterialTheme.typography.labelLarge)
-                    }
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
-                }
-                IconButton(onClick = { onEdit(reminder) }) {
-                    Icon(
-                        imageVector = MileNoteIcons.Edit,
-                        contentDescription = tr("编辑", "Edit"),
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Icon(
+                    imageVector = MileNoteIcons.Check,
+                    contentDescription = tr("完成并记录", "Complete & log"),
+                    modifier = Modifier.size(20.dp),
+                    tint = actionColor,
+                )
             }
         }
     }
@@ -586,12 +609,19 @@ private fun PendingEmptyState(onAdd: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(
-            imageVector = MileNoteIcons.Bell,
-            contentDescription = null,
-            modifier = Modifier.size(32.dp),
-            tint = scheme.onSurfaceVariant,
-        )
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(scheme.surfaceContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = MileNoteIcons.Bell,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = scheme.onSurfaceVariant,
+            )
+        }
         Text(text = tr("未来一年内暂无待办", "No to-dos in the next 12 months"), style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = onAdd) {
             Text(tr("＋ 添加维修保养提醒", "＋ Add maintenance reminder"))

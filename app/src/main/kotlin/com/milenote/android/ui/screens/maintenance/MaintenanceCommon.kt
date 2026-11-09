@@ -2,6 +2,8 @@ package com.milenote.android.ui.screens.maintenance
 
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.ReminderLevel
+import com.milenote.android.domain.calc.ReminderState
+import com.milenote.android.domain.calc.ServiceProgress
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Reminder
@@ -76,6 +78,64 @@ internal fun inferServiceCategory(reminder: Reminder): String {
 /** 需要展示的提醒备注（过滤内置说明，Web `reminderNoteHTML`）。 */
 internal fun reminderNote(reminder: Reminder): String? =
     reminder.note?.trim()?.takeIf { it.isNotEmpty() && it !in GENERATED_REMINDER_NOTES }
+
+/**
+ * 待办卡的「状态行」文案：状态词 + 剩余量（先到维度）。
+ *
+ * 例：`已到期 · 超出 2,000 公里` / `即将到期 · 还有 22 天` / `计划中 · 还剩 1,000 公里`。
+ * 剩余量取 [serviceProgress] 判定的那条轨（日期 / 里程先到），没有进度数据时按
+ * [ReminderState] 里的天数或里程兜底。
+ */
+internal fun reminderStatusLine(
+    reminder: Reminder,
+    state: ReminderState,
+    progress: ServiceProgress?,
+    distanceUnit: String = Units.distanceUnit,
+): String {
+    val label = reminderLevelLabel(state.level)
+    val remaining = when (progress?.kind) {
+        "km" -> remainingKmText(state.left, distanceUnit)
+        "days" -> remainingDaysText(state.days)
+        else -> when {
+            state.days != null -> remainingDaysText(state.days)
+            state.left != null -> remainingKmText(state.left, distanceUnit)
+            else -> null
+        }
+    }
+    return if (remaining == null) label else "$label · $remaining"
+}
+
+/** 剩余里程文案：`还剩 1,000 公里` / `里程已用完` / `超出 2,000 公里`。 */
+private fun remainingKmText(left: Double?, distanceUnit: String): String? {
+    if (left == null) return null
+    return when {
+        left > 0 -> tr("还剩 %s", "%s left", Format.km(left, distanceUnit))
+        left == 0.0 -> tr("里程已用完", "mileage used up")
+        else -> tr("超出 %s", "over by %s", Format.km(-left, distanceUnit))
+    }
+}
+
+/** 剩余天数文案：`还有 22 天` / `已过 10 天`。 */
+private fun remainingDaysText(days: Long?): String? {
+    if (days == null) return null
+    return if (days >= 0) {
+        tr("还有 %d 天", "%d days left", days)
+    } else {
+        tr("已过 %d 天", "%d days overdue", -days)
+    }
+}
+
+/**
+ * 待办卡的「绝对值」行：到期日 / 到期里程，两者都在时用 ` · ` 连接。
+ * 例：`2026-12-09 到期 · 40,000 公里`、只有日期 `2026-12-01 到期`。
+ */
+internal fun reminderAbsoluteDeadline(reminder: Reminder): String {
+    val parts = buildList {
+        reminder.dueDate?.takeIf { it.isNotEmpty() }?.let { add(tr("%s 到期", "Due %s", it)) }
+        reminder.dueKm?.let { add(distanceText(it)) }
+    }
+    return parts.joinToString(" · ")
+}
 
 /** 里程显示：`42,000 公里` / `26,098 mi`（里程单位随设置 → 外观 → 单位）。 */
 internal fun distanceText(value: Double?): String = Format.km(value, Units.distanceUnit)
