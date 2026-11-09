@@ -92,13 +92,25 @@ git add -A && git commit -m "deploy: 更新官网文案" && git push origin gh-p
 
 1. `./build.sh release` 生成 `outputs/Android/releases/milenote-<版本>-android.apk` + `.sha256`；
 2. 打并推送 tag：`git tag -a v<版本> -m "release: <版本> (vc <versionCode>)" && git push origin v<版本>`；
-3. 在 GitHub 建 Release（`prerelease`，beta 期），上传 APK 与 `.sha256` 两个资产；
-4. **Release 正文第一行写 `versionCode: <n>`**（页面从正文里读它；没有就隐藏 versionCode 行）；
-5. 站点无需任何改动：打开页面会请求 GitHub Releases 列表，自动换成最新 Release 的
+3. 建 Release 并上传资产（GitHub CLI，任何人 clone 后都能照做）：
+
+   ```bash
+   gh auth login        # 首次一次；token 由 gh 自己保管（macOS 上存钥匙串），不落仓库
+   gh release create v<版本> --title "v<版本> — ..." --notes-file notes.md \
+     --prerelease --verify-tag          # 正式版去掉 --prerelease；想先存草稿加 --draft
+   gh release upload v<版本> \
+     dist/milenote-<版本>-android.apk dist/milenote-<版本>-android.apk.sha256 --clobber
+   ```
+
+   - 正文第一行必须写 `versionCode: <n>`（页面从正文里读它；没有就隐藏 versionCode 行）；
+   - `--verify-tag` 保证 tag 已存在；`--clobber` 让重复上传幂等（同名资产覆盖）；
+   - 不传 `--notes-file` 时 gh 按提交自动生成正文，但**不会**带 `versionCode` 行，记得自己补。
+4. 站点无需任何改动：打开页面会请求 GitHub Releases 列表，自动换成最新 Release 的
    版本号 / 包大小 / SHA-256 / 下载地址 / 更新日志链接。
 
-> 本机没有 `gh` 且 `github.com:443` 不通时，可用 GitHub 设备码流程（`public_repo` 权限）拿临时 token，
-> 再走 `api.github.com` / `uploads.github.com` 创建 Release；token 用完即删，不落库。
+> 凭证说明：建 Release / 上传资产是唯一需要 GitHub 认证的步骤。`gh auth login` 一次后 token 由 gh
+> 自己保管（macOS 存钥匙串），不落文件、不入库；撤销用 `gh auth logout` 或 GitHub Settings → Applications。
+> `git push` / 打 tag 走 SSH 密钥（无口令），本来就不需要认证；CI 里用 `GH_TOKEN` 环境变量即可。
 
 ### 排障：Pages 构建失败
 

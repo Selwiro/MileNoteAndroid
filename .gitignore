@@ -28,3 +28,6 @@ AGENTS.local.md
 # 本地环境与构建产物（build.sh 默认输出到 dist/）
 local.env
 dist/
+
+# 维护者本机专用脚本：受众只有维护者本人，构建/测试/编译都不依赖它们
+/scripts/publish-release.sh

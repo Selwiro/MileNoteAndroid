@@ -62,6 +62,10 @@ wrapper 发行包下载慢时改 `gradle/wrapper/gradle-wrapper.properties` 的 
 - **发版**：`versionCode +1`、`versionName` 更新后单独提交 `release: x.y.z (vc n)`，并打 annotated tag
   `git tag -a vX.Y.Z -m "..."`。beta 期版本号用 `0.x`；第一个正式版 `1.0.0`，之后 semver
   （`1.0.x` 修 bug / `1.1.0` 加功能 / `2.0.0` 破坏性变更）。
+- **发布 Release**：`gh release create vX.Y.Z --title "..." --notes-file notes.md --prerelease --verify-tag`
+  建页面，再 `gh release upload vX.Y.Z <apk> <apk>.sha256 --clobber` 传资产；正文首行必须写
+  `versionCode: <n>`（官网 `assets/app.js` 从正文里读它）。`gh auth login` 一次，token 由 gh 自己保管，
+  **绝不**写进代码、文档或提交信息。维护者本机另有一键脚本 `scripts/publish-release.sh`（不入库，见 `AGENTS.local.md`）。
 - **回滚**：优先 `git revert <hash>`（保留历史）；只撤未提交改动用 `git restore <file>`。
   **不要**用 `git reset --hard` 抹掉已提交的历史。
 - **APK 命名**：release 为 `milenote-<versionName>-android.apk`（同名 `.sha256` 一起产出，可直接做
