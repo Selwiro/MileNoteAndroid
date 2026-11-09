@@ -495,14 +495,13 @@ private fun ReminderCard(
     val dotColor = if (state.level == ReminderLevel.NORMAL) scheme.outline else statusColor
     val progressColor = if (progress?.overdue == true) semantic.danger.content else scheme.primary
     val actionColor = if (state.level == ReminderLevel.OVERDUE) semantic.danger.content else scheme.primary
-    val absolute = reminderAbsoluteDeadline(reminder)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MileNoteShapes.medium)
             .clickable(onClickLabel = tr("编辑提醒", "Edit reminder")) { onEdit(reminder) }
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -534,24 +533,6 @@ private fun ReminderCard(
                     text = reminderStatusLine(reminder, state, progress),
                     style = MaterialTheme.typography.bodySmallEmphasized,
                     color = statusColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (absolute.isNotEmpty()) {
-                Text(
-                    text = absolute,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            reminderNote(reminder)?.let { note ->
-                Text(
-                    text = note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

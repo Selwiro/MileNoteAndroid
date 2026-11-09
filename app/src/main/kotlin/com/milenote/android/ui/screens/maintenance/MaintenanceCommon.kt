@@ -125,18 +125,6 @@ private fun remainingDaysText(days: Long?): String? {
     }
 }
 
-/**
- * 待办卡的「绝对值」行：到期日 / 到期里程，两者都在时用 ` · ` 连接。
- * 例：`2026-12-09 到期 · 40,000 公里`、只有日期 `2026-12-01 到期`。
- */
-internal fun reminderAbsoluteDeadline(reminder: Reminder): String {
-    val parts = buildList {
-        reminder.dueDate?.takeIf { it.isNotEmpty() }?.let { add(tr("%s 到期", "Due %s", it)) }
-        reminder.dueKm?.let { add(distanceText(it)) }
-    }
-    return parts.joinToString(" · ")
-}
-
 /** 里程显示：`42,000 公里` / `26,098 mi`（里程单位随设置 → 外观 → 单位）。 */
 internal fun distanceText(value: Double?): String = Format.km(value, Units.distanceUnit)
 

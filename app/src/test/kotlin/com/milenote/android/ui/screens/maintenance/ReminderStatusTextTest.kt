@@ -10,9 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 待办卡（方案 A 紧凑清单）文案：
- * - 状态行 = 状态词 + 剩余量（取 `serviceProgress` 的先到维度，缺进度时按状态兜底）；
- * - 绝对值 = 到期日 · 到期里程（只有一项就只显示一项）。
+ * 待办卡（方案 A 紧凑清单）状态行文案：状态词 + 剩余量
+ *（取 `serviceProgress` 的先到维度，缺进度时按状态兜底）。
  *
  * 数据取 0.34.7 演示账本：今天 2026-11-09、当前 42,000 公里。
  */
@@ -92,22 +91,9 @@ class ReminderStatusTextTest {
     }
 
     @Test
-    fun `absolute deadline joins date and mileage`() {
-        val r = reminder(dueDate = "2026-12-09", dueKm = 40_000.0)
-        assertEquals("2026-12-09 到期 · 40,000 公里", reminderAbsoluteDeadline(r))
-    }
-
-    @Test
-    fun `absolute deadline handles single field`() {
-        assertEquals("2026-12-01 到期", reminderAbsoluteDeadline(reminder(dueDate = "2026-12-01")))
-        assertEquals("40,000 公里", reminderAbsoluteDeadline(reminder(dueDate = null, dueKm = 40_000.0)))
-    }
-
-    @Test
     fun `english wording`() {
         I18n.applyEnglish(true)
         val r = reminder(dueKm = 40_000.0, intervalKm = 10_000.0, intervalMonths = 12)
         assertEquals("Overdue · over by 2,000 km", statusLine(r))
-        assertEquals("Due 2026-12-09 · 40,000 km", reminderAbsoluteDeadline(r))
     }
 }
