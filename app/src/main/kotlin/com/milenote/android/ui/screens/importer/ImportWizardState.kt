@@ -6,14 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.milenote.android.domain.calc.duplicateOf
-import com.milenote.android.domain.calc.fuelBatchConflict
 import com.milenote.android.domain.calc.mergeFuelBatch
 import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.file.SpreadsheetData
-import com.milenote.android.domain.import.normalizeImport
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
@@ -87,6 +84,15 @@ internal class ImportWizardState(
     var excluded by mutableStateOf<Set<Int>>(emptySet())
         private set
 
+    /**
+     * 用户逐行修改（「修改第 N 行」弹层），键为原始文件行号（[ImportItem.row]）。
+     *
+     * 用行号而不是列表下标做键：换字段映射 / 换工作表 / 改默认分类 / 勾选后
+     * 预览会重新生成（行顺序与条数可能变），已改过的行仍按原文件行号重新应用。
+     */
+    var rowEdits by mutableStateOf<Map<Int, ImportRowEdit>>(emptyMap())
+        private set
+
     var fuelConflict by mutableStateOf<com.milenote.android.domain.calc.FuelBatchConflict?>(null)
         private set
 
@@ -151,6 +157,7 @@ internal class ImportWizardState(
         tableItems = emptyList()
         duplicates = emptySet()
         excluded = emptySet()
+        rowEdits = emptyMap()
         fuelConflict = null
         defaultCategory = ""
         backupPreview = null
@@ -478,21 +485,36 @@ internal class ImportWizardState(
         if (value in setOf("bear", "qianji", "both")) fuelBasis = value
     }
 
+    /**
+     * 保存「修改第 N 行」的编辑：按原始文件行号持久化，然后重建预览。
+     *
+     * 行内记录与校验错误由纯函数 [applyRowEdits] 重新计算（见 [scheduleTablePreview]），
+     * 因此保存后该行的错误会立即按 `validateRecord` 更新：错误行可以改到通过。
+     */
+    fun editRow(row: Int, edit: ImportRowEdit) {
+        rowEdits = if (edit.isEmpty) rowEdits - row else rowEdits + (row to edit)
+        scheduleTablePreview()
+    }
+
+    /** 清除某一行的逐行修改，恢复文件原值（弹层「恢复原始值」）。 */
+    fun clearRowEdit(row: Int) {
+        if (row !in rowEdits) return
+        rowEdits = rowEdits - row
+        scheduleTablePreview()
+    }
+
+    /** 某一行的逐行修改；未改过返回 null。 */
+    fun rowEdit(row: Int): ImportRowEdit? = rowEdits[row]
+
     fun setExcluded(index: Int, exclude: Boolean) {
         excluded = if (exclude) excluded + index else excluded - index
-        tableItems = tableItems.mapIndexed { i, item ->
-            if (i == index) item.copy(exclude = exclude) else item
-        }
-        // 纯电不参与油费口径冲突计算（导入的是充电支出，不存在跨来源油费合并）。
-        if (isEv) {
-            fuelConflict = null
-            return
-        }
+        tableItems = markRowExcluded(tableItems, index, exclude)
         val snapshot = tableItems
         val base = records
+        val ev = isEv
         scope.launch {
             try {
-                fuelConflict = withContext(Dispatchers.Default) { fuelBatchConflict(base, snapshot) }
+                fuelConflict = withContext(Dispatchers.Default) { fuelConflictOf(base, snapshot, ev) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -515,39 +537,31 @@ internal class ImportWizardState(
         val currentMapping = mapping
         val currentDefault = defaultCategory
         val currentExcluded = excluded
+        val currentEdits = rowEdits
         val ev = isEv
         scope.launch {
             busy = true
             busyMessage = tr("正在生成预览…", "Building preview…")
             try {
-                val normalized = withContext(Dispatchers.Default) {
-                    normalizeImport(data.rows, currentMapping, src.key, currentDefault, custom, ev = ev)
+                // normalize → 应用逐行修改 → 排除 → 判重 → 油费冲突，全部在纯函数里完成，
+                // 单测直接覆盖（ImportRowEditsTest）。
+                val preview = withContext(Dispatchers.Default) {
+                    buildImportPreview(
+                        rows = data.rows,
+                        mapping = currentMapping,
+                        sourceKey = src.key,
+                        defaultCategory = currentDefault,
+                        customCategories = custom,
+                        ev = ev,
+                        edits = currentEdits,
+                        excludedRows = currentExcluded,
+                        existingRecords = base,
+                    )
                 }
                 if (generation != previewGeneration) return@launch
-                val marked = normalized.mapIndexed { i, item ->
-                    if (i in currentExcluded) item.copy(exclude = true) else item
-                }
-                val duplicateRows = withContext(Dispatchers.Default) {
-                    normalized.mapIndexedNotNull { i, item ->
-                        // 与 mergeFuelBatch 的判重口径保持一致：跨来源油费在合并时只按同来源判重，
-                        // 不应在预览里标成「重复会跳过」，否则「预览重复但实际导入」会误导用户。
-                        val scoped = if (item.record.category == "油费" &&
-                            item.record.source in setOf("小熊油耗", "钱迹")
-                        ) {
-                            base.filter { it.source == item.record.source }
-                        } else {
-                            base
-                        }
-                        if (duplicateOf(scoped, item.record) != null) i else null
-                    }.toSet()
-                }
-                if (generation != previewGeneration) return@launch
-                tableItems = marked
-                duplicates = duplicateRows
-                // 纯电不计算油费口径冲突（跨来源油费合并只对燃油车有意义）。
-                fuelConflict = if (ev) null else {
-                    withContext(Dispatchers.Default) { fuelBatchConflict(base, marked) }
-                }
+                tableItems = preview.items
+                duplicates = preview.duplicates
+                fuelConflict = preview.fuelConflict
             } catch (e: Exception) {
                 if (generation == previewGeneration) {
                     error = e.message ?: tr("预览生成失败", "Failed to build the preview")
@@ -672,15 +686,13 @@ internal class ImportWizardState(
 
     // ---------- 供 UI 计算的统计 ----------
 
-    fun validTableCount(): Int = tableItems.count { it.error.isEmpty() && !it.exclude }
+    fun validTableCount(): Int = countValidRows(tableItems)
 
-    fun invalidTableCount(): Int = tableItems.count { it.error.isNotEmpty() }
+    fun invalidTableCount(): Int = countInvalidRows(tableItems)
 
-    fun excludedTableCount(): Int = tableItems.count { it.error.isEmpty() && it.exclude }
+    fun excludedTableCount(): Int = countExcludedRows(tableItems)
 
-    fun duplicateTableCount(): Int = tableItems.indices.count { i ->
-        i in duplicates && tableItems[i].error.isEmpty() && !tableItems[i].exclude
-    }
+    fun duplicateTableCount(): Int = countDuplicateRows(tableItems, duplicates)
 
     fun canConfirm(): Boolean {
         if (busy || step != 1) return false

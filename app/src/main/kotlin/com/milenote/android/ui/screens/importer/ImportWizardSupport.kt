@@ -368,6 +368,25 @@ internal fun defaultCategoryOptions(
     return options
 }
 
+/**
+ * 「修改第 N 行」弹层的分类下拉：标准 9 类 + 本车自定义分类 + 该行当前分类。
+ *
+ * 保留当前值：识别出的分类可能是账本里出现过的旧分类 / 别的车分类，
+ * 不出现在选项里会让用户误以为自己改不了。值是数据值（分类名，不翻译），
+ * 展示名走 [DataLabels.category]（纯电「油费」显示为「电费」）。
+ */
+internal fun editCategoryOptions(
+    current: String,
+    customCategories: List<String>,
+    ev: Boolean = false,
+): List<Pair<String, String>> {
+    val names = LinkedHashSet<String>()
+    names.addAll(Categories.ALL)
+    customCategories.forEach { name -> if (name.isNotEmpty()) names.add(name) }
+    if (current.isNotEmpty()) names.add(current)
+    return names.map { name -> name to DataLabels.category(name, ev) }
+}
+
 /** 记录来源展示名（账本里存的是中文来源值，只在显示层映射）。 */
 internal fun importSourceLabel(source: String?): String {
     val raw = source.orEmpty()

@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -31,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +61,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.model.isEv
@@ -543,6 +549,9 @@ private fun PreviewStep(
     ev: Boolean,
     onPick: () -> Unit,
 ) {
+    // 逐行修改弹层：按列表下标打开；保存后写回 wizard.rowEdits（键=原始文件行号）。
+    var editingIndex by remember { mutableStateOf<Int?>(null) }
+    val editingItem = editingIndex?.let { index -> wizard.tableItems.getOrNull(index) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = MileNoteDimens.PageBottom),
@@ -588,7 +597,12 @@ private fun PreviewStep(
                 item { TableStatsCard(wizard = wizard) }
                 val shown = minOf(wizard.tableItems.size, PREVIEW_ROW_LIMIT)
                 items(shown) { index ->
-                    TablePreviewRow(wizard = wizard, index = index, ev = ev)
+                    TablePreviewRow(
+                        wizard = wizard,
+                        index = index,
+                        ev = ev,
+                        onEdit = { editingIndex = index },
+                    )
                 }
                 if (wizard.tableItems.size > shown) {
                     item { PreviewLimitNote(total = wizard.tableItems.size, shown = shown) }
@@ -609,6 +623,23 @@ private fun PreviewStep(
         if (wizard.busy) {
             item { LoadingState(label = wizard.busyMessage ?: tr("正在处理…", "Working…")) }
         }
+    }
+
+    if (editingItem != null) {
+        RowEditDialog(
+            item = editingItem,
+            ev = ev,
+            customCategories = ledger?.customCategories.orEmpty(),
+            onDismiss = { editingIndex = null },
+            onReset = {
+                wizard.clearRowEdit(editingItem.row)
+                editingIndex = null
+            },
+            onSave = { edit ->
+                wizard.editRow(editingItem.row, edit)
+                editingIndex = null
+            },
+        )
     }
 }
 
@@ -885,17 +916,28 @@ private fun TableStatsCard(wizard: ImportWizardState) {
 }
 
 @Composable
-private fun TablePreviewRow(wizard: ImportWizardState, index: Int, ev: Boolean) {
+private fun TablePreviewRow(
+    wizard: ImportWizardState,
+    index: Int,
+    ev: Boolean,
+    onEdit: () -> Unit,
+) {
     val item: ImportItem = wizard.tableItems.getOrNull(index) ?: return
     val hasError = item.error.isNotEmpty()
     val duplicate = index in wizard.duplicates
     val canSelect = !hasError
     val checked = canSelect && !item.exclude
+    val edited = wizard.rowEdit(item.row) != null
     val note = when {
         hasError -> item.error
         duplicate -> tr("与现有账本重复，确认时选择忽略或覆盖", "Duplicate of the current ledger — ignore or overwrite on confirmation")
         !item.record.note.isNullOrBlank() -> item.record.note.orEmpty()
         else -> tr("可导入", "Ready to import")
+    }
+    val supporting = if (edited) {
+        tr("已修改 · %s", "Edited · %s", note)
+    } else {
+        note
     }
     ListRowCard(
         title = tr(
@@ -909,7 +951,7 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int, ev: Boolean) 
         ),
         subtitle = tr("第 %d 行 · %s", "Row %d · %s", item.row, importSourceLabel(item.record.source)) +
             (item.record.odometer?.let { tr(" · %s %s", " · %s %s", Format.fmt(it), Units.distanceUnit) } ?: ""),
-        supporting = note,
+        supporting = supporting,
         leading = {
             if (hasError) {
                 Icon(
@@ -926,16 +968,29 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int, ev: Boolean) 
             }
         },
         trailing = {
-            if (hasError) {
-                StatusPill(text = tr("错误", "Error"), status = StatusKind.OVERDUE)
-            } else {
-                MoneyText(
-                    amount = Format.money(item.record.amount),
-                    size = MoneySize.SMALL,
-                    unit = Units.money,
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                if (hasError) {
+                    StatusPill(text = tr("错误", "Error"), status = StatusKind.OVERDUE)
+                } else {
+                    MoneyText(
+                        amount = Format.money(item.record.amount),
+                        size = MoneySize.SMALL,
+                        unit = Units.money,
+                    )
+                }
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        imageVector = MileNoteIcons.Edit,
+                        contentDescription = tr("修改第 %d 行", "Edit row %d", item.row),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         },
+        onClick = onEdit,
         containerColor = if (hasError) {
             MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
         } else {
@@ -944,6 +999,191 @@ private fun TablePreviewRow(wizard: ImportWizardState, index: Int, ev: Boolean) 
         ev = ev,
     )
 }
+
+/**
+ * 「修改第 N 行」弹层：按 ev 显示燃油（加油量 / 油价）或纯电（充电量 / 电价）专属字段。
+ *
+ * 保存后由 [ImportWizardState.editRow] 按原始文件行号持久化，
+ * 预览重建（换映射 / 换工作表 / 改默认分类 / 勾选）后仍生效；
+ * 行内错误用 domain 的 `validateRecord` 重新计算，错误行可以改到通过。
+ */
+@Composable
+private fun RowEditDialog(
+    item: ImportItem,
+    ev: Boolean,
+    customCategories: List<String>,
+    onDismiss: () -> Unit,
+    onReset: () -> Unit,
+    onSave: (ImportRowEdit) -> Unit,
+) {
+    // 以行号为 key 预填：弹层关闭后状态丢弃，重新打开时用该行最新记录值。
+    var date by remember(item.row) { mutableStateOf(item.record.date) }
+    var category by remember(item.row) { mutableStateOf(item.record.category) }
+    var amount by remember(item.row) { mutableStateOf(editableNumber(item.record.amount)) }
+    var payable by remember(item.row) { mutableStateOf(editableNumber(item.record.payable)) }
+    var discount by remember(item.row) { mutableStateOf(editableNumber(item.record.discount)) }
+    var odometer by remember(item.row) { mutableStateOf(editableNumber(item.record.odometer)) }
+    var liters by remember(item.row) { mutableStateOf(editableNumber(item.record.liters)) }
+    var kwh by remember(item.row) { mutableStateOf(editableNumber(item.record.kwh)) }
+    var unitPrice by remember(item.row) { mutableStateOf(editableNumber(item.record.unitPrice)) }
+    var note by remember(item.row) { mutableStateOf(item.record.note) }
+    var full by remember(item.row) { mutableStateOf(item.record.full) }
+
+    val draft = ImportRowEdit(
+        date = date,
+        category = category,
+        amount = amount,
+        payable = payable,
+        discount = discount,
+        odometer = odometer,
+        // 只提交当前动力类型专属字段，避免误清另一侧的存量值。
+        liters = if (ev) null else liters,
+        kwh = if (ev) kwh else null,
+        unitPrice = unitPrice,
+        note = note,
+        full = full,
+    )
+    val draftError = applyRowEdit(item, draft, customCategories).error
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr("修改第 %d 行", "Edit row %d", item.row)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 440.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (draftError.isNotEmpty()) {
+                    MessageBar(message = draftError, kind = MessageKind.ERROR)
+                }
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = { date = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        Text(
+                            text = tr("日期（yyyy-MM-dd）", "Date (yyyy-MM-dd)"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                    singleLine = true,
+                )
+                WizardDropdown(
+                    label = tr("分类", "Category"),
+                    selected = category,
+                    options = editCategoryOptions(category, customCategories, ev),
+                    onSelect = { value -> category = value.orEmpty() },
+                )
+                EditNumberField(
+                    label = tr("实付金额（%s）", "Amount paid (%s)", Units.money),
+                    value = amount,
+                    onValueChange = { amount = it },
+                )
+                EditNumberField(
+                    label = tr("应付金额（%s）", "Amount due (%s)", Units.money),
+                    value = payable,
+                    onValueChange = { payable = it },
+                )
+                EditNumberField(
+                    label = tr("优惠金额（%s）", "Discount (%s)", Units.money),
+                    value = discount,
+                    onValueChange = { discount = it },
+                )
+                EditNumberField(
+                    label = tr("总里程（%s）", "Odometer (%s)", Units.distanceUnit),
+                    value = odometer,
+                    onValueChange = { odometer = it },
+                )
+                if (ev) {
+                    EditNumberField(
+                        label = tr("充电量（%s）", "Charge amount (%s)", Units.energyUnit),
+                        value = kwh,
+                        onValueChange = { kwh = it },
+                    )
+                } else {
+                    EditNumberField(
+                        label = tr("加油量（%s）", "Fuel amount (%s)", Units.volumeUnit),
+                        value = liters,
+                        onValueChange = { liters = it },
+                    )
+                }
+                EditNumberField(
+                    label = if (ev) {
+                        tr("电价（%s）", "Price (%s)", Units.pricePerEnergy)
+                    } else {
+                        tr("油价（%s）", "Fuel price (%s)", Units.pricePerVolume)
+                    },
+                    value = unitPrice,
+                    onValueChange = { unitPrice = it },
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(1000) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(text = tr("备注", "Note"), style = MaterialTheme.typography.bodyMedium) },
+                    minLines = 2,
+                    maxLines = 4,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = full, onCheckedChange = { full = it })
+                    Text(
+                        text = if (ev) tr("已充满", "Fully charged") else tr("已加满", "Full tank"),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                Text(
+                    text = tr(
+                        "保存后按当前账本重新校验这一行；仍有错误时可再次打开继续修改。修改随原始行号保留，换映射或工作表后不丢失。",
+                        "Saving re-validates this row against the current ledger; reopen it while errors remain. " +
+                            "Edits are kept per source row and survive mapping or worksheet changes.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(draft) }) {
+                Text(tr("保存", "Save"))
+            }
+        },
+        dismissButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onReset) {
+                    Text(tr("恢复原始值", "Reset"))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(tr("取消", "Cancel"))
+                }
+            }
+        },
+    )
+}
+
+/** 金额 / 里程等数值字段的输入框（十进制键盘，解析失败按「清空」处理）。 */
+@Composable
+private fun EditNumberField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(text = label, style = MaterialTheme.typography.bodyMedium) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+    )
+}
+
+/** 数值 → 可编辑文本（整数不带 `.0`；null 显示为空）。 */
+private fun editableNumber(value: Double?): String = value?.let { Numbers.jsString(it) }.orEmpty()
 
 // ---------------------------------------------------------------------------------------------
 // 步骤 3：完成
