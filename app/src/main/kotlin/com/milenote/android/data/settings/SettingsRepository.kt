@@ -3,6 +3,7 @@ package com.milenote.android.data.settings
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +21,7 @@ class SettingsRepository(private val context: Context) {
         val currency = stringPreferencesKey("currency")
         val distanceUnit = stringPreferencesKey("distance_unit")
         val volumeUnit = stringPreferencesKey("volume_unit")
+        val lastBackupAt = longPreferencesKey("last_backup_at")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -38,6 +40,7 @@ class SettingsRepository(private val context: Context) {
             volumeUnit = prefs[Keys.volumeUnit]
                 ?.let { name -> com.milenote.android.i18n.VolumeUnit.entries.firstOrNull { it.name == name } }
                 ?: com.milenote.android.i18n.VolumeUnit.LITER,
+            lastBackupAt = prefs[Keys.lastBackupAt],
         )
     }
 
@@ -58,6 +61,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setVolumeUnit(unit: com.milenote.android.i18n.VolumeUnit) =
         edit { it[Keys.volumeUnit] = unit.name }
+
+    /** 记录最近一次 JSON 完整备份写出成功的时刻（epoch millis）。 */
+    suspend fun setLastBackupAt(epochMillis: Long) = edit { it[Keys.lastBackupAt] = epochMillis }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsDataStore.edit { prefs -> block(prefs) }

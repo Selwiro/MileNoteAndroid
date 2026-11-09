@@ -19,4 +19,9 @@ data class AppSettings(
     val distanceUnit: com.milenote.android.i18n.DistanceUnit = com.milenote.android.i18n.DistanceUnit.KM,
     /** 油量显示单位，默认升。只影响显示，不改写数值。 */
     val volumeUnit: com.milenote.android.i18n.VolumeUnit = com.milenote.android.i18n.VolumeUnit.LITER,
+    /**
+     * 最近一次 JSON 完整备份成功写出的时刻（epoch millis）；`null` = 尚未导出备份。
+     * 只存在本机设置里，**不进账本备份**、不参与 WebDAV 同步。
+     */
+    val lastBackupAt: Long? = null,
 )

@@ -2,7 +2,6 @@ package com.milenote.android.data.garage
 
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.BackupException
-import com.milenote.android.domain.backup.BackupPayload
 import com.milenote.android.domain.backup.GarageOps
 import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.demo.DemoData
@@ -143,19 +142,7 @@ class GarageRepository(
         val payload = BackupCodec.decodePayload(text)
         val merged = withContext(io) { BackupCodec.restore(current, text) }
         replace(merged)
-        val summary = when (payload) {
-            is BackupPayload.LegacyLedger -> RestoreSummary(
-                cars = merged.cars.size,
-                records = payload.ledger.records.size,
-                reminders = payload.ledger.reminders.size,
-            )
-            is BackupPayload.MulticarGarage -> RestoreSummary(
-                cars = payload.garage.cars.size,
-                records = payload.garage.cars.sumOf { it.records.size },
-                reminders = payload.garage.cars.sumOf { it.reminders.size },
-            )
-        }
-        return summary
+        return summarizeRestore(payload, merged)
     }
 
     /** 清空数据（单辆或全部）；自动补一辆空车，避免出现空车库。 */

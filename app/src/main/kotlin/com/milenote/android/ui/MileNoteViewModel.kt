@@ -744,6 +744,16 @@ class MileNoteViewModel(
 
     suspend fun exportBackup(): String = repository.exportBackup()
 
+    /**
+     * 标记一次 JSON 完整备份已成功写到磁盘（写 [SettingsRepository.setLastBackupAt]）。
+     *
+     * 只在 SAF 真正写盘成功后由设置页调用；取消（未选文件）或写盘失败不调用，
+     * 「分享」二次入口也不重复调用。时间只存本机设置，不进账本备份。
+     */
+    fun markBackupDone(nowMillis: Long = System.currentTimeMillis()) {
+        viewModelScope.launch { settingsRepository.setLastBackupAt(nowMillis) }
+    }
+
     /** 刷新「最近一次损坏账本」状态；进入备份与还原页时调用。 */
     suspend fun refreshQuarantinedRaw() {
         val file = repository.quarantinedRaw()

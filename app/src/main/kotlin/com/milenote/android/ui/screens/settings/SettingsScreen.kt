@@ -74,6 +74,7 @@ import com.milenote.android.BuildConfig
 import com.milenote.android.R
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
+import com.milenote.android.data.settings.formatBackupAt
 import com.milenote.android.data.update.UpdateCheckResult
 import com.milenote.android.data.update.UpdateChecker
 import com.milenote.android.domain.calc.Categories
@@ -273,6 +274,8 @@ fun SettingsScreen(
         if (uri != null && text != null) {
             runCatching { FileExporter.writeTo(context, uri, text.toByteArray(Charsets.UTF_8)) }
                 .onSuccess {
+                    // 只有真正写盘成功才更新时间；取消（uri == null）或失败不更新。
+                    vm.markBackupDone()
                     notify(
                         text = tr("完整备份已导出", "Full backup exported"),
                         kind = MessageKind.SUCCESS,
@@ -675,6 +678,7 @@ fun SettingsScreen(
                     SettingsPage.BACKUP -> BackupRestorePage(
                         carsCount = cars.size,
                         recordsCount = cars.sumOf { it.records.size },
+                        lastBackupAt = settings.lastBackupAt,
                         demo = state.demo,
                         loadError = state.loadError,
                         quarantinedRaw = state.quarantinedRaw,
@@ -1312,6 +1316,7 @@ private fun ExternalImportPage(
 private fun BackupRestorePage(
     carsCount: Int,
     recordsCount: Int,
+    lastBackupAt: Long?,
     demo: Boolean,
     loadError: String?,
     quarantinedRaw: QuarantinedRaw?,
@@ -1346,6 +1351,12 @@ private fun BackupRestorePage(
                 Text(
                     text = tr("%d 辆车 · %d 条记录", "%d vehicles · %d records", carsCount, recordsCount),
                     style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = lastBackupAt?.let { tr("上次备份：%s", "Last backup: %s", formatBackupAt(it)) }
+                        ?: tr("尚未导出备份", "No backup exported yet"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = tr(
