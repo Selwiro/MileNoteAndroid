@@ -78,6 +78,7 @@ import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.ocr.OcrException
 import com.milenote.android.platform.ocr.OcrRecognizer
+import com.milenote.android.platform.ocr.PumpDisplayReader
 import com.milenote.android.platform.ocr.TesseractLatinOcrRecognizer
 import com.milenote.android.platform.ocr.TesseractOcrRecognizer
 import com.milenote.android.ui.components.LoadingState
@@ -224,8 +225,36 @@ fun OcrCaptureScreen(
                     }
                 }
                 tryWith(recognizer, prepared)
+                // 七段数码管专用解码（A 方案）：Tesseract 结构性读不出 LED/LCD 读数，
+                // 这里用纯几何解码直接读「金额 / 升数 / 单价」三个数（读出即可跳过昂贵多轮重试）；
+                // 读出的值仍要过一致性校验，失败则留空并继续走 OCR 兜底。
+                var pumpReadingsDetected = false
+                val pumpImage = prepared
+                if (pumpImage != null && (bestParsed.amount == null || bestParsed.liters == null)) {
+                    val reading = withContext(Dispatchers.IO) { PumpDisplayReader.read(pumpImage) }
+                    if (reading != null && (reading.amount != null || reading.liters != null)) {
+                        pumpReadingsDetected = true
+                        bestParsed = bestParsed.copy(
+                            amount = bestParsed.amount ?: reading.amount,
+                            liters = bestParsed.liters ?: reading.liters,
+                            unitPrice = bestParsed.unitPrice ?: reading.unitPrice,
+                            warnings = bestParsed.warnings.filterNot { warning ->
+                                (reading.amount != null &&
+                                    (warning.contains("实付金额") || warning.contains("Paid amount"))) ||
+                                    (reading.liters != null &&
+                                        (warning.contains("加油量") || warning.contains("Fuel amount"))) ||
+                                    (reading.unitPrice != null &&
+                                        (warning.contains("油价") || warning.contains("Unit price")))
+                            } + tr(
+                                "已按加油机屏幕读数识别，请核对",
+                                "Read from the pump display — please verify",
+                            ),
+                        )
+                    }
+                }
+
                 // 普通小票一次就够；加油机屏幕等低清/七段数码管照片再尝试增强图 + 拉丁数字模型。
-                if (bestScore < 7) {
+                if (bestScore < 7 && !pumpReadingsDetected) {
                     val enhanced = withContext(Dispatchers.Default) { buildEnhancedVariants(prepared) }
                     try {
                         for (image in enhanced) {
@@ -264,7 +293,7 @@ fun OcrCaptureScreen(
                         bestText = allTexts.filter { it.isNotBlank() }.distinct().joinToString("\n")
                     }
                 }
-                val pumpDetected = allTexts.any {
+                val pumpDetected = pumpReadingsDetected || allTexts.any {
                     it.contains("提枪加油") || (it.contains("金额") && it.contains("单价"))
                 }
                 bestParsed = FuelReceiptParser.reconcile(bestParsed, pumpDetected)
@@ -629,6 +658,7 @@ private fun ResultOverlay(
 ) {
     var parsed by remember(recognizedText) { mutableStateOf(receipt) }
     var rawText by remember(recognizedText) { mutableStateOf(recognizedText) }
+    var showQuickFill by remember(recognizedText) { mutableStateOf(false) }
     val hasUsefulField = parsed != null && (
         parsed?.amount != null || parsed?.liters != null ||
             parsed?.date?.isNotBlank() == true || parsed?.odometer != null
@@ -711,12 +741,23 @@ private fun ResultOverlay(
                 )
             }
 
+            if (hasUsefulField) {
+                TextButton(
+                    onClick = { showQuickFill = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(tr("手动填写 / 修改读数", "Fill in / edit the readings"))
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
-                    onClick = { onUse(parsed) },
+                    onClick = {
+                        if (hasUsefulField) onUse(parsed) else showQuickFill = true
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .height(MileNoteDimens.ButtonMinHeight),
@@ -774,6 +815,18 @@ private fun ResultOverlay(
             }
 
         }
+    }
+
+    if (showQuickFill) {
+        OcrQuickFillDialog(
+            initial = parsed,
+            rawText = rawText,
+            onDismiss = { showQuickFill = false },
+            onApply = { updated ->
+                parsed = updated
+                showQuickFill = false
+            },
+        )
     }
 }
 

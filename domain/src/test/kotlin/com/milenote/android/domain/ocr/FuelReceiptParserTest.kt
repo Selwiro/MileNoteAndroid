@@ -230,6 +230,19 @@ class FuelReceiptParserTest {
     }
 
     @Test
+    fun `unlabeled tiny liters from ocr noise are ignored`() {
+        // 「3 上」（L 被读成 上）没有升数标签，是 OCR 碎片，不能当成 3 L。
+        val receipt = FuelReceiptParser.parse("提枪加油\n3 上\n支付时间 2026-11-09 18:42")
+        assertNull(receipt.liters)
+    }
+
+    @Test
+    fun `labeled small liters are still accepted`() {
+        val receipt = FuelReceiptParser.parse("升数 3.2 上\n实付金额 24.00 元")
+        assertEquals(3.2, receipt.liters!!, 1e-9)
+    }
+
+    @Test
     fun `pump display drops lone liters when amount missing`() {
         // 加油机屏金额没读出来时，孤立的一个「1 L」是噪声，不能静默填进升数。
         val receipt = FuelReceiptParser.parse("提枪加油\n请确认油枪归位\n1 L")

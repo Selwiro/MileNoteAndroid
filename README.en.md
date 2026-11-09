@@ -108,6 +108,8 @@ After refuelling, photograph the receipt or pick an existing image from the gall
 
 The app uses **CameraX + Tesseract** (Tesseract4Android, with the tessdata_fast Chinese and English models bundled) to recognise receipts on the device and tries to extract the amount paid, fuel volume and date.
 
+Pump-display screens (seven-segment LED/LCD) use a **built-in geometric decoder** instead: it reads the amount, fuel volume and unit price directly from the segment positions and still validates them with `amount ≈ fuel × unit price`. If nothing can be read, tap **Fill in / edit the readings** on the result panel to enter them quickly with a numeric keypad or the numbers found in the recognised text.
+
 Scan results only fill fields that are still empty and never overwrite existing values. Review them before saving so a misread doesn't end up in your ledger.
 
 Recognition runs locally; the image is never uploaded and never written into the ledger.
@@ -345,7 +347,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **267 domain unit tests** and **126 app unit tests**.
+The suite currently contains **286 domain unit tests** and **137 app unit tests**.
 
 ### Building a release APK
 

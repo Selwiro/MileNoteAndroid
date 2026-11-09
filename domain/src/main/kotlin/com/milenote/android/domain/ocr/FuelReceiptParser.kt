@@ -65,6 +65,9 @@ object FuelReceiptParser {
     private val ODOMETER_LABEL = Regex("^.*?(?:总里程|当前里程|表显里程)[:：]?")
     private val ODOMETER_VALUE = Regex("(\\d[\\d,]*(?:\\.\\d)?)")
 
+    /** 没有「升数/加油量」标签时，兜底扫描接受的最小读数：更小的多半是 OCR 碎片。 */
+    private const val FALLBACK_MIN_LITERS = 5.0
+
     private val OIL_AMOUNT_LABEL = Regex("油品金额|油品金額|油品费用")
     private val AMOUNT_LABEL_ANY = Regex(
         "实付金额|实付金額|实付全额|实付金领|实际支付|实际付款|实付款|实付|应付金额|应付金額|" +
@@ -221,7 +224,10 @@ object FuelReceiptParser {
         if (litersCandidates.isEmpty()) {
             val compact = lines.joinToString("")
             LITERS_UNIT.findAll(compact).forEach { m ->
-                m.groupValues[1].toDoubleOrNull()?.let { litersCandidates.add(it) }
+                // 没有「升数/加油量」标签时，过小的读数多半是 OCR 碎片（如 "3 上"）：
+                // 汽车单次加油 <5 L 不现实，宁可留空让用户手填。
+                m.groupValues[1].toDoubleOrNull()?.takeIf { it >= FALLBACK_MIN_LITERS }
+                    ?.let { litersCandidates.add(it) }
             }
         }
         if (isPumpDisplay && litersCandidates.isEmpty()) {
@@ -317,7 +323,7 @@ object FuelReceiptParser {
             }
             for (m in matches) {
                 val value = m.groupValues[1].toDoubleOrNull() ?: continue
-                if (value in 0.1..2000.0) scored.add(score to value)
+                if (value in FALLBACK_MIN_LITERS..2000.0) scored.add(score to value)
             }
         }
         if (scored.isEmpty()) return
