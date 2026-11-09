@@ -20,7 +20,7 @@ MileNote is a local-first, multi-vehicle car expense tracker for Android, built 
 
 ## 界面
 
-> 截图来自 App 内置演示账本，数据为合成示例。更多界面见[官网](https://selwiro.github.io/MileNoteAndroid/#screenshots)。
+> 截图取自 App 内置演示账本（0.27.0 实拍），数据为合成示例，仅示意信息结构；最新界面见[官网](https://selwiro.github.io/MileNoteAndroid/#screenshots)。
 
 | 用车总览 | 记一笔 | 费用统计 | 维修保养 |
 |:---:|:---:|:---:|:---:|
