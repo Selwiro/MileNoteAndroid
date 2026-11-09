@@ -13,6 +13,7 @@ import com.milenote.android.data.share.SharedImport
 import com.milenote.android.data.settings.SettingsRepository
 import com.milenote.android.data.webdav.Plan
 import com.milenote.android.data.webdav.AutoSyncOutcome
+import com.milenote.android.data.webdav.RemoteLedger
 import com.milenote.android.data.webdav.WebDavAutoSyncEngine
 import com.milenote.android.data.webdav.WebDavFetchResult
 import com.milenote.android.data.webdav.WebDavRemoteMeta
@@ -21,6 +22,7 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
@@ -100,6 +102,16 @@ data class WebDavConflict(
     val remoteChanged: Boolean,
 )
 
+/** 需要用户输入加密密码的待办动作（解密成功后重跑）。 */
+enum class PendingWebDavAction { DOWNLOAD_REPLACE, DOWNLOAD_MERGE, SYNC, MERGE_CONFLICT }
+
+/** 远端账本已加密、需要用户输入密码的弹层状态。 */
+data class WebDavDecryptPrompt(
+    val pending: PendingWebDavAction,
+    /** 弹层内错误（密码错误等）；null 表示无错误。 */
+    val error: String? = null,
+)
+
 /** WebDAV 同步页状态（VM 维护）。 */
 data class WebDavUiState(
     val configured: Boolean = false,
@@ -107,6 +119,12 @@ data class WebDavUiState(
     val username: String = "",
     val allowHttp: Boolean = false,
     val hasPassword: Boolean = false,
+    /** 是否已保存账本加密密码（= 加密上传已开启）。 */
+    val hasEncryptionPassword: Boolean = false,
+    /** 上次读到的远端格式：null=未知，false=明文，true=加密。 */
+    val remoteEncrypted: Boolean? = null,
+    /** 远端加密但本机没有密码时的密码输入弹层；null 表示无。 */
+    val decryptPrompt: WebDavDecryptPrompt? = null,
     val lastSyncAt: Long? = null,
     val lastResult: String? = null,
     val remoteExists: Boolean? = null,
@@ -203,6 +221,7 @@ class MileNoteViewModel(
                             username = config?.username ?: current.username,
                             allowHttp = config?.allowHttp ?: current.allowHttp,
                             hasPassword = config?.hasPassword ?: false,
+                            hasEncryptionPassword = config?.hasEncryptionPassword ?: false,
                             lastSyncAt = sync.lastSyncAt,
                             lastAutoSyncAt = sync.lastAutoSyncAt,
                             lastAutoSyncResult = sync.lastAutoSyncResult,
@@ -797,7 +816,20 @@ class MileNoteViewModel(
 
     // ---------- WebDAV 同步 ----------
 
-    fun saveWebDavConfig(url: String, username: String, password: String, allowHttp: Boolean) {
+    /**
+     * 保存 WebDAV 配置（含可选的账本加密密码），随后自动测试连接。
+     *
+     * @param encryptionEnabled 是否开启加密上传；关闭时清除本机保存的加密密码（远端文件不动）。
+     * @param encryptionPassword 新的加密密码明文；null/空白表示沿用已保存的密码。
+     */
+    fun saveWebDavConfig(
+        url: String,
+        username: String,
+        password: String,
+        allowHttp: Boolean,
+        encryptionEnabled: Boolean,
+        encryptionPassword: String?,
+    ) {
         if (_state.value.demo) {
             _state.value = _state.value.copy(webDav = _state.value.webDav.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")))
             return
@@ -805,7 +837,7 @@ class MileNoteViewModel(
         viewModelScope.launch {
             updateWebDav { it.copy(busy = true, error = null, lastResult = null) }
             try {
-                webDavRepository.save(url, username, password, allowHttp)
+                webDavRepository.save(url, username, password, allowHttp, encryptionPassword, encryptionEnabled)
                 val meta = webDavRepository.testConnection()
                 updateWebDav {
                     it.copy(
@@ -836,6 +868,8 @@ class MileNoteViewModel(
                         lastResult = tr("已清除 WebDAV 连接", "WebDAV connection cleared"),
                         remoteExists = null,
                         remoteSize = null,
+                        remoteEncrypted = null,
+                        decryptPrompt = null,
                         conflict = null,
                     )
                 }
@@ -877,26 +911,28 @@ class MileNoteViewModel(
         viewModelScope.launch { runWebDavSync() }
     }
 
-    /** 强制把本地备份覆盖到远端（用户确认后）。 */
+    /** 强制把本地备份覆盖到远端（用户确认后）；沿用已保存的加密配置决定明文/密文。 */
     fun webDavUpload() {
         if (_state.value.demo) {
             updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
             return
         }
         viewModelScope.launch {
-            updateWebDav { it.copy(busy = true, error = null, lastResult = null) }
+            updateWebDav { it.copy(busy = true, error = null, lastResult = null, remoteEncrypted = null) }
             try {
                 val localJson = repository.exportBackup()
-                val localBytes = localJson.toByteArray(Charsets.UTF_8)
-                val localHash = webDavRepository.sha256(localBytes)
-                val meta = webDavRepository.upload(localBytes, force = true)
+                val localHash = webDavRepository.plainHash(localJson)
+                val meta = webDavRepository.uploadLedger(localJson, force = true)
+                val encrypted = webDavRepository.hasEncryptionPassword()
                 webDavRepository.markSynced(meta.etag, localHash, localHash)
                 updateWebDav {
                     it.copy(
                         busy = false,
                         lastResult = tr("已上传并覆盖远端备份", "Uploaded and overwrote the remote backup"),
                         remoteExists = true,
-                        remoteSize = localBytes.size.toLong(),
+                        remoteSize = meta.size,
+                        remoteEncrypted = encrypted,
+                        decryptPrompt = null,
                         conflict = null,
                     )
                 }
@@ -906,7 +942,7 @@ class MileNoteViewModel(
         }
     }
 
-    /** 从远端恢复：MERGE 只新增；REPLACE 覆盖本地。 */
+    /** 从远端恢复：MERGE 只新增；REPLACE 覆盖本地。远端加密且本机无密码时弹密码框。 */
     fun webDavDownload(mode: WebDavDownloadMode) {
         if (_state.value.demo) {
             updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
@@ -915,16 +951,29 @@ class MileNoteViewModel(
         viewModelScope.launch {
             updateWebDav { it.copy(busy = true, error = null, lastResult = null) }
             try {
-                when (val fetched = webDavRepository.fetch()) {
+                when (val fetched = webDavRepository.fetchLedger()) {
                     is WebDavFetchResult.NotFound -> {
-                        updateWebDav { it.copy(busy = false, error = tr("远端没有备份文件，请先上传", "No backup on the server. Upload one first.")) }
+                        updateWebDav {
+                            it.copy(
+                                busy = false,
+                                error = tr("远端没有备份文件，请先上传", "No backup on the server. Upload one first."),
+                                remoteExists = false,
+                                remoteSize = null,
+                                remoteEncrypted = null,
+                            )
+                        }
+                    }
+                    is WebDavFetchResult.PasswordRequired -> {
+                        askWebDavDecryptPassword(
+                            if (mode == WebDavDownloadMode.MERGE) PendingWebDavAction.DOWNLOAD_MERGE else PendingWebDavAction.DOWNLOAD_REPLACE,
+                        )
                     }
                     is WebDavFetchResult.Found -> {
-                        val text = fetched.bytes.toString(Charsets.UTF_8)
+                        val text = fetched.ledger.text
                         applyRemoteBackup(text, mode)
                         val localJson = repository.exportBackup()
-                        val localHash = webDavRepository.sha256(localJson.toByteArray(Charsets.UTF_8))
-                        val remoteHash = webDavRepository.sha256(fetched.bytes)
+                        val localHash = webDavRepository.plainHash(localJson)
+                        val remoteHash = webDavRepository.plainHash(text)
                         webDavRepository.markSynced(fetched.meta.etag, localHash, remoteHash)
                         updateWebDav {
                             it.copy(
@@ -936,6 +985,8 @@ class MileNoteViewModel(
                                 },
                                 remoteExists = true,
                                 remoteSize = fetched.bytes.size.toLong(),
+                                remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
+                                decryptPrompt = null,
                                 conflict = null,
                             )
                         }
@@ -961,26 +1012,30 @@ class MileNoteViewModel(
                 viewModelScope.launch {
                     updateWebDav { it.copy(busy = true, error = null) }
                     try {
-                        when (val fetched = webDavRepository.fetch()) {
+                        when (val fetched = webDavRepository.fetchLedger()) {
                             is WebDavFetchResult.NotFound -> {
                                 updateWebDav { it.copy(busy = false, error = tr("远端备份已不存在，请重新同步", "The remote backup no longer exists. Sync again.")) }
                             }
+                            is WebDavFetchResult.PasswordRequired -> {
+                                askWebDavDecryptPassword(PendingWebDavAction.MERGE_CONFLICT)
+                            }
                             is WebDavFetchResult.Found -> {
-                                val text = fetched.bytes.toString(Charsets.UTF_8)
+                                val text = fetched.ledger.text
                                 val current = _state.value.garage ?: repository.load()
                                 val merged = BackupCodec.restore(current, text)
                                 repository.replace(merged)
                                 val mergedJson = repository.exportBackup()
-                                val mergedBytes = mergedJson.toByteArray(Charsets.UTF_8)
-                                val mergedHash = webDavRepository.sha256(mergedBytes)
-                                val meta = webDavRepository.upload(mergedBytes, force = true)
+                                val mergedHash = webDavRepository.plainHash(mergedJson)
+                                val meta = webDavRepository.uploadLedger(mergedJson, force = true)
                                 webDavRepository.markSynced(meta.etag, mergedHash, mergedHash)
                                 updateWebDav {
                                     it.copy(
                                         busy = false,
                                         lastResult = tr("已合并远端记录并上传合并结果", "Merged remote records and uploaded the result"),
                                         remoteExists = true,
-                                        remoteSize = mergedBytes.size.toLong(),
+                                        remoteSize = meta.size,
+                                        remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
+                                        decryptPrompt = null,
                                     )
                                 }
                             }
@@ -999,6 +1054,86 @@ class MileNoteViewModel(
 
     fun dismissWebDavMessage() {
         updateWebDav { it.copy(error = null, lastResult = null) }
+    }
+
+    /**
+     * 提交解密密码：先用 [LedgerCrypto] 对已缓存的远端信封做本地校验，
+     * **验证成功才落库**（保存加密密码 = 开启加密上传，防止后续把远端降级成明文），然后重跑待办动作。
+     */
+    fun submitWebDavDecryptPassword(password: String) {
+        val prompt = _state.value.webDav.decryptPrompt ?: return
+        if (password.isBlank()) {
+            updateWebDav {
+                it.copy(decryptPrompt = prompt.copy(error = tr("请输入加密密码", "Enter the encryption password")))
+            }
+            return
+        }
+        if (_state.value.demo) {
+            updateWebDav {
+                it.copy(decryptPrompt = prompt.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")))
+            }
+            return
+        }
+        viewModelScope.launch {
+            updateWebDav { it.copy(busy = true, error = null, decryptPrompt = prompt.copy(error = null)) }
+            val envelope = webDavRepository.cachedEncryptedRemoteBytes()?.toString(Charsets.UTF_8)
+            if (envelope == null || !LedgerCrypto.isEncrypted(envelope)) {
+                updateWebDav {
+                    it.copy(
+                        busy = false,
+                        decryptPrompt = prompt.copy(error = tr("远端账本内容已变化，请重新同步", "The remote ledger has changed — sync again")),
+                    )
+                }
+                return@launch
+            }
+            val decryptError = try {
+                LedgerCrypto.decryptIfEncrypted(envelope, password)
+                null
+            } catch (t: Throwable) {
+                t.message ?: tr("解密失败，请重试", "Decryption failed — try again")
+            }
+            if (decryptError != null) {
+                // 密码错误不落库，只把错误写进弹层。
+                updateWebDav { it.copy(busy = false, decryptPrompt = prompt.copy(error = decryptError)) }
+                return@launch
+            }
+            try {
+                webDavRepository.saveEncryptionPassword(password)
+            } catch (t: Throwable) {
+                updateWebDav {
+                    it.copy(
+                        busy = false,
+                        decryptPrompt = prompt.copy(error = t.message ?: tr("加密密码保存失败", "Could not save the encryption password")),
+                    )
+                }
+                return@launch
+            }
+            updateWebDav { it.copy(busy = false, decryptPrompt = null, remoteEncrypted = true) }
+            // 重跑刚才被密码拦住的动作。
+            when (prompt.pending) {
+                PendingWebDavAction.DOWNLOAD_REPLACE -> webDavDownload(WebDavDownloadMode.REPLACE)
+                PendingWebDavAction.DOWNLOAD_MERGE -> webDavDownload(WebDavDownloadMode.MERGE)
+                PendingWebDavAction.SYNC -> webDavSyncNow()
+                PendingWebDavAction.MERGE_CONFLICT -> resolveWebDavConflict(WebDavConflictChoice.MERGE)
+            }
+        }
+    }
+
+    /** 关闭解密密码弹层（保持现状，不做任何同步）。 */
+    fun cancelWebDavDecrypt() {
+        updateWebDav { it.copy(decryptPrompt = null, busy = false) }
+    }
+
+    /** 远端加密但本机没有密码：记录待办动作并弹密码框，不报错。 */
+    private fun askWebDavDecryptPassword(pending: PendingWebDavAction) {
+        updateWebDav {
+            it.copy(
+                busy = false,
+                error = null,
+                decryptPrompt = WebDavDecryptPrompt(pending),
+                remoteEncrypted = true,
+            )
+        }
     }
 
     /** 开启/关闭 WebDAV 自动同步；开启后立即尝试一次。 */
@@ -1026,10 +1161,18 @@ class MileNoteViewModel(
                 message = tr("自动同步发现冲突，请到 设置 → WebDAV 同步 手动处理", "Auto sync found a conflict. Resolve it in Settings → WebDAV sync."),
             )
         }
+        if (outcome.kind == AutoSyncOutcome.Kind.NEEDS_PASSWORD) {
+            // 自动同步不弹密码框，只提示用户去设置页输入。
+            _state.value = _state.value.copy(message = outcome.message)
+        }
         updateWebDav {
             it.copy(
                 lastResult = outcome.message,
                 error = if (outcome.kind == AutoSyncOutcome.Kind.ERROR) outcome.message else it.error,
+                remoteEncrypted = when (outcome.kind) {
+                    AutoSyncOutcome.Kind.NEEDS_PASSWORD -> true
+                    else -> it.remoteEncrypted
+                },
             )
         }
     }
@@ -1037,6 +1180,11 @@ class MileNoteViewModel(
     private suspend fun runWebDavSync() {
         updateWebDav { it.copy(busy = true, error = null, lastResult = null, conflict = null) }
         val outcome = webDavAutoSyncEngine.sync(recordAutoResult = false)
+        if (outcome.kind == AutoSyncOutcome.Kind.NEEDS_PASSWORD) {
+            // 手动路径：弹密码框而不是报错。
+            askWebDavDecryptPassword(PendingWebDavAction.SYNC)
+            return
+        }
         updateWebDav {
             it.copy(
                 busy = false,

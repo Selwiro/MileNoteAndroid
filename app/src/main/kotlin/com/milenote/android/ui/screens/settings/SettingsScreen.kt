@@ -715,8 +715,15 @@ fun SettingsScreen(
                         item("webdav") {
                             WebDavPage(
                                 state = state.webDav,
-                                onSaveConfig = { url, username, password, allowHttp ->
-                                    vm.saveWebDavConfig(url, username, password, allowHttp)
+                                onSaveConfig = { url, username, password, allowHttp, encryptionEnabled, encryptionPassword ->
+                                    vm.saveWebDavConfig(
+                                        url = url,
+                                        username = username,
+                                        password = password,
+                                        allowHttp = allowHttp,
+                                        encryptionEnabled = encryptionEnabled,
+                                        encryptionPassword = encryptionPassword,
+                                    )
                                 },
                                 onClearConfig = { vm.clearWebDavConfig() },
                                 onSyncNow = { vm.webDavSyncNow() },
@@ -726,6 +733,8 @@ fun SettingsScreen(
                                 onDismissConflict = { vm.dismissWebDavConflict() },
                                 onDismissMessage = { vm.dismissWebDavMessage() },
                                 onAutoSyncChange = { vm.setWebDavAutoSync(it) },
+                                onSubmitDecryptPassword = { vm.submitWebDavDecryptPassword(it) },
+                                onCancelDecrypt = { vm.cancelWebDavDecrypt() },
                             )
                         }
                     }

@@ -9,7 +9,7 @@
 
 MileNote is an **open-source, native, local-first Android app for logging car expenses and mileage**. It supports multiple vehicles, daily expense records, fuel and energy analysis, service planning and running-cost statistics.
 
-No account is needed, and the ledger is stored on your phone by default — it never depends on a developer server. To sync between devices, you can connect your own WebDAV storage.
+No account is needed, and the ledger is stored on your phone by default — it never depends on a developer server. To sync between devices, you can connect your own WebDAV storage and optionally enable encrypted upload (off by default).
 
 Refuelling, charging, parking, insurance, repairs and scheduled maintenance all live in one place, with charts that show how each car is used and where the money goes over time.
 
@@ -20,7 +20,7 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 - **Local-first, no account:** the ledger stays on your device by default, with no subscriptions, ads or analytics.
 - **Fuel cars and EVs:** separate fuel-economy and energy analysis, with matching service plans for each powertrain.
 - **Independent multi-vehicle management:** expenses, energy and service records are kept per vehicle; a full backup covers every vehicle.
-- **Easy migration:** import records from Bear and Qianji, with CSV export, full JSON backups and optional WebDAV sync.
+- **Easy migration:** import records from Bear and Qianji, with CSV export, full JSON backups and optional WebDAV sync (encrypted upload supported).
 
 ## Screenshots
 
@@ -145,7 +145,11 @@ Sync jobs only run while the app is in the foreground; they stop when you leave 
 
 The WebDAV password is encrypted with Android Keystore and AES-256-GCM before being stored on the device. Release builds only allow HTTPS connections.
 
-**Note:** the ledger uploaded to WebDAV is plain JSON and is not end-to-end encrypted. Use a service you trust and set access permissions carefully.
+The uploaded ledger can optionally be encrypted; this is off by default. Turn on **Encrypted upload** under Settings → WebDAV sync and set a separate encryption password (at least 8 characters), and the remote file is stored as AES-256-GCM ciphertext whose key is derived from that password with PBKDF2-SHA256 (600,000 iterations). The encryption password is also protected by the Android Keystore and kept only on this device; the developer cannot access it. On another device, enter the same password to decrypt and restore the ledger.
+
+Encrypted files use the same format as the Web version's "encrypted sync", so the two are interoperable: the Web version can read files encrypted by the Android app, and the Android app can read the Web version's encrypted or plain files.
+
+**Note:** without encryption, the uploaded ledger remains plain JSON and transport security relies on HTTPS; use a service you trust and set access permissions carefully. The encryption password cannot be recovered — if you forget it, the remote encrypted ledger cannot be decrypted. Please remember it.
 
 ### Other features
 
@@ -202,7 +206,7 @@ Data is handled as follows:
 | Vehicle images | Embedded in the ledger as data URLs |
 | File import | Parsed on the device; original files are never uploaded |
 | Receipt OCR | Recognised on the device; images are never uploaded or kept |
-| WebDAV | Configured by you; plain JSON sent over HTTPS |
+| WebDAV | Configured by you; HTTPS only; plain JSON by default, with optional encrypted upload (AES-256-GCM ciphertext) |
 | Accounts and analytics | No accounts, subscriptions, ads or analytics |
 
 The app requests camera, network and coarse location. Coarse location is used only for the today's fuel price feature.
@@ -227,7 +231,7 @@ MileNote is still in active development. Current limitations:
 - **EVs:** no charging-receipt OCR, battery health analysis or range estimation yet.
 - **Today's fuel price:** prices and adjustment direction are reference only; rely on official announcements and station prices.
 - **Cost statistics:** calculated from recorded data only; depreciation, loan interest and other costs are not included automatically.
-- **Sync security:** WebDAV keeps plain JSON remotely; you are responsible for securing the server.
+- **Sync security:** without encryption, WebDAV keeps plain JSON remotely; with encryption on, the remote file is AES-256-GCM ciphertext, and the encryption password is stored only on the device and cannot be recovered. Either way, you are responsible for securing the server.
 - **APK signing:** builds signed with different keys cannot be installed over each other.
 
 ## Roadmap

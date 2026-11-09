@@ -11,7 +11,15 @@ data class AutoSyncOutcome(
     val kind: Kind,
     val message: String,
 ) {
-    enum class Kind { SUCCESS, CONFLICT, ERROR, SKIPPED }
+    enum class Kind {
+        SUCCESS,
+        CONFLICT,
+        ERROR,
+        SKIPPED,
+
+        /** 远端账本已加密，但本机没有保存加密密码：不自动覆盖，提示用户去设置页输入。 */
+        NEEDS_PASSWORD,
+    }
 }
 
 /**
@@ -21,6 +29,12 @@ data class AutoSyncOutcome(
  * - 只有本地有修改 → 上传；
  * - 只有远端有修改 → 下载覆盖本地；
  * - 两边都有修改 → 不自动覆盖，返回冲突，由用户手动处理。
+ *
+ * 同步比较的 hash 一律用**明文 JSON**（[WebDavRepository.plainHash]）：加密信封每次 salt/iv 随机，
+ * 密文 hash 每次都变，不能用于判断内容是否变化。
+ *
+ * 安全闸：远端是加密文件而本机没有加密密码时**绝不上传明文**（避免静默降级成明文），
+ * 返回 [AutoSyncOutcome.Kind.NEEDS_PASSWORD] 让用户先到设置页输入密码。
  */
 class WebDavAutoSyncEngine(
     private val garage: GarageRepository,
@@ -44,14 +58,13 @@ class WebDavAutoSyncEngine(
         try {
             garage.load()
             val localJson = garage.exportBackup()
-            val localBytes = localJson.toByteArray(Charsets.UTF_8)
-            val localHash = webDav.sha256(localBytes)
+            val localHash = webDav.plainHash(localJson)
             val sync = webDav.syncState.value
-            val outcome = when (val fetched = webDav.fetch()) {
-                is WebDavFetchResult.NotFound -> {
+            val outcome = when (val fetched = webDav.fetchLedger()) {
+                WebDavFetchResult.NotFound -> {
                     val plan = webDav.plan(localChanged = true, remoteChanged = false, remoteExists = false)
                     if (plan == Plan.UPLOAD) {
-                        val meta = webDav.upload(localBytes)
+                        val meta = webDav.uploadLedger(localJson)
                         webDav.markSynced(meta.etag, localHash, localHash)
                         AutoSyncOutcome(
                             AutoSyncOutcome.Kind.SUCCESS,
@@ -61,28 +74,46 @@ class WebDavAutoSyncEngine(
                         AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, tr("已是最新", "Already up to date"))
                     }
                 }
+                WebDavFetchResult.PasswordRequired -> AutoSyncOutcome(
+                    AutoSyncOutcome.Kind.NEEDS_PASSWORD,
+                    tr(
+                        "远端账本已加密，请到 设置 → WebDAV 同步 输入加密密码",
+                        "The remote ledger is encrypted — enter the encryption password in Settings → WebDAV sync",
+                    ),
+                )
                 is WebDavFetchResult.Found -> {
-                    val remoteHash = webDav.sha256(fetched.bytes)
+                    val remotePlain = fetched.ledger.text
+                    val remoteHash = webDav.plainHash(remotePlain)
+                    val remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted
                     val remoteChanged = if (sync.lastEtag != null) {
                         sync.lastSyncAt == null || fetched.meta.etag != sync.lastEtag
                     } else {
                         sync.lastSyncAt == null || remoteHash != sync.lastRemoteHash
                     }
                     val localChanged = sync.lastLocalHash == null || localHash != sync.lastLocalHash
-                    when (webDav.plan(localChanged, remoteChanged, remoteExists = true)) {
-                        Plan.UPLOAD -> {
-                            val meta = webDav.upload(localBytes)
-                            webDav.markSynced(meta.etag, localHash, localHash)
-                            AutoSyncOutcome(
-                                AutoSyncOutcome.Kind.SUCCESS,
-                                tr("已自动上传本地修改", "Local changes uploaded automatically"),
+
+                    /** 上传前的防降级安全闸：远端加密而本机无加密密码时只提示，不上传明文。 */
+                    suspend fun uploadLocal(action: String): AutoSyncOutcome {
+                        if (remoteEncrypted && !webDav.hasEncryptionPassword()) {
+                            return AutoSyncOutcome(
+                                AutoSyncOutcome.Kind.NEEDS_PASSWORD,
+                                tr(
+                                    "远端账本已加密，请到 设置 → WebDAV 同步 输入加密密码（已阻止明文上传）",
+                                    "The remote ledger is encrypted — enter the encryption password in Settings → WebDAV sync (plain upload blocked)",
+                                ),
                             )
                         }
+                        val meta = webDav.uploadLedger(localJson)
+                        webDav.markSynced(meta.etag, localHash, localHash)
+                        return AutoSyncOutcome(AutoSyncOutcome.Kind.SUCCESS, action)
+                    }
+
+                    when (webDav.plan(localChanged, remoteChanged, remoteExists = true)) {
+                        Plan.UPLOAD -> uploadLocal(tr("已自动上传本地修改", "Local changes uploaded automatically"))
                         Plan.DOWNLOAD -> {
-                            val text = fetched.bytes.toString(Charsets.UTF_8)
-                            garage.replace(BackupCodec.decode(text))
+                            garage.replace(BackupCodec.decode(remotePlain))
                             val newLocal = garage.exportBackup()
-                            val newHash = webDav.sha256(newLocal.toByteArray(Charsets.UTF_8))
+                            val newHash = webDav.plainHash(newLocal)
                             webDav.markSynced(fetched.meta.etag, newHash, remoteHash)
                             AutoSyncOutcome(
                                 AutoSyncOutcome.Kind.SUCCESS,

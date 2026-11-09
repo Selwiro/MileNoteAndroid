@@ -66,22 +66,25 @@ private enum class WebDavOverwrite { UPLOAD, DOWNLOAD }
  * WebDAV 同步子页（设置 → WebDAV 同步）。
  *
  * 内容顺序（自上而下）：
- * 1. **连接状态**：已配置/未配置、上次同步时间、上次结果、远端文件存在性/大小；
- *    右上角「清除连接」（二次确认）。
- * 2. **连接**：服务器文件完整地址、用户名、应用密码（已保存时留空不修改）、允许 HTTP 开关；
+ * 1. **连接状态**：已配置/未配置、上次同步时间、上次结果、远端文件存在性/大小、
+ *    上传格式（加密/明文 JSON）与远端格式（加密/明文/未知）；右上角「清除连接」（二次确认）。
+ * 2. **连接**：服务器文件完整地址、用户名、应用密码（已保存时留空不修改）、
+ *    加密上传开关（可选，独立加密密码 + 确认密码，字段下显示行内校验错误）、允许 HTTP 开关；
  *    「保存并测试」/「清除连接」。
  * 3. **同步**（仅已配置时显示）：立即同步（智能比较）+ 上传覆盖 / 下载覆盖（均二次确认）；
  *    busy 时进度条 + 禁用按钮；错误/结果用 [MessageBar] 展示。
- * 4. **说明**：HTTPS、坚果云应用密码、远端目录需先创建、账本 JSON 明文存储等。
+ * 4. **说明**：HTTPS、坚果云应用密码、远端目录需先创建、明文/加密格式与 Web 版互通等。
  *
  * 冲突时由 VM 设置 `conflict`，本页弹 AlertDialog 提供「用本地覆盖远端 / 用远端覆盖本地 /
  * 合并（只新增远端记录）」；「取消」只关闭弹层、保持现状（不调用 resolve）。
+ * 远端已加密但本机没有密码时 VM 设置 `decryptPrompt`，本页弹密码输入层：确认后交由 VM 先本地
+ * 验证再落库并重跑刚才的动作，错误（密码不对等）显示在弹层内。
  *
  * 本页不直接做网络请求，所有动作都转给 [MileNoteViewModel][com.milenote.android.ui.MileNoteViewModel]；
  * 文件地址、账号、密码仅用于当前会话与 VM 持久化，UI 不打印/记录密码。
  *
  * @param state VM 暴露的 WebDAV 状态。
- * @param onSaveConfig 保存连接配置；VM 成功后会自动做一次连接测试并更新状态。
+ * @param onSaveConfig 保存连接配置（含可选的加密密码）；VM 成功后会自动做一次连接测试并更新状态。
  * @param onClearConfig 清除本机保存的连接信息（不影响远端文件）。
  * @param onSyncNow 智能同步（比较后上传或下载）。
  * @param onUpload 强制上传覆盖远端。
@@ -89,11 +92,21 @@ private enum class WebDavOverwrite { UPLOAD, DOWNLOAD }
  * @param onResolveConflict 解决冲突（保留本地 / 保留远端 / 合并）。
  * @param onDismissConflict 关闭冲突弹层（保持现状，不做合并/覆盖）。
  * @param onDismissMessage 关闭错误/结果提示。
+ * @param onAutoSyncChange 切换自动同步。
+ * @param onSubmitDecryptPassword 提交「远端账本已加密」弹层里的解密密码。
+ * @param onCancelDecrypt 关闭解密密码弹层（保持现状）。
  */
 @Composable
 internal fun WebDavPage(
     state: WebDavUiState,
-    onSaveConfig: (url: String, username: String, password: String, allowHttp: Boolean) -> Unit,
+    onSaveConfig: (
+        url: String,
+        username: String,
+        password: String,
+        allowHttp: Boolean,
+        encryptionEnabled: Boolean,
+        encryptionPassword: String?,
+    ) -> Unit,
     onClearConfig: () -> Unit,
     onSyncNow: () -> Unit,
     onUpload: () -> Unit,
@@ -102,6 +115,8 @@ internal fun WebDavPage(
     onDismissConflict: () -> Unit,
     onDismissMessage: () -> Unit,
     onAutoSyncChange: (Boolean) -> Unit,
+    onSubmitDecryptPassword: (String) -> Unit,
+    onCancelDecrypt: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
 
@@ -112,6 +127,19 @@ internal fun WebDavPage(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var urlError by remember { mutableStateOf<String?>(null) }
+
+    // 加密上传：开关默认跟着已保存状态；已保存密码时两栏留空 = 不修改。
+    var encryptionEnabled by remember(state.hasEncryptionPassword) { mutableStateOf(state.hasEncryptionPassword) }
+    var encryptionPassword by remember { mutableStateOf("") }
+    var confirmEncryptionPassword by remember { mutableStateOf("") }
+    var encryptionPasswordVisible by remember { mutableStateOf(false) }
+    var confirmEncryptionPasswordVisible by remember { mutableStateOf(false) }
+    var encryptionPasswordError by remember { mutableStateOf<String?>(null) }
+    var confirmEncryptionPasswordError by remember { mutableStateOf<String?>(null) }
+
+    // 解密弹层里的输入：只在待办动作变化时重置，密码错误（error 变化）时保留用户已输入内容。
+    var decryptPassword by remember(state.decryptPrompt?.pending) { mutableStateOf("") }
+    var decryptPasswordVisible by remember { mutableStateOf(false) }
 
     var showClearConfirm by remember { mutableStateOf(false) }
     var overwriteAction by remember { mutableStateOf<WebDavOverwrite?>(null) }
@@ -129,9 +157,37 @@ internal fun WebDavPage(
             else -> null
         }
         urlError = error
-        if (error != null) return false
-        onSaveConfig(trimmed, username.trim(), password, allowHttp)
+
+        // 加密密码校验（开启加密时）：新密码长度 / 两次一致 / 开启但无可用密码。
+        var encryptionError: String? = null
+        var confirmError: String? = null
+        if (encryptionEnabled) {
+            when {
+                encryptionPassword.isNotBlank() && encryptionPassword.length < 8 ->
+                    encryptionError = tr("加密密码至少需要 8 个字符", "The encryption password must be at least 8 characters")
+                encryptionPassword.isBlank() && !state.hasEncryptionPassword ->
+                    encryptionError = tr("请设置加密密码", "Set an encryption password")
+                else -> Unit
+            }
+            if (encryptionPassword.isNotBlank() && confirmEncryptionPassword != encryptionPassword) {
+                confirmError = tr("两次输入的密码不一致", "The passwords do not match")
+            }
+        }
+        encryptionPasswordError = encryptionError
+        confirmEncryptionPasswordError = confirmError
+
+        if (error != null || encryptionError != null || confirmError != null) return false
+        onSaveConfig(
+            trimmed,
+            username.trim(),
+            password,
+            allowHttp,
+            encryptionEnabled,
+            encryptionPassword.takeIf { it.isNotBlank() },
+        )
         password = ""
+        encryptionPassword = ""
+        confirmEncryptionPassword = ""
         return true
     }
 
@@ -183,6 +239,22 @@ internal fun WebDavPage(
             WebDavInfoRow(tr("上次同步", "Last sync"), formatSyncTime(state.lastSyncAt))
             WebDavInfoRow(tr("上次结果", "Last result"), state.lastResult ?: "—")
             WebDavInfoRow(tr("远端文件", "Remote file"), remoteSummary(state))
+            WebDavInfoRow(
+                tr("上传格式", "Upload format"),
+                if (state.hasEncryptionPassword) {
+                    tr("加密（AES-256-GCM）", "Encrypted (AES-256-GCM)")
+                } else {
+                    tr("明文 JSON", "Plain JSON")
+                },
+            )
+            WebDavInfoRow(
+                tr("远端格式", "Remote format"),
+                when (state.remoteEncrypted) {
+                    null -> tr("未知", "Unknown")
+                    true -> tr("加密", "Encrypted")
+                    false -> tr("明文", "Plain")
+                },
+            )
             if (state.configured && !state.fileUrl.isBlank()) {
                 WebDavInfoRow(tr("地址", "Address"), state.fileUrl, maxLines = 2)
             }
@@ -262,6 +334,124 @@ internal fun WebDavPage(
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
+
+            // 账本加密（可选，默认关闭）：密码与 WebDAV 应用密码相互独立。
+            Spacer(modifier = Modifier.size(8.dp))
+            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.45f))
+            Spacer(modifier = Modifier.size(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(tr("加密上传（推荐）", "Encrypt uploads (recommended)"), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = tr(
+                            "远端账本用 AES-256-GCM 加密；在另一台设备输入同一密码即可解密。",
+                            "The remote ledger is encrypted with AES-256-GCM; enter the same password on another device to decrypt it.",
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = encryptionEnabled,
+                    onCheckedChange = {
+                        encryptionEnabled = it
+                        encryptionPasswordError = null
+                        confirmEncryptionPasswordError = null
+                    },
+                    enabled = !state.busy,
+                )
+            }
+            if (encryptionEnabled) {
+                Spacer(modifier = Modifier.size(12.dp))
+                FormField(
+                    value = encryptionPassword,
+                    onValueChange = {
+                        encryptionPassword = it
+                        encryptionPasswordError = null
+                        confirmEncryptionPasswordError = null
+                    },
+                    label = tr("加密密码", "Encryption password"),
+                    placeholder = if (state.hasEncryptionPassword) {
+                        tr("已保存（留空则不修改）", "Saved (leave empty to keep)")
+                    } else {
+                        tr("至少 8 个字符", "At least 8 characters")
+                    },
+                    singleLine = true,
+                    isError = encryptionPasswordError != null,
+                    supportingText = encryptionPasswordError,
+                    visualTransformation = if (encryptionPasswordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailing = {
+                        IconButton(
+                            onClick = { encryptionPasswordVisible = !encryptionPasswordVisible },
+                            modifier = Modifier.size(MileNoteDimens.TouchTarget),
+                        ) {
+                            Icon(
+                                imageVector = if (encryptionPasswordVisible) {
+                                    MileNoteIcons.Visibility
+                                } else {
+                                    MileNoteIcons.Lock
+                                },
+                                contentDescription = if (encryptionPasswordVisible) tr("隐藏密码", "Hide password") else tr("显示密码", "Show password"),
+                                modifier = Modifier.size(20.dp),
+                                tint = scheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
+                Spacer(modifier = Modifier.size(12.dp))
+                FormField(
+                    value = confirmEncryptionPassword,
+                    onValueChange = {
+                        confirmEncryptionPassword = it
+                        confirmEncryptionPasswordError = null
+                    },
+                    label = tr("确认加密密码", "Confirm encryption password"),
+                    placeholder = tr("再次输入加密密码", "Re-enter the encryption password"),
+                    singleLine = true,
+                    isError = confirmEncryptionPasswordError != null,
+                    supportingText = confirmEncryptionPasswordError,
+                    visualTransformation = if (confirmEncryptionPasswordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailing = {
+                        IconButton(
+                            onClick = { confirmEncryptionPasswordVisible = !confirmEncryptionPasswordVisible },
+                            modifier = Modifier.size(MileNoteDimens.TouchTarget),
+                        ) {
+                            Icon(
+                                imageVector = if (confirmEncryptionPasswordVisible) {
+                                    MileNoteIcons.Visibility
+                                } else {
+                                    MileNoteIcons.Lock
+                                },
+                                contentDescription = if (confirmEncryptionPasswordVisible) tr("隐藏密码", "Hide password") else tr("显示密码", "Show password"),
+                                modifier = Modifier.size(20.dp),
+                                tint = scheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = tr(
+                        "加密密码只保存在本机（Android Keystore 保护）；忘记后无法解密远端账本，请自行记牢。" +
+                            "开启后下一次上传会把远端文件改写为加密格式；关闭不会自动改写远端，直到下次上传。",
+                        "The encryption password is stored only on this device (protected by Android Keystore); if you forget it, the remote ledger cannot be decrypted, so keep it safe. " +
+                            "Once enabled, the next upload rewrites the remote file in encrypted form; disabling does not rewrite the remote until the next upload.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
 
             // 明文 HTTP 只在调试构建放行（release 的 network-security-config 禁止明文）。
             if (BuildConfig.DEBUG) {
@@ -437,8 +627,9 @@ internal fun WebDavPage(
             WebDavNote(tr("推荐使用 HTTPS。开启「允许 HTTP」仅建议自建局域网服务器，公网切勿使用明文 HTTP。", "HTTPS is recommended. “Allow HTTP” is only for a self-hosted LAN server; never use plain HTTP on the public internet."))
             WebDavNote(tr("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。", "Jianguoyun: Account security → Add app → generate an app password; use the app password, not your login password."))
             WebDavNote(tr("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。", "Create the target folder in your WebDAV service first; the app only reads and writes the JSON file you entered."))
-            WebDavNote(tr("账本以 JSON 明文保存在远端，传输由 HTTPS 保护；建议放在私有目录，不要把直链分享给他人。", "The ledger is stored remotely as plain JSON; transport is protected by HTTPS. Keep it in a private folder and do not share the direct link."))
-            WebDavNote(tr("Web 版默认使用「加密同步」；本应用暂只支持明文同步，与 Web 版互传时请在 Web 端选择「明文同步」。", "The web version defaults to encrypted sync; this app currently supports plain sync only. Choose “plain sync” on the web side when sharing a file between them."))
+            WebDavNote(tr("未开启加密时账本以明文 JSON 保存在远端，传输由 HTTPS 保护；建议开启加密上传。", "Without encryption the ledger is stored remotely as plain JSON, protected in transit by HTTPS; enabling encrypted uploads is recommended."))
+            WebDavNote(tr("与 Web 版互通：本应用加密上传的文件与 Web 版「加密同步」格式相同，可直接互读；Web 的明文同步文件也能读取。", "Interoperable with the web version: files uploaded with encryption use the same format as the web version's encrypted sync and can be read by both; the web version's plain-sync files can also be read."))
+            WebDavNote(tr("加密格式：AES-256-GCM（PBKDF2-SHA256 派生密钥，600000 次迭代）；加密密码只保存在本机 Android Keystore，不写入账本或备份。", "Encryption format: AES-256-GCM (PBKDF2-SHA256 key derivation, 600,000 iterations); the encryption password is stored only in the Android Keystore on this device and is never written into the ledger or backups."))
             WebDavNote(tr("自动同步开启后：只在应用打开期间，打开时或本地修改后自动同步；退出应用后不会保留后台任务。两边都有修改时会暂停并提示手动处理。", "With auto sync on: syncs only while the app is open, on launch or after local changes; no background task survives after you leave. It pauses and asks you to resolve when both sides changed."))
         }
     }
@@ -452,10 +643,10 @@ internal fun WebDavPage(
             text = {
                 Text(
                     text = tr(
-                        "将清除本机保存的服务器地址、用户名与应用密码；远端文件不会被删除。" +
-                            "已同步的本地账本保持不变。",
-                        "This removes the server URL, username and app password stored on this device. The remote file is not deleted, " +
-                            "and the local ledger stays as it is.",
+                        "将清除本机保存的服务器地址、用户名、应用密码与加密密码；远端文件不会被删除。" +
+                            "已同步的本地账本保持不变。远端加密文件仍需用原密码解密。",
+                        "This removes the server URL, username, app password and encryption password stored on this device. The remote file is not deleted, " +
+                            "and the local ledger stays as it is. An encrypted remote file still requires the original password to decrypt.",
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
@@ -490,15 +681,30 @@ internal fun WebDavPage(
             shape = MileNoteShapes.extraLarge,
             title = { Text(if (upload) tr("上传并覆盖远端？", "Upload and overwrite the remote?") else tr("下载并覆盖本地？", "Download and overwrite this device?")) },
             text = {
-                Text(
-                    text = if (upload) {
-                        tr("将用本机当前账本覆盖远端 JSON 文件；远端原有内容会被替换，无法自动恢复。", "The remote JSON file will be replaced with the ledger on this device; the previous remote content cannot be restored automatically.")
-                    } else {
-                        tr("将用远端 JSON 文件覆盖本机账本；本机现有数据会被替换，建议先导出完整备份。", "The ledger on this device will be replaced with the remote JSON file; export a full backup first.")
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (upload) {
+                            tr("将用本机当前账本覆盖远端 JSON 文件；远端原有内容会被替换，无法自动恢复。", "The remote JSON file will be replaced with the ledger on this device; the previous remote content cannot be restored automatically.")
+                        } else {
+                            tr("将用远端 JSON 文件覆盖本机账本；本机现有数据会被替换，建议先导出完整备份。", "The ledger on this device will be replaced with the remote JSON file; export a full backup first.")
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    // 防降级提示：远端是加密文件、本机却没有密码时，强制上传会把远端改写成明文。
+                    if (upload && state.remoteEncrypted == true && !state.hasEncryptionPassword) {
+                        Text(
+                            text = tr(
+                                "注意：远端当前是加密文件，本机没有保存加密密码。本次上传会把它改写为明文 JSON；" +
+                                    "如需继续加密，请先在「连接」中开启加密上传并设置密码。",
+                                "Note: the remote file is currently encrypted and this device has no encryption password. " +
+                                    "This upload will rewrite it as plain JSON; to keep it encrypted, enable encrypted upload and set a password under Connection first.",
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.error,
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
@@ -556,6 +762,85 @@ internal fun WebDavPage(
                 TextButton(onClick = onDismissConflict) {
                     Text(tr("取消（保持现状）", "Cancel (keep as is)"))
                 }
+            },
+        )
+    }
+
+    // ---------------- 解密密码弹层（远端已加密、本机无密码） ----------------
+    state.decryptPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = onCancelDecrypt,
+            shape = MileNoteShapes.extraLarge,
+            title = { Text(tr("远端账本已加密", "The remote ledger is encrypted")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = tr(
+                            "远端账本使用 AES-256-GCM 加密。请输入本机或另一台设备设置的加密密码；" +
+                                "解密成功后会记住该密码并继续刚才的操作。",
+                            "The remote ledger is encrypted with AES-256-GCM. Enter the encryption password set on this or another device; " +
+                                "after a successful decryption the app remembers it and resumes the previous action.",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    FormField(
+                        value = decryptPassword,
+                        onValueChange = { decryptPassword = it },
+                        label = tr("加密密码", "Encryption password"),
+                        placeholder = tr("至少 8 个字符", "At least 8 characters"),
+                        singleLine = true,
+                        visualTransformation = if (decryptPasswordVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailing = {
+                            IconButton(
+                                onClick = { decryptPasswordVisible = !decryptPasswordVisible },
+                                modifier = Modifier.size(MileNoteDimens.TouchTarget),
+                            ) {
+                                Icon(
+                                    imageVector = if (decryptPasswordVisible) {
+                                        MileNoteIcons.Visibility
+                                    } else {
+                                        MileNoteIcons.Lock
+                                    },
+                                    contentDescription = if (decryptPasswordVisible) tr("隐藏密码", "Hide password") else tr("显示密码", "Show password"),
+                                    modifier = Modifier.size(20.dp),
+                                    tint = scheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                    )
+                    prompt.error?.let { error ->
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onSubmitDecryptPassword(decryptPassword) },
+                    enabled = decryptPassword.isNotBlank() && !state.busy,
+                    shape = MileNoteShapeTokens.full,
+                ) {
+                    if (state.busy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = scheme.onPrimary,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(tr("解密", "Decrypt"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCancelDecrypt) { Text(tr("取消", "Cancel")) }
             },
         )
     }
