@@ -25,8 +25,8 @@
 - WebDAV **只在前台同步**（打开时一次 + 本地修改后防抖），退出应用即结束；不要引入后台周期同步。
 - 非代码产物（APK、截图、构建日志）**不进仓库**；构建日志写 `/tmp/*.log` 再 grep 关键行。
 - **官网只放在 `gh-pages` 分支**（GitHub Pages Source = gh-pages /(root)），`main` 保持纯代码，
-  不要在 main 放网站资源（HTML/CSS/JS/图片/字体）；站点维护说明在 [`docs/website.md`](docs/website.md)，
-  该文件不随站点发布。
+  不要在 main 放网站资源（HTML/CSS/JS/图片/字体）。页面加载时从 GitHub Releases API 自动跟随最新
+  Release，发版后无需改站点；站点维护与发布操作步骤属维护者本机文档（不入库，见 `AGENTS.local.md`）。
 - 样例数据一律合成：车牌、加油站、订单号、行程等，**不得**使用真实小票/真实账本内容。
 
 ## 构建与测试

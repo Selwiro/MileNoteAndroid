@@ -31,3 +31,7 @@ dist/
 
 # 维护者本机专用脚本：受众只有维护者本人，构建/测试/编译都不依赖它们
 /scripts/publish-release.sh
+/dev-emulator.sh
+
+# 站点维护说明：受众仅维护者（站点本身在 gh-pages 分支，不属于 main）
+/docs/website.md

@@ -5,7 +5,7 @@ Kotlin + Jetpack Compose + Material 3 Expressive。账本本地优先、无账�
 
 - 官网 / 下载页：<https://selwiro.github.io/MileNoteAndroid/>
   站点只放在 `gh-pages` 分支，`main` 保持纯 Android 代码（网站文件不提交到 main）；
-  维护说明见 [`docs/website.md`](docs/website.md)。
+  页面加载时从 GitHub Releases API 自动取最新版本 / 包大小 / SHA-256 / 下载地址，发版后无需改站点。
 - 最新 APK：[Releases](https://github.com/Selwiro/MileNoteAndroid/releases/latest)。
 
 ## 环境
