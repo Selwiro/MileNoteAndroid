@@ -31,9 +31,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -69,6 +72,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.BuildConfig
 import com.milenote.android.R
@@ -134,6 +138,12 @@ private data class UpdateDialogState(
     val link: String?,
 )
 
+/** 许可证全文弹层。 */
+private data class LicenseDialogState(
+    val title: String,
+    val text: String,
+)
+
 /** 正在编辑的车辆：`id == null` 表示新增。 */
 private data class VehicleEditTarget(
     val id: String?,
@@ -157,6 +167,7 @@ private enum class SettingsPage {
     BACKUP,
     WEBDAV,
     ABOUT,
+    LICENSES,
     ;
 
     /** 顶栏标题（随语言切换；不要放进枚举构造参数，那样会固定在类加载时的语言）。 */
@@ -171,6 +182,7 @@ private enum class SettingsPage {
             BACKUP -> tr("备份与还原", "Backup & restore")
             WEBDAV -> tr("WebDAV 同步", "WebDAV sync")
             ABOUT -> tr("关于", "About")
+            LICENSES -> tr("开源许可", "Licenses")
         }
 }
 
@@ -189,7 +201,8 @@ private enum class SettingsPage {
  * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导（纯电当前车隐藏小熊油耗）。
  * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
  * - WebDAV 同步：连接配置、前台自动同步、手动上传/下载。
- * - 关于：应用 logo 与简介、检查更新、官网/GitHub、演示账本。
+ * - 关于：应用 logo 与简介、检查更新、官网/GitHub、开源许可入口、演示账本。
+ * - 开源许可：本应用与第三方组件的许可证全文（离线内嵌）、ML Kit / Android SDK 条款链接。
  *
  * @param vm 全局 ViewModel。
  * @param onNavigate 路由回调；仅在首页返回、且宿主没有 OnBackPressedDispatcher 时回传
@@ -722,7 +735,10 @@ fun SettingsScreen(
                         onToggleDemo = {
                             if (state.demo) vm.exitDemo() else vm.enterDemo()
                         },
+                        onOpenLicenses = { pageName = SettingsPage.LICENSES.name },
                     )
+
+                    SettingsPage.LICENSES -> LicensesPage()
                 }
             }
         }
@@ -1451,6 +1467,7 @@ private fun BackupRestorePage(
 private fun AboutPage(
     demo: Boolean,
     onToggleDemo: () -> Unit,
+    onOpenLicenses: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1581,6 +1598,13 @@ private fun AboutPage(
                     onClick = { openLink("https://github.com/Selwiro/MileNoteAndroid") },
                     showChevron = false,
                 )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Info,
+                    title = tr("开源许可", "Open-source licenses"),
+                    subtitle = tr("本应用与第三方组件的许可证全文", "License texts for this app and its bundled components"),
+                    onClick = onOpenLicenses,
+                )
             }
         }
 
@@ -1637,6 +1661,176 @@ private fun AboutPage(
     }
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// 开源许可
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * 开源许可页：本应用与随 APK 分发的第三方组件。
+ *
+ * 许可证全文与组件清单内嵌在 `assets/licenses/`（离线可读，不请求网络）；
+ * ML Kit / Android SDK 是 Google 的专有 SDK，只给条款链接。
+ */
+@Composable
+private fun LicensesPage() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var dialog by remember { mutableStateOf<LicenseDialogState?>(null) }
+
+    fun openAsset(title: String, asset: String) {
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { readLicenseAsset(context, asset) }
+            dialog = LicenseDialogState(
+                title = title,
+                text = text ?: tr("许可证文本读取失败，请重试", "Could not load the license text — please try again"),
+            )
+        }
+    }
+
+    fun openLink(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    SettingsPageList {
+        item("app") {
+            SectionCard {
+                Text(tr("本应用", "This app"), style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(
+                    text = tr(
+                        "「里程志 MileNote」的源代码以 Apache License 2.0 授权：你可以自由使用、修改、" +
+                            "自行构建并再分发（包括免费再分发），只需保留版权与许可声明。",
+                        "MileNote's source code is licensed under the Apache License 2.0: you may use, modify, " +
+                            "build and redistribute it freely, including for free, as long as you keep the " +
+                            "copyright and license notices.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(
+                    text = tr(
+                        "应用商店中的版本是收费分发渠道，购买的是更新、支持与商店服务；" +
+                            "渠道条款见 EULA，与 Apache-2.0 冲突时一律以 Apache-2.0 为准。",
+                        "Store builds are a paid distribution channel covering updates, support and store " +
+                            "services. The channel terms are in the EULA; where they conflict with Apache-2.0, " +
+                            "Apache-2.0 prevails.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.size(4.dp))
+                SettingsMenuRow(
+                    icon = MileNoteIcons.FileText,
+                    title = "Apache License 2.0",
+                    subtitle = tr("查看许可证全文", "View the full license text"),
+                    onClick = { openAsset("Apache License 2.0", "licenses/apache-2.0.txt") },
+                )
+            }
+        }
+
+        item("components") {
+            SectionCard(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                Text(
+                    text = tr("第三方组件", "Third-party components"),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(vertical = 10.dp),
+                )
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Code,
+                    title = tr("组件清单", "Component list"),
+                    subtitle = tr("随 APK 分发的运行期依赖，按许可证分组", "Runtime dependencies in the APK, by license"),
+                    onClick = { openAsset(tr("第三方组件清单", "Third-party components"), "licenses/third-party-notices.txt") },
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.FileText,
+                    title = "MIT License",
+                    subtitle = "checker-qual · Checker Framework",
+                    onClick = { openAsset("MIT License", "licenses/mit.txt") },
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.FileText,
+                    title = "BSD 3-Clause License",
+                    subtitle = "Protocol Buffers · AndroidX DataStore",
+                    onClick = { openAsset("BSD 3-Clause License", "licenses/bsd-3-clause.txt") },
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Globe,
+                    title = tr("ML Kit 服务条款", "ML Kit Terms of Service"),
+                    subtitle = "developers.google.com/ml-kit/terms",
+                    onClick = { openLink("https://developers.google.com/ml-kit/terms") },
+                    showChevron = false,
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Globe,
+                    title = tr("Android SDK 许可协议", "Android SDK License"),
+                    subtitle = "developer.android.com/studio/terms",
+                    onClick = { openLink("https://developer.android.com/studio/terms") },
+                    showChevron = false,
+                )
+            }
+        }
+    }
+
+    dialog?.let { state ->
+        LicenseTextDialog(state = state, onDismiss = { dialog = null })
+    }
+}
+
+/** 读取 `assets/licenses/` 下的文本；读不到时返回 `null`，由调用方给兜底文案。 */
+private fun readLicenseAsset(context: android.content.Context, asset: String): String? =
+    runCatching { context.assets.open(asset).bufferedReader().use { it.readText() } }.getOrNull()
+
+/** 许可证全文弹层：接近全屏，文本可长按选择复制。 */
+@Composable
+private fun LicenseTextDialog(state: LicenseDialogState, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+        ) {
+            Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = state.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(imageVector = MileNoteIcons.Close, contentDescription = tr("关闭", "Close"))
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                )
+                SelectionContainer(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        text = state.text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // 通用行与分隔线
