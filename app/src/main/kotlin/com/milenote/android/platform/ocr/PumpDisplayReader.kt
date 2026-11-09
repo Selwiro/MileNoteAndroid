@@ -28,7 +28,8 @@ import kotlin.math.tan
  *       深字（亮度 Otsu 取暗部）、浅字（亮度 Otsu 取亮部）；
  *    b. 行投影切行带，只保留高度接近最高行带的（丢掉标题/边框细带）；
  *    c. 行带内按列切成「列块」，丢掉高度远小于行高的列块（屏上的中文标签、单位文字只有
- *       数字高度的 1/3 左右，混在掩膜里会把整行解码毁掉）——只保留数字列块，拼成干净的
+ *       数字高度的 1/3 左右，混在掩膜里会把整行解码毁掉）——只保留数字列块；同时剔掉
+ *       重采样在数字边缘留下的 1–3 列矮毛刺（会被七段解码器误判成小数点），拼成干净的
  *       [BinaryRow]；
  *    d. 逐行解码 + 组装读数（含「金额 = 升数 × 单价」一致性校验）。
  * 3. 若 0° 全部候选都失败、行带结构像加油机屏（≥2 条数字行带）且图确实有倾斜（降采样
@@ -78,6 +79,18 @@ object PumpDisplayReader {
     /** 小数点列块的最大宽度（相对行高）：矮而窄、夹在两个数字块之间的小块。 */
     private const val DOT_RUN_WIDTH_RATIO = 0.35f
 
+    /**
+     * 行带内「矮列」的高度上限（相对行高）。七段解码器据此判定小数点。
+     *
+     * 二次重采样（相册放大到 1400 → 旋转重试）会在数字边缘留下 1–3 列、只有底部一个像素的
+     * 毛刺列，解码器会把它当成小数点插进数字中间（实测 `228.78` → `22.8.78`）。这里在
+     * 构建行掩膜前把这种又矮又窄的毛刺列剔掉，真小数点（通常 ≥8 列）不受影响。
+     */
+    private const val LOW_COLUMN_RATIO = 0.25f
+
+    /** 连续矮列宽度不超过这个值才算重采样毛刺（真小数点是更宽的圆点）。 */
+    private const val MAX_SLIVER_WIDTH = 3
+
     /** 判断「这一行像数字行」用的列块数量区间（用于决定要不要做旋转重试）。 */
     private const val DISPLAY_RUN_MIN = 3
     private const val DISPLAY_RUN_MAX = 10
@@ -126,6 +139,9 @@ object PumpDisplayReader {
 
     /** 一次「掩膜 → 解码」尝试的结果：读数 + 像数字行的行带数（旋转重试的决策依据）。 */
     private class AttemptResult(val readings: PumpReadings?, val displayBands: Int)
+
+    /** 一个行带里保留下来的列（逐列 keep 标记 + 保留下来的列块数）。 */
+    private class BandRuns(val keep: BooleanArray, val runCount: Int)
 
     /** 纯像素入口的结果（旋转后的图）。 */
     private class RotatedImage(val pixels: IntArray, val width: Int, val height: Int)
@@ -398,19 +414,18 @@ object PumpDisplayReader {
             val bottom = band[1]
             val bandHeight = bottom - top + 1
             if (bandHeight < keepThreshold) continue
-            val runs = keptColumnRuns(mask, width, top, bottom, bandHeight) ?: continue
-            if (runs.isEmpty()) continue
+            val bandRuns = keptColumnRuns(mask, width, top, bottom, bandHeight) ?: continue
+            if (bandRuns.runCount == 0) continue
             if (bandHeight >= bandHeightForDisplay &&
-                runs.size in DISPLAY_RUN_MIN..DISPLAY_RUN_MAX
+                bandRuns.runCount in DISPLAY_RUN_MIN..DISPLAY_RUN_MAX
             ) {
                 displayBands++
             }
             val rowMask = IntArray(width * bandHeight)
-            for (run in runs) {
-                for (x in run[0]..run[1]) {
-                    for (y in 0 until bandHeight) {
-                        if (mask[(top + y) * width + x].toInt() != 0) rowMask[y * width + x] = 1
-                    }
+            for (x in 0 until width) {
+                if (!bandRuns.keep[x]) continue
+                for (y in 0 until bandHeight) {
+                    if (mask[(top + y) * width + x].toInt() != 0) rowMask[y * width + x] = 1
                 }
             }
             rows.add(BinaryRow(rowMask, width, bandHeight))
@@ -435,7 +450,7 @@ object PumpDisplayReader {
         top: Int,
         bottom: Int,
         bandHeight: Int,
-    ): List<IntArray>? {
+    ): BandRuns? {
         val extent = IntArray(width)
         val firstInk = IntArray(width) { Int.MAX_VALUE }
         val lastInk = IntArray(width) { -1 }
@@ -502,7 +517,27 @@ object PumpDisplayReader {
             }
             if (before && after) kept.add(run)
         }
-        return kept
+
+        // 逐列保留标记；顺手把「又矮又窄」的重采样毛刺列剔掉（见 LOW_COLUMN_RATIO 注释）。
+        val keep = BooleanArray(width)
+        for (run in kept) {
+            for (x in run[0]..run[1]) keep[x] = true
+        }
+        val lowLimit = LOW_COLUMN_RATIO * bandHeight
+        var x = 0
+        while (x < width) {
+            if (extent[x] <= 0 || extent[x] >= lowLimit) {
+                x++
+                continue
+            }
+            var end = x
+            while (end + 1 < width && extent[end + 1] > 0 && extent[end + 1] < lowLimit) end++
+            if (end - x + 1 <= MAX_SLIVER_WIDTH) {
+                for (index in x..end) keep[index] = false
+            }
+            x = end + 1
+        }
+        return BandRuns(keep, kept.size)
     }
 
     // ------------------------------------------------------------ 旋转重试 ----
