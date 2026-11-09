@@ -1049,18 +1049,17 @@ private fun progressSummary(progress: ServiceProgress): String {
 private fun ServiceHistoryCard(record: Record, ev: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val projects = record.projects?.takeIf { it.isNotBlank() }
-    // 地点为空时用「-」占位，保证第三行存在、编辑按钮有对齐基准。
-    val location = record.location?.takeIf { it.isNotBlank() } ?: "-"
+    // 整行可点直接进入编辑；左侧图标垂直居中，只保留日期 + 项目两行。
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClickLabel = tr("编辑记录", "Edit record")) { onClick() }
             .height(IntrinsicSize.Min)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CategoryBadge(categoryName = record.category)
-        // 左侧三行保持紧凑；文字过多时单行省略，不换行。
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(1.dp),
@@ -1087,40 +1086,12 @@ private fun ServiceHistoryCard(record: Record, ev: Boolean, onClick: () -> Unit)
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = location,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
-        // 右列：金额严格与日期顶部平齐；铅笔贴住地点行下沿。
-        Column(
-            modifier = Modifier.fillMaxHeight(),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            MoneyText(
-                amount = Format.money(record.amount),
-                size = MoneySize.MEDIUM,
-                unit = Units.money,
-            )
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .clickable(onClickLabel = tr("编辑", "Edit")) { onClick() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = MileNoteIcons.Edit,
-                    contentDescription = tr("编辑", "Edit"),
-                    modifier = Modifier.size(16.dp),
-                    tint = scheme.primary,
-                )
-            }
-        }
+        MoneyText(
+            amount = Format.money(record.amount),
+            size = MoneySize.MEDIUM,
+            unit = Units.money,
+        )
     }
 }
 

@@ -7,8 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -26,10 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -245,8 +240,6 @@ fun FuelScreen(
     val detailAmount = remember(detailRecords) { detailRecords.sumOf { it.amount } }
     // 每条记录对应的满箱/满电区间能耗（domain 纯函数；未加满 / 基准记录无值 → 显示「—」）。
     val rateByRecord = remember(ledger.records, ev) { energyRateByRecord(ledger.records, ev) }
-    // 点击记录卡先看详情，详情内「编辑」才进入编辑。
-    var detailRecord by remember { mutableStateOf<Record?>(null) }
     var rangeMenuExpanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
     var detailMenuExpanded by remember { mutableStateOf(false) }
@@ -565,7 +558,7 @@ fun FuelScreen(
                             record = record,
                             rate = rateByRecord[record.id],
                             ev = ev,
-                            onClick = { detailRecord = record },
+                            onClick = { vm.openEditor(recordId = record.id) },
                         )
                     }
                 }
@@ -578,18 +571,6 @@ fun FuelScreen(
     }
     }
 
-    detailRecord?.let { record ->
-        FuelRecordDetailDialog(
-            record = record,
-            rate = rateByRecord[record.id],
-            ev = ev,
-            onDismiss = { detailRecord = null },
-            onEdit = {
-                detailRecord = null
-                vm.openEditor(recordId = record.id)
-            },
-        )
-    }
     if (showRangePicker) {
         CustomRangePickerDialog(
             customRange = customRange,
@@ -1161,137 +1142,6 @@ private fun fuelStatus(record: Record, ev: Boolean): Pair<String, StatusKind> = 
     record.kind == "manual" -> (if (ev) tr("手填能耗", "Manual energy entry") else tr("手填油耗", "Manual fuel entry")) to StatusKind.NORMAL
     record.full -> (if (ev) tr("已充满", "Full charge") else tr("已加满", "Filled up")) to StatusKind.DONE
     else -> (if (ev) tr("未充满", "Not fully charged") else tr("未加满", "Not filled up")) to StatusKind.NORMAL
-}
-
-// ---------------------------------------------------------------------------------------------
-// 加油/充电记录详情（点击记录卡先看详情，「编辑」才进入编辑）
-// ---------------------------------------------------------------------------------------------
-
-/**
- * 单条加油 / 充电记录详情弹层。
- *
- * 保留记录卡上的全部信息并补充该次区间能耗：日期、来源、金额、能量量（加油量/充电量）、
- * 总里程、是否加满/充满、漏记、备注。纯电不显示燃油标号与单次能耗行（单次充电不覆盖可计算里程）。
- * 底部「编辑」才走 `vm.openEditor(recordId)`，「关闭」不修改任何数据。
- *
- * @param rate 该记录的满箱/满电法区间能耗；无有效区间为 null（显示「—」）。
- * @param ev 当前车辆是否纯电。
- */
-@Composable
-private fun FuelRecordDetailDialog(
-    record: Record,
-    rate: Double?,
-    ev: Boolean,
-    onDismiss: () -> Unit,
-    onEdit: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = MaterialTheme.shapes.extraLarge,
-        title = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = if (ev) tr("充电详情", "Charge details") else tr("加油详情", "Fuel entry details"),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = monthDayLabel(record.date),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DetailRow(
-                    tr("来源", "Source"),
-                    if (record.source.isBlank() || record.source == "手动记录") {
-                        tr("手动记录", "Manual entry")
-                    } else {
-                        record.source
-                    },
-                )
-                DetailRow(tr("实付金额", "Amount paid"), "${Units.currencySymbol} ${Format.money(record.amount)}")
-                DetailRow(
-                    if (ev) tr("充电量", "Charge amount") else tr("加油量", "Fuel amount"),
-                    if (ev) {
-                        record.kwh?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.energyUnit) } ?: "—"
-                    } else {
-                        record.liters?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.volumeUnit) } ?: "—"
-                    },
-                )
-                if (!ev) {
-                    record.fuelGrade?.takeIf { it.isNotBlank() }?.let { grade ->
-                        DetailRow(tr("燃油标号", "Fuel grade"), if (grade == "0#") tr("0# 柴油", "0# diesel") else grade)
-                    }
-                }
-                DetailRow(
-                    tr("总里程", "Odometer"),
-                    record.odometer?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.distanceUnit) } ?: "—",
-                )
-                DetailRow(if (ev) tr("充满状态", "Full charge") else tr("加满状态", "Full tank"), buildString {
-                    append(
-                        if (record.full) {
-                            if (ev) tr("已充满", "Full charge") else tr("已加满", "Filled up")
-                        } else {
-                            if (ev) tr("未充满", "Not fully charged") else tr("未加满", "Not filled up")
-                        },
-                    )
-                    append(" · ")
-                    append(if (record.missed) tr("有漏记", "Missed entry") else tr("无漏记", "No missed entry"))
-                })
-                if (!ev) {
-                    // 纯电单次充电不覆盖可计算里程：不展示单次能耗行。
-                    DetailRow(
-                        tr("油耗", "Fuel economy"),
-                        rate?.let { tr("%s %s", "%s %s", Format.money(it), Units.consumption) } ?: "—",
-                    )
-                }
-                val (statusLabel, _) = fuelStatus(record, ev)
-                DetailRow(tr("状态", "Status"), statusLabel)
-                DetailRow(tr("备注", "Note"), record.note.ifBlank { "—" })
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onEdit,
-                shape = MaterialTheme.shapes.large,
-            ) {
-                Text(tr("编辑", "Edit"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(tr("关闭", "Close")) }
-        },
-    )
-}
-
-/** 详情字段行：左侧固定宽标签 + 右侧值（可换行）。 */
-@Composable
-private fun DetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(80.dp),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-        )
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
