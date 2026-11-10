@@ -1,6 +1,5 @@
 package com.milenote.android.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +42,7 @@ import com.milenote.android.ui.icons.MileNoteIcons
  * （搜索框 56dp、筛选胶囊 48dp / 32dp）。这里统一成一组 32dp 高的紧凑控件，供
  * 「费用统计-明细」「能耗分析-明细」「能耗走势 / 概览」复用：
  * - CompactSearchField：BasicTextField + 圆形描边（聚焦时描边变主色），高度 [CompactControlHeight]；
+ *   底色保持透明（与原来的 OutlinedTextField 一样，浅色下就是页面白底），只压高度、不改配色；
  * - FilterPill：圆形 surfaceContainerHigh 胶囊 + DropdownMenu，高度同 [CompactControlHeight]；
  * - FilterMenuGroupLabel / FilterMenuCheckIcon / FilterMenuDivider：多分组菜单的标题、勾选与分隔线。
  *
@@ -55,8 +55,9 @@ import com.milenote.android.ui.icons.MileNoteIcons
 private val CompactControlHeight = 32.dp
 
 /**
- * 紧凑搜索框（[CompactControlHeight] 高、圆形描边、`outlineVariant` 边框）：
- * 左侧 18dp 搜索图标 + 占位文字，聚焦时描边变 `primary`。
+ * 紧凑搜索框（[CompactControlHeight] 高、圆形描边、`outlineVariant` 边框、**透明底**）：
+ * 左侧 18dp 搜索图标 + 占位文字，聚焦时描边变 `primary`。底色不加填充，
+ * 浅色主题下与页面白底一致（与改造前的 OutlinedTextField 视觉相同），只把上下高度压到 32dp。
  *
  * @param value 当前关键词。
  * @param onValueChange 关键词变化回调。
@@ -77,7 +78,6 @@ fun CompactSearchField(
         modifier = modifier
             .height(CompactControlHeight)
             .clip(CircleShape)
-            .background(scheme.surfaceContainerHigh)
             .border(
                 width = 1.dp,
                 color = if (focused) scheme.primary else scheme.outlineVariant,

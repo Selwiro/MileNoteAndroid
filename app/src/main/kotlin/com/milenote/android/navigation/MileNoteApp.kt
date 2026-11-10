@@ -74,6 +74,7 @@ import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.icons.MileNoteIcons
+import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.screens.dashboard.DashboardScreen
 import com.milenote.android.ui.screens.fuel.FuelScreen
 import com.milenote.android.ui.screens.maintenance.MaintenanceScreen
@@ -439,7 +440,12 @@ private fun MileNoteBottomBar(
     onAdd: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    Surface(color = scheme.surfaceContainer, tonalElevation = 2.dp) {
+    val dark = LocalMileNoteDarkTheme.current
+    // 按用户要求：浅色主题底栏改纯白（原来是 surfaceContainer 的灰白）；深色主题保持原有深色底。
+    Surface(
+        color = if (dark) scheme.surfaceContainer else Color.White,
+        tonalElevation = if (dark) 2.dp else 0.dp,
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
