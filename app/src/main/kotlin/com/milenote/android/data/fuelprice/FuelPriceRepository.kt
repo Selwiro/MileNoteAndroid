@@ -185,6 +185,36 @@ class FuelPriceRepository(
         }
     }
 
+    /**
+     * 每日聚合数据集（fanzbus/oil-price）：省级零售价 + **非统一价省的城市级价格** + 独立的调价方向预测。
+     *
+     * - `data/prices.json`：31 省 92/95/98/0# + 下次调价标签；
+     * - `data/cities.json`：云南/陕西/四川/辽宁/新疆/青海/西藏/贵州/内蒙古/黑龙江 10 个非统一价省的城市级价格
+     *   （124 城，城市名与本站 [FuelRegions.shortCityName] 对齐）；
+     * - `data/forecast.json`：独立预测方向（Yahoo Brent/WTI + 汇率模型，每天更新）。
+     * 三个文件都是公开静态 JSON（jsDelivr 读取，不带任何参数）。
+     */
+    private class FanzbusJsonSource(client: OkHttpClient) : HttpSource(client) {
+        override val id: String = "fanzbus-json"
+
+        override suspend fun fetch(location: FuelLocation): FuelPriceInfo? = withContext(Dispatchers.IO) {
+            val prices = fetchJson(PRICES_URL) ?: return@withContext null
+            val cities = runCatching { fetchJson(CITIES_URL) }.getOrNull()
+            val forecast = runCatching { fetchJson(FORECAST_URL) }.getOrNull()
+            parseFanzbusJson(
+                regionName = DataLabels.region(location.displayName),
+                provinceName = location.province.name,
+                cityName = location.cityName?.let(FuelRegions::shortCityName),
+                pricesBody = prices,
+                citiesBody = cities,
+                forecastBody = forecast,
+            )
+        }
+
+        private fun fetchJson(url: String): String? =
+            runCatching { getText(url) }.getOrNull()
+    }
+
     /** 静态 JSON 数据集：同一份数据配多个 CDN URL（jsDelivr 优先，GitHub raw 兜底）。 */
     private abstract class StaticJsonSource(
         client: OkHttpClient,
@@ -265,6 +295,7 @@ class FuelPriceRepository(
         fun defaultSources(): List<FuelPriceSource> {
             val client = defaultClient()
             return listOf(
+                FanzbusJsonSource(client),
                 OilPriceJsonSource(client),
                 OilPulseJsonSource(client),
                 JsonApiSource(client, "vvhan-json") { province ->
@@ -284,6 +315,96 @@ class FuelPriceRepository(
 
         private val TREND_UP_RE = Regex("上调|上涨|涨幅")
         private val TREND_DOWN_RE = Regex("下调|下跌|跌幅")
+
+        private const val FANZBUS_BASE = "https://cdn.jsdelivr.net/gh/fanzbus/oil-price@main/data"
+        private const val PRICES_URL = "$FANZBUS_BASE/prices.json"
+        private const val CITIES_URL = "$FANZBUS_BASE/cities.json"
+        private const val FORECAST_URL = "$FANZBUS_BASE/forecast.json"
+
+        /**
+         * 解析 fanzbus 的三份 JSON：
+         * - 省级价格从 `prices.provinces` 里按省名取；城市级从 `cities.provinces[省]` 里按城市名取，
+         *   城市页缺失/异常时退回省级价（非统一价省才拆城市，其余省本身统一价）；
+         * - 调价方向从 `forecast.direction` 取（独立预测，比价格站点自带的「预计上调」更及时）。
+         */
+        internal fun parseFanzbusJson(
+            regionName: String,
+            provinceName: String,
+            cityName: String?,
+            pricesBody: String,
+            citiesBody: String?,
+            forecastBody: String?,
+        ): FuelPriceInfo? {
+            val pricesRoot = runCatching { Json.parseToJsonElement(pricesBody) as? JsonObject }.getOrNull()
+                ?: return null
+            val provinceRow = (pricesRoot["provinces"] as? JsonArray)
+                ?.mapNotNull { it as? JsonObject }
+                ?.firstOrNull { (it["province"] as? JsonPrimitive)?.content == provinceName }
+                ?: return null
+
+            fun number(obj: JsonObject?, key: String): Double? =
+                (obj?.get(key) as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it in 2.0..20.0 }
+
+            var price92 = number(provinceRow, "p92")
+            var price95 = number(provinceRow, "p95")
+            var price98 = number(provinceRow, "p98")
+            var price0 = number(provinceRow, "d0")
+
+            // 城市级：只对非统一价省生效，匹配不到城市就继续用省级价。
+            if (!cityName.isNullOrBlank() && citiesBody != null) {
+                val cityRoot = runCatching { Json.parseToJsonElement(citiesBody) as? JsonObject }.getOrNull()
+                val cityList = (cityRoot?.get("provinces") as? JsonObject)
+                    ?.let { (it[provinceName] as? JsonArray) }
+                val cityRow = cityList
+                    ?.mapNotNull { it as? JsonObject }
+                    ?.firstOrNull { row ->
+                        (row["city"] as? JsonPrimitive)?.content == cityName &&
+                            (row["status"] as? JsonPrimitive)?.content != "pending"
+                    }
+                if (cityRow != null) {
+                    price92 = number(cityRow, "p92") ?: price92
+                    price95 = number(cityRow, "p95") ?: price95
+                    price98 = number(cityRow, "p98") ?: price98
+                    price0 = number(cityRow, "d0") ?: price0
+                }
+            }
+
+            if (price92 == null && price95 == null && price98 == null && price0 == null) return null
+
+            val forecastRoot = runCatching { Json.parseToJsonElement(forecastBody.orEmpty()) as? JsonObject }.getOrNull()
+            val direction = (forecastRoot?.get("direction") as? JsonPrimitive)?.content
+            val trend = when {
+                direction == null -> null
+                direction.contains("下") -> "下调"
+                direction.contains("上") -> "上调"
+                else -> "搁浅"
+            }
+            val adjustmentLabel = normalizeAdjustmentLabel(
+                (pricesRoot["next_adjustment_label"] as? JsonPrimitive)?.content,
+            )
+            return FuelPriceInfo(
+                regionName = regionName,
+                price92 = price92,
+                price95 = price95,
+                price98 = price98,
+                price0 = price0,
+                nextAdjustmentText = adjustmentLabel,
+                trend = trend,
+                forecast = (forecastRoot?.get("note") as? JsonPrimitive)?.content,
+            )
+        }
+
+        /** "11月12日24时" → 「11 月 12 日 24 时」；其它格式原样返回（去掉多余空格）。 */
+        internal fun normalizeAdjustmentLabel(raw: String?): String? {
+            if (raw.isNullOrBlank()) return null
+            val match = Regex("(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日\\s*24\\s*时").find(raw)
+            if (match != null) {
+                val month = match.groupValues[1]
+                val day = match.groupValues[2]
+                return "$month 月 $day 日 24 时"
+            }
+            return raw.replace(" ", "")
+        }
 
         /** 解析「全国油价趋势看板」prices.json：provinces_data[省][标号] 是按 dates 对齐的价格数组。 */
         internal fun parseOilPriceJson(regionName: String, provinceName: String, body: String): FuelPriceInfo? {

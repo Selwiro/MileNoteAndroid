@@ -12,6 +12,87 @@ import org.junit.Test
 /** 油价多源解析、回退顺序与缓存周期策略（全部纯 JVM，不联网）。 */
 class FuelPriceParsingTest {
 
+    // ---------------- fanzbus 数据集（省级 + 城市级 + 预测方向） ----------------
+
+    private val fanzbusPrices = """
+        {
+          "fetched_at": "2026-10-30T21:27:02+08:00",
+          "next_adjustment_label": "11月12日24时",
+          "provinces": [
+            {"province": "北京", "p92": 8.89, "p95": 9.46, "p98": 10.96, "d0": 8.65},
+            {"province": "云南", "p92": 9.25, "p95": 9.92, "p98": 10.60, "d0": 8.90}
+          ]
+        }
+    """.trimIndent()
+
+    private val fanzbusCities = """
+        {
+          "status": "ok",
+          "non_unified_provinces": ["云南"],
+          "provinces": {
+            "云南": [
+              {"city": "红河", "pinyin": "honghe", "p92": 9.19, "p95": 9.85, "p98": 10.53, "d0": 8.82, "status": "ok"},
+              {"city": "昆明", "pinyin": "kunming", "p92": 9.31, "p95": 9.98, "p98": 10.66, "d0": 8.95, "status": "ok"}
+            ]
+          }
+        }
+    """.trimIndent()
+
+    private val fanzbusForecast = """{"status":"estimated","as_of":"2026-11-10","direction":"下调","note":"规则估算，非官方预测"}"""
+
+    @Test
+    fun `fanzbus province price and downward forecast`() {
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "北京", provinceName = "北京", cityName = null,
+            pricesBody = fanzbusPrices, citiesBody = fanzbusCities, forecastBody = fanzbusForecast,
+        )!!
+        assertEquals(8.89, info.price92!!, 1e-9)
+        assertEquals(9.46, info.price95!!, 1e-9)
+        assertEquals(10.96, info.price98!!, 1e-9)
+        assertEquals(8.65, info.price0!!, 1e-9)
+        assertEquals("下调", info.trend)
+        assertEquals("11 月 12 日 24 时", info.nextAdjustmentText)
+    }
+
+    @Test
+    fun `fanzbus uses city level price for non-unified province`() {
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "云南红河", provinceName = "云南", cityName = "红河",
+            pricesBody = fanzbusPrices, citiesBody = fanzbusCities, forecastBody = fanzbusForecast,
+        )!!
+        assertEquals(9.19, info.price92!!, 1e-9)
+        assertEquals(9.85, info.price95!!, 1e-9)
+        assertEquals(8.82, info.price0!!, 1e-9)
+        assertEquals("下调", info.trend)
+    }
+
+    @Test
+    fun `fanzbus falls back to province when city is missing`() {
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "云南某市", provinceName = "云南", cityName = "不存在",
+            pricesBody = fanzbusPrices, citiesBody = fanzbusCities, forecastBody = fanzbusForecast,
+        )!!
+        assertEquals(9.25, info.price92!!, 1e-9)
+    }
+
+    @Test
+    fun `fanzbus tolerates missing forecast and bad label`() {
+        val prices = """{"next_adjustment_label":"待公布","provinces":[{"province":"北京","p92":8.89}]}"""
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "北京", provinceName = "北京", cityName = null,
+            pricesBody = prices, citiesBody = null, forecastBody = null,
+        )!!
+        assertNull(info.trend)
+        assertEquals("待公布", info.nextAdjustmentText)
+    }
+
+    @Test
+    fun `normalizes adjustment labels`() {
+        assertEquals("11 月 12 日 24 时", FuelPriceRepository.normalizeAdjustmentLabel("11月12日24时"))
+        assertEquals("11 月 12 日 24 时", FuelPriceRepository.normalizeAdjustmentLabel("11月12日24时调整"))
+        assertNull(FuelPriceRepository.normalizeAdjustmentLabel(null))
+    }
+
     // ---------------- 每日静态 JSON 数据集 ----------------
 
     @Test

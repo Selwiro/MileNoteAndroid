@@ -157,7 +157,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 
 | Feature | Description |
 |---|---|
-| Today's fuel price | Reference price and expected adjustment direction by fuel grade and located city; refreshed once a day (manual refresh available) and kept when fetching fails |
+| Today's fuel price | Reference price and expected adjustment direction by fuel grade and located city (city-level for provinces with non-uniform prices, falling back to the province); refreshed once a day (manual refresh available) and kept when fetching fails |
 | Themes | Five themes — Mile Blue, Forest Green, Lilac, Warm Amber and Graphite — all with light and dark modes |
 | Interface language | Simplified Chinese and English |
 | Display units | Currency, distance and volume units change labels only; existing values are not converted |
@@ -348,7 +348,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **286 domain unit tests** and **152 app unit tests**.
+The suite currently contains **286 domain unit tests** and **157 app unit tests**.
 
 ### Building a release APK
 

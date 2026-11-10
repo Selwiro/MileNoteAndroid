@@ -47,8 +47,8 @@ class FuelPriceCache(context: Context) {
     companion object {
         private const val PREFS_NAME = "milenote-fuel-price-cache"
 
-        /** 数据源/文案口径版本；2026-11-10 从 qiyoujiage 换成每日静态 JSON 时 +1。 */
-        const val CACHE_VERSION = 2
+        /** 数据源/文案口径版本：更换油价数据源或字段口径时 +1（旧缓存会被丢弃并重抓）。 */
+        const val CACHE_VERSION = 3
 
         private val json = Json { ignoreUnknownKeys = true }
 
