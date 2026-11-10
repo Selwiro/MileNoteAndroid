@@ -451,12 +451,6 @@ type(范围): 摘要
 
 所有演示和测试数据应使用合成数据。请勿提交真实账本、小票、签名密钥、密码或构建产物。
 
-## 赞助
-
-给作者喂点 token。
-
-<img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/donate/wechat.png" width="200" alt="微信赞赏码">
-
 ## 致谢
 
 这个应用能跑起来，靠的是很多开源项目、公开数据与参考资料。感谢所有维护者和贡献者。
@@ -540,3 +534,9 @@ App 内「设置 → 关于 → 开源许可」列出随 APK 分发的全部运�
 - [Issues / 问题反馈](https://github.com/Selwiro/MileNoteAndroid/issues)
 
 网站页面与截图资源维护在 `gh-pages` 分支，Android 应用源码主要维护在 `main` 分支。
+
+## 赞助
+
+给作者喂点 token。
+
+<img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/donate/wechat.png" width="200" alt="微信赞赏码">
