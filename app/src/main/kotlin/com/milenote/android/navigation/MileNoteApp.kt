@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
@@ -446,53 +447,60 @@ private fun MileNoteBottomBar(
         color = if (dark) scheme.surfaceContainer else Color.White,
         tonalElevation = if (dark) 2.dp else 0.dp,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            tabs.take(2).forEachIndexed { index, tab ->
-                BottomBarTab(
-                    tab = tab,
-                    selected = selectedIndex == index,
-                    onClick = { onSelect(index) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Box(
-                modifier = Modifier.weight(1.12f),
-                contentAlignment = Alignment.Center,
+        Column {
+            // 顶部分隔线：白底栏与上方内容卡片区分开（深色主题同样保留，只是更轻）。
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = scheme.outlineVariant.copy(alpha = if (dark) 0.5f else 0.9f),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    onClick = onAdd,
-                    shape = RoundedCornerShape(14.dp),
-                    color = scheme.primary,
-                    contentColor = scheme.onPrimary,
-                    shadowElevation = 3.dp,
-                    modifier = Modifier
-                        .width(54.dp)
-                        .height(38.dp),
+                tabs.take(2).forEachIndexed { index, tab ->
+                    BottomBarTab(
+                        tab = tab,
+                        selected = selectedIndex == index,
+                        onClick = { onSelect(index) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Box(
+                    modifier = Modifier.weight(1.12f),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = MileNoteIcons.Add,
-                            contentDescription = tr("记一笔", "Add entry"),
-                            modifier = Modifier.size(22.dp),
-                        )
+                    Surface(
+                        onClick = onAdd,
+                        shape = RoundedCornerShape(14.dp),
+                        color = scheme.primary,
+                        contentColor = scheme.onPrimary,
+                        shadowElevation = 3.dp,
+                        modifier = Modifier
+                            .width(54.dp)
+                            .height(38.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = MileNoteIcons.Add,
+                                contentDescription = tr("记一笔", "Add entry"),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 }
-            }
-            tabs.drop(2).forEachIndexed { offset, tab ->
-                val index = offset + 2
-                BottomBarTab(
-                    tab = tab,
-                    selected = selectedIndex == index,
-                    onClick = { onSelect(index) },
-                    modifier = Modifier.weight(1f),
-                )
+                tabs.drop(2).forEachIndexed { offset, tab ->
+                    val index = offset + 2
+                    BottomBarTab(
+                        tab = tab,
+                        selected = selectedIndex == index,
+                        onClick = { onSelect(index) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
