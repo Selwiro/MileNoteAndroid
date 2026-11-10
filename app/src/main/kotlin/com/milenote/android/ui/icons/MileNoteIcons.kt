@@ -99,6 +99,38 @@ object MileNoteIcons {
         )
     }
 
+    // -----------------------------------------------------------------------------------------
+    // 车辆类型（顶栏车辆胶囊左侧图标：燃油 / 纯电 / 插混）
+    // -----------------------------------------------------------------------------------------
+
+    /**
+     * 燃油车（fuel / HEV）：加油枪。
+     *
+     * 与底栏「油耗」同一个图形，语义直白（这辆车烧油）；带闪电的版本留给纯电 / 插混。
+     */
+    val VehicleFuel: ImageVector get() = Fuel
+
+    /** 纯电车（BEV）：电池外壳 + 实心闪电（一眼「电」）。 */
+    val VehicleElectric: ImageVector by lazy {
+        strokeAndFillIcon(
+            name = "MileNote.VehicleElectric",
+            "M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z",
+            "M20.5 10.5v3",
+            filled = "M11.8 8 8.5 12.4h2.4l-1 3.6 3.6-4.9h-2.4L11.8 8Z",
+        )
+    }
+
+    /** 插电混动（PHEV / 增程）：加油枪 + 实心闪电（油、电两套能源）。 */
+    val VehicleHybrid: ImageVector by lazy {
+        strokeAndFillIcon(
+            name = "MileNote.VehicleHybrid",
+            "M4 21V7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14",
+            "M3 21h8",
+            "M10 8h2.2a1.8 1.8 0 0 1 1.8 1.8V16",
+            filled = "M22 4.5 17 12h2.9l-1.2 4.5 5-6.6h-2.9l1.2-5.4Z",
+        )
+    }
+
     /** 钱包（Web `wallet`）。 */
     val Wallet: ImageVector by lazy {
         strokeIcon(
@@ -534,6 +566,34 @@ private fun filledIcon(
 ): ImageVector = baseBuilder(name, autoMirror).apply {
     addPath(
         pathData = addPathNodes(pathData),
+        fill = SolidColor(Color.Black),
+        stroke = null,
+    )
+}.build()
+
+/**
+ * 描边 + 实心混排图标（车辆类型用）：描边骨架 + 一颗实心闪电。
+ *
+ * 18dp 的胶囊前导图标里，纯描边的闪电很容易糊成一团，实心闪电在小尺寸下更清楚；
+ * 描边与实心都只给 `Color.Black`，最终由 `Icon` 的 tint 统一着色。
+ */
+private fun strokeAndFillIcon(
+    name: String,
+    vararg pathData: String,
+    filled: String,
+): ImageVector = baseBuilder(name, autoMirror = false).apply {
+    pathData.forEach { path ->
+        addPath(
+            pathData = addPathNodes(path),
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = ICON_STROKE_WIDTH,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+    }
+    addPath(
+        pathData = addPathNodes(filled),
         fill = SolidColor(Color.Black),
         stroke = null,
     )

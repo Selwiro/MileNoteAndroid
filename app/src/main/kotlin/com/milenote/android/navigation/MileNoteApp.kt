@@ -114,6 +114,17 @@ private fun bottomTabsFor(profile: EnergyProfile): List<BottomTab> {
 
 private data class TopBarCopy(val title: String, val subtitle: String)
 
+/**
+ * 顶栏车辆胶囊的类型图标：燃油=加油枪、纯电=电池+闪电、插混=油枪+闪电。
+ *
+ * 沿用当前车的 `energyProfile`（与底栏 / 顶栏标题同一取值来源），切换车辆时自动跟随。
+ */
+private fun vehicleTypeIcon(profile: EnergyProfile): ImageVector = when (profile) {
+    EnergyProfile.FUEL_ONLY -> MileNoteIcons.VehicleFuel
+    EnergyProfile.ELECTRIC_ONLY -> MileNoteIcons.VehicleElectric
+    EnergyProfile.DUAL -> MileNoteIcons.VehicleHybrid
+}
+
 /** 顶栏标题：油耗分析 / 能耗分析按当前车能量档位切换（其余路由与语言无关逻辑不变）。 */
 private fun topBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
     Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
@@ -198,7 +209,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                                 )
                             },
                             leadingIcon = {
-                                Icon(MileNoteIcons.Car, contentDescription = null)
+                                Icon(vehicleTypeIcon(profile), contentDescription = null)
                             },
                         )
                         androidx.compose.foundation.layout.Spacer(
