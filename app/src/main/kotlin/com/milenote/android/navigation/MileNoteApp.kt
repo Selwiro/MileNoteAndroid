@@ -446,12 +446,14 @@ private fun MileNoteBottomBar(
     Surface(
         color = if (dark) scheme.surfaceContainer else Color.White,
         tonalElevation = if (dark) 2.dp else 0.dp,
+        // 浅色主题：底栏上方加一点阴影 + 更淡的分隔线，轻量区分内容区（深色主题只留阴影，不压深色内容）。
+        shadowElevation = if (dark) 2.dp else 5.dp,
     ) {
         Column {
-            // 顶部分隔线：白底栏与上方内容卡片区分开（深色主题同样保留，只是更轻）。
+            // 顶部分隔线：白底栏与上方内容卡片区分开（比上一版更浅）。
             HorizontalDivider(
                 thickness = 1.dp,
-                color = scheme.outlineVariant.copy(alpha = if (dark) 0.5f else 0.9f),
+                color = scheme.outlineVariant.copy(alpha = if (dark) 0.28f else 0.45f),
             )
             Row(
                 modifier = Modifier
