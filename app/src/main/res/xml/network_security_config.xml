@@ -12,4 +12,10 @@
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
     </domain-config>
+    <!-- 油价站点 qiyoujiage.com 目前只有 HTTP（HTTPS 证书不匹配），仅对该域名放行明文；
+         抓取失败会自动回退到 HTTPS JSON API，再不行用本机缓存，不会把图片/账本发往该站点。 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">www.qiyoujiage.com</domain>
+        <domain includeSubdomains="false">qiyoujiage.com</domain>
+    </domain-config>
 </network-security-config>

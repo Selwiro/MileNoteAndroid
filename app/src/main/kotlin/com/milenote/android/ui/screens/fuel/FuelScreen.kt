@@ -63,6 +63,7 @@ import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
+import com.milenote.android.data.fuelprice.FuelPriceCache
 import com.milenote.android.data.fuelprice.FuelPriceInfo
 import com.milenote.android.data.fuelprice.FuelPriceRepository
 import com.milenote.android.data.fuelprice.FuelLocation
@@ -95,6 +96,8 @@ import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
@@ -146,13 +149,18 @@ fun FuelScreen(
     val savedLocation = remember(ev) { if (ev) null else loadSavedFuelLocation(context) }
     var fuelLocation by remember(ev) { mutableStateOf(savedLocation ?: FuelLocation()) }
     var locationRemembered by remember(ev) { mutableStateOf(savedLocation != null) }
-    var priceInfo by remember(ev) { mutableStateOf<FuelPriceInfo?>(null) }
-    var priceLoading by remember(ev) { mutableStateOf(!ev) }
+    // 上次成功抓取的油价先落盘：进入页面立即显示缓存，同一天内不重复请求（跨天才自动刷新）。
+    val priceCache = remember(ev) { if (ev) null else FuelPriceCache(context) }
+    val cachedAtStart = remember(ev) { if (ev) null else priceCache?.load(fuelLocation) }
+    var priceInfo by remember(ev) { mutableStateOf(cachedAtStart?.info) }
+    var priceFetchedAt by remember(ev) { mutableStateOf(cachedAtStart?.fetchedAtMillis) }
+    var priceStale by remember(ev) { mutableStateOf(false) }
+    var priceLoading by remember(ev) { mutableStateOf(!ev && cachedAtStart == null) }
 
-    fun refreshPrice(reLocate: Boolean) {
+    /** [force] = 手动刷新（忽略当天缓存）；自动刷新（进页面/跨天）时 force=false。 */
+    fun refreshPrice(reLocate: Boolean, force: Boolean = false) {
         val repo = priceRepo ?: return
         scope.launch {
-            priceLoading = true
             if (reLocate) {
                 val resolved = LocationResolver.resolve(context)
                 if (resolved != null) {
@@ -162,7 +170,35 @@ fun FuelScreen(
                     locationRemembered = true
                 }
             }
-            priceInfo = repo.fetch(fuelLocation)
+            val cached = priceCache?.load(fuelLocation)
+            val now = System.currentTimeMillis()
+            if (!force && cached != null && !FuelPriceCache.isStale(cached.fetchedAtMillis, now)) {
+                priceInfo = cached.info
+                priceFetchedAt = cached.fetchedAtMillis
+                priceStale = false
+                priceLoading = false
+                return@launch
+            }
+            if (priceInfo == null) priceLoading = true
+            val info = repo.fetch(fuelLocation)
+            if (info != null) {
+                priceCache?.save(fuelLocation, info, now)
+                priceInfo = info
+                priceFetchedAt = now
+                priceStale = false
+            } else {
+                // 抓取失败但本机有上次成功的数据：继续显示旧价并标注「更新失败」，不清空。
+                val cachedFallback = cached ?: priceCache?.load(fuelLocation)
+                if (cachedFallback != null) {
+                    priceInfo = cachedFallback.info
+                    priceFetchedAt = cachedFallback.fetchedAtMillis
+                    priceStale = true
+                } else {
+                    priceInfo = repo.referenceInfo(fuelLocation)
+                    priceFetchedAt = null
+                    priceStale = false
+                }
+            }
             priceLoading = false
         }
     }
@@ -171,7 +207,7 @@ fun FuelScreen(
         rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
-            if (granted) refreshPrice(reLocate = true)
+            if (granted) refreshPrice(reLocate = true, force = true)
         }
     } else {
         null
@@ -282,9 +318,12 @@ fun FuelScreen(
                 } else {
                     tr("获取当前城市油价", "Get local fuel price")
                 },
+                lastUpdatedMillis = priceFetchedAt,
+                stale = priceStale,
+                onRefresh = { refreshPrice(reLocate = false, force = true) },
                 onGetCurrentCityPrice = {
                     if (LocationResolver.hasPermission(context)) {
-                        refreshPrice(reLocate = true)
+                        refreshPrice(reLocate = true, force = true)
                     } else {
                         locationPermissionLauncher?.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                     }
@@ -610,28 +649,45 @@ private fun FuelPriceCard(
     loading: Boolean,
     fuelGrade: String?,
     locationLabel: String,
+    lastUpdatedMillis: Long?,
+    stale: Boolean,
+    onRefresh: () -> Unit,
     onGetCurrentCityPrice: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard(
         title = tr("今日油价", "Today's fuel price"),
         action = {
-            TextButton(
-                onClick = onGetCurrentCityPrice,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                Icon(
-                    imageVector = MileNoteIcons.Location,
-                    contentDescription = null,
-                    modifier = Modifier.size(17.dp),
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = locationLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !loading,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = MileNoteIcons.Refresh,
+                        contentDescription = tr("刷新油价", "Refresh fuel prices"),
+                        modifier = Modifier.size(17.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(
+                    onClick = onGetCurrentCityPrice,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        imageVector = MileNoteIcons.Location,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = locationLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
     ) {
@@ -728,11 +784,34 @@ private fun FuelPriceCard(
                         }
                     }
                 }
-                if (info.isFallback) {
-                    Text(
-                        text = tr("离线参考价，联网后点刷新获取当地实时油价", "Offline reference price. Refresh while online for real-time local prices."),
+                when {
+                    info.isFallback -> Text(
+                        text = tr(
+                            "实时油价获取失败，当前显示参考价（联网后会自动重试）",
+                            "Live fuel prices unavailable — showing reference prices (will retry when online)",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    stale -> Text(
+                        text = tr(
+                            "网络暂不可用，显示上次获取的油价（%s）",
+                            "Network unavailable — showing the last fetched prices (%s)",
+                            lastUpdatedMillis?.let(::formatFuelPriceTime) ?: "—",
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    lastUpdatedMillis != null -> Text(
+                        text = tr(
+                            "更新于 %s",
+                            "Updated %s",
+                            formatFuelPriceTime(lastUpdatedMillis),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
@@ -1211,6 +1290,12 @@ private fun FuelFootnote(ev: Boolean) {
     }
 }
 
+
+/** 油价更新时间展示（上海时区，MM-dd HH:mm）。 */
+private fun formatFuelPriceTime(millis: Long): String =
+    Instant.ofEpochMilli(millis)
+        .atZone(ZoneId.of("Asia/Shanghai"))
+        .format(DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.CHINA))
 
 private const val FUEL_PREFS = "milenote-fuel-price"
 private const val KEY_FUEL_PROVINCE_SLUG = "fuel_province_slug"

@@ -157,7 +157,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 
 | Feature | Description |
 |---|---|
-| Today's fuel price | Reference price and expected adjustment direction based on the vehicle's fuel grade and your located city |
+| Today's fuel price | Reference price and expected adjustment direction by fuel grade and located city; refreshed once a day (manual refresh available) and kept when fetching fails |
 | Themes | Five themes — Mile Blue, Forest Green, Lilac, Warm Amber and Graphite — all with light and dark modes |
 | Interface language | Simplified Chinese and English |
 | Display units | Currency, distance and volume units change labels only; existing values are not converted |
@@ -165,7 +165,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 | System integration | System share intake, SAF file picking and in-app update checks |
 | Demo ledger | Two virtual vehicles with sample records; exiting the demo restores your real ledger automatically |
 
-Today's fuel price is only available for fuel vehicles in the Chinese interface; treat it as reference data only.
+Today's fuel price is only available for fuel vehicles in the Chinese interface. It is fetched in order from a public fuel-price site → free HTTPS JSON APIs → the local cache, and is reference data only. A successful fetch is cached on the device, not re-requested on the same day, refreshed automatically the next day, and can be refreshed manually from the card.
 
 The app currently uses a portrait phone layout; tablet and landscape two-pane layouts are not available yet.
 
@@ -214,6 +214,8 @@ Data is handled as follows:
 The app requests only network and coarse location. Coarse location is used only for the today's fuel price feature.
 
 The default ledger is never uploaded to a developer server; online features such as today's fuel price, update checks and your own WebDAV still talk to the corresponding external services.
+
+Fuel-price fetching sends only the province name — no ledger data, images or location coordinates. qiyoujiage.com currently offers HTTP only, so release builds allow cleartext for that domain alone; every other online feature still requires HTTPS.
 
 ### Backups
 
@@ -346,7 +348,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **286 domain unit tests** and **137 app unit tests**.
+The suite currently contains **286 domain unit tests** and **149 app unit tests**.
 
 ### Building a release APK
 
