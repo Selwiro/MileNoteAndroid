@@ -66,7 +66,7 @@ import com.milenote.android.ui.theme.moneyLarge
  *
  * 打开页面时不自动聚焦（避免一进入就弹输入法）；用户点击输入框才弹键盘。
  *
- * 分类为油费时，尾部显示「拍照识别小票」相机按钮（OCR 入口从加油量字段移到这里，
+ * 分类为油费时，尾部显示「选择小票照片识别」相机按钮（OCR 入口从加油量字段移到这里，
  * 避免出现两个相机图标）；非油费不显示。
  */
 @Composable
@@ -106,7 +106,7 @@ internal fun AmountField(
                 IconButton(onClick = onOcrClick) {
                     Icon(
                         imageVector = MileNoteIcons.Camera,
-                        contentDescription = tr("拍照识别小票", "Scan receipt"),
+                        contentDescription = tr("选择小票照片识别", "Scan receipt"),
                         modifier = Modifier.size(20.dp),
                     )
                 }

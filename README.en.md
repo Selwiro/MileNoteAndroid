@@ -104,9 +104,9 @@ Cost per kilometre is based on recorded spending and recorded mileage. Unrecorde
 
 ### Receipt scanning
 
-After refuelling, photograph the receipt or pick an existing image from the gallery.
+After refuelling, pick a receipt or pump-display photo with the system photo picker.
 
-The app uses **CameraX + Tesseract** (Tesseract4Android, with the tessdata_fast Chinese and English models bundled) to recognise receipts on the device and tries to extract the amount paid, fuel volume and date.
+The app uses **Tesseract** (Tesseract4Android, with the tessdata_fast Chinese and English models bundled) to recognise receipts on the device and tries to extract the amount paid, fuel volume and date. It does not request camera access and does not take photos.
 
 Pump-display screens (seven-segment LED/LCD) use a **built-in geometric decoder** instead: it reads the amount, fuel volume and unit price directly from the segment positions and still validates them with `amount ≈ fuel × unit price`. If nothing can be read, tap **Fill in / edit the readings** on the result panel to enter them quickly with a numeric keypad or the numbers found in the recognised text.
 
@@ -211,7 +211,7 @@ Data is handled as follows:
 | WebDAV | Configured by you; HTTPS only; plain JSON by default, with optional encrypted upload (AES-256-GCM ciphertext) |
 | Accounts and analytics | No accounts, subscriptions, ads or analytics |
 
-The app requests camera, network and coarse location. Coarse location is used only for the today's fuel price feature.
+The app requests only network and coarse location. Coarse location is used only for the today's fuel price feature.
 
 The default ledger is never uploaded to a developer server; online features such as today's fuel price, update checks and your own WebDAV still talk to the corresponding external services.
 
@@ -268,7 +268,6 @@ MileNote is written in Kotlin and uses the native Android stack.
 | Compose Navigation | Navigation |
 | DataStore | App settings persistence |
 | JSON snapshot | Ledger storage |
-| CameraX | Camera capture |
 | Tesseract4Android | On-device Chinese/English text recognition (Apache-2.0, tessdata_fast models bundled) |
 | OkHttp | WebDAV networking |
 | Android Keystore | Secure storage of connection passwords |
@@ -450,11 +449,9 @@ type(scope): summary
 
 Use synthetic data for all demo and test data. Never commit real ledgers, receipts, signing keys, passwords or build artifacts.
 
-## License, trademark and contributions
+## License and contributions
 
 - **Source license**: this repository is licensed under the [Apache License 2.0](LICENSE); copyright notices are in [NOTICE](NOTICE). You may read, modify, build and redistribute it, including for free, provided you keep the copyright and license notices and comply with Apache-2.0.
-- **Store builds and pricing**: the app-store build is a **paid distribution channel** — what you pay for is ongoing updates, support and the store's channel services. Apache-2.0 does not restrict charging: anyone may clone the repo, build with `./gradlew :app:assembleDebug`, and redistribute the result, free or paid. Channel terms for store builds are in [EULA.md](EULA.md); where they conflict with the [LICENSE](LICENSE), the LICENSE prevails.
-- **Trademarks are not licensed**: the names "MileNote" and "里程志" and the app icon are reserved trademarks and are not licensed with the code. Forks must use their own name and icon and must not imply endorsement by the developer.
 - **External contributions (DCO)**: Pull Requests are welcome, but every commit must carry a Developer Certificate of Origin sign-off (`git commit -s`, i.e. a `Signed-off-by:` line) certifying you have the right to submit it under Apache-2.0. Please open an issue first and make sure the tests and build pass.
 
 ## Links

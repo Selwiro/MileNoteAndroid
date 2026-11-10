@@ -35,7 +35,7 @@ import com.milenote.android.ui.theme.MileNoteTheme
  *     label = "加油量",
  *     suffix = Units.volumeUnit,
  *     keyboardType = KeyboardType.Decimal,
- *     trailing = { IconButton(...) { Icon(MileNoteIcons.Camera, "拍照识别") } },
+ *     trailing = { IconButton(...) { Icon(MileNoteIcons.Camera, "选择照片识别") } },
  * )
  * ```
  *

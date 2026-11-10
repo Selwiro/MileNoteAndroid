@@ -69,7 +69,7 @@ data class EditorTarget(
     val record: Record? = null,
     val category: String = "油费",
     val serviceReminderId: String? = null,
-    /** 打开编辑器后是否直接进入拍照识票（快捷方式「油费识别」）。 */
+    /** 打开编辑器后是否直接进入识票（快捷方式「油费识别」）。 */
     val startOcr: Boolean = false,
 )
 

@@ -1717,18 +1717,6 @@ private fun LicensesPage() {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(modifier = Modifier.size(6.dp))
-                Text(
-                    text = tr(
-                        "应用商店中的版本是收费分发渠道，购买的是更新、支持与商店服务；" +
-                            "渠道条款见 EULA，与 Apache-2.0 冲突时一律以 Apache-2.0 为准。",
-                        "Store builds are a paid distribution channel covering updates, support and store " +
-                            "services. The channel terms are in the EULA; where they conflict with Apache-2.0, " +
-                            "Apache-2.0 prevails.",
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(modifier = Modifier.size(4.dp))
                 SettingsMenuRow(
                     icon = MileNoteIcons.FileText,
@@ -1753,13 +1741,6 @@ private fun LicensesPage() {
                     title = tr("组件清单", "Component list"),
                     subtitle = tr("随 APK 分发的运行期依赖，按许可证分组", "Runtime dependencies in the APK, by license"),
                     onClick = { openAsset(tr("第三方组件清单", "Third-party components"), "licenses/third-party-notices.txt") },
-                )
-                SectionDivider()
-                SettingsMenuRow(
-                    icon = MileNoteIcons.FileText,
-                    title = "MIT License",
-                    subtitle = "checker-qual · Checker Framework",
-                    onClick = { openAsset("MIT License", "licenses/mit.txt") },
                 )
                 SectionDivider()
                 SettingsMenuRow(

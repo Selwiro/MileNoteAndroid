@@ -3,18 +3,13 @@ Copyright 2026 The MileNote Authors
 
 本产品（MileNote / 里程志 Android 客户端）在运行期包含的第三方组件全部按开源许可
 分发，包括但不限于 AndroidX、Jetpack Compose、Kotlin 与 kotlinx、OkHttp、Okio、
-Coil、Guava、Tesseract4Android 等；运行期依赖只使用 Apache License 2.0、MIT 与
-BSD 3-Clause 三种许可证。各组件版权归其各自权利人所有，其许可条款与 NOTICE 声明
+Coil、Tesseract4Android 等；运行期依赖只使用 Apache License 2.0 与
+BSD 3-Clause 两种许可证。各组件版权归其各自权利人所有，其许可条款与 NOTICE 声明
 随本产品一并适用。
 
 设备端 OCR 由 Tesseract4Android（Apache-2.0）提供，并内置来自
 https://github.com/tesseract-ocr/tessdata_fast 的 chi_sim 与 eng 模型（Apache-2.0）。
 
 分发本产品的二进制时，App 内「设置 → 关于 → 开源许可」提供 Apache-2.0 许可证全文、
-MIT / BSD 3-Clause 全文，以及按许可证分组的第三方组件清单（覆盖 releaseRuntimeClasspath
+BSD 3-Clause 全文，以及按许可证分组的第三方组件清单（覆盖 releaseRuntimeClasspath
 的全部运行期依赖），满足 Apache-2.0 §4(a)、§4(d) 随包提供许可证与 NOTICE 的要求。
-
-「里程志」「MileNote」名称与图标为开发者保留的商标，不随代码许可授权。
-The names "MileNote" and "里程志", together with the application icon, are
-trademarks reserved by the developer and are not licensed under the Apache
-License, Version 2.0 (see Apache-2.0 §6).

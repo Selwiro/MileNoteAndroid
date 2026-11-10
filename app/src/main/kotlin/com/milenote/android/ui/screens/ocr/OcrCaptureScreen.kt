@@ -1,8 +1,6 @@
 package com.milenote.android.ui.screens.ocr
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -17,13 +15,6 @@ import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -54,8 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,10 +57,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.domain.ocr.FuelReceiptParser
 import com.milenote.android.i18n.Units
@@ -116,13 +101,13 @@ private const val MAX_DECODE_SIDE = 2400
 private const val OCR_TIME_BUDGET_MS = 20_000L
 
 /**
- * 加油小票拍照识别页。
+ * 加油小票识别页：进入即打开系统照片选择器，选中小票/加油机照片后识别。
  *
- * 交互：CameraX 预览 → 拍照（或相册选图）→ Tesseract 中文 OCR → [FuelReceiptParser] 解析字段
- * → 结果确认面板 → 通过 [onResult] 把 [FuelReceipt] 回填给编辑器。
+ * 交互：系统 Photo Picker（无需相机/存储权限）→ Tesseract 中文 OCR + 七段屏几何解码
+ * → [FuelReceiptParser] 解析字段 → 结果确认面板 → 通过 [onResult] 把 [FuelReceipt] 回填给编辑器。
  *
  * 隐私：图片只在内存中处理（识别完立即 `recycle()`），**不落盘、不上传**；
- * 相册图片也只读取一次，不复制到应用目录。
+ * 选中的图片只读取一次，不复制到应用目录。应用不申请相机权限、不打开相机。
  *
  * ```kotlin
  * OcrCaptureScreen(
@@ -148,45 +133,16 @@ fun OcrCaptureScreen(
     latinRecognizer: OcrRecognizer = TesseractLatinOcrRecognizer,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
     var stage by remember { mutableStateOf(OcrStage.Idle) }
     var receipt by remember { mutableStateOf<FuelReceipt?>(null) }
     var recognizedText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var cameraError by remember { mutableStateOf<String?>(null) }
-
-    val imageCapture = remember {
-        ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .build()
-    }
-    val cameraProvider = remember { mutableStateOf<ProcessCameraProvider?>(null) }
-
-    // 离开页面时立刻释放相机，避免占用导致其他应用/下次进入黑屏。
-    DisposableEffect(Unit) {
-        onDispose {
-            cameraProvider.value?.let { provider -> runCatching { provider.unbindAll() } }
-        }
-    }
 
     fun fail(message: String) {
         errorMessage = message
         stage = OcrStage.Error
-    }
-
-    fun resetToIdle() {
-        stage = OcrStage.Idle
-        receipt = null
-        recognizedText = ""
-        errorMessage = null
     }
 
     /** 线程切换 + 识别 + 解析的统一入口；[load] 在 IO 线程执行并返回（位图, 需要旋转的角度）。 */
@@ -199,7 +155,7 @@ fun OcrCaptureScreen(
             try {
                 val (bitmap, rotation) = withContext(Dispatchers.IO) { load() }
                 if (bitmap == null) {
-                    fail(tr("无法读取图片，请换一张或重新拍摄", "Could not read the image — try another photo or retake"))
+                    fail(tr("无法读取图片，请重新选择照片", "Could not read the image — choose another photo"))
                     return@launch
                 }
                 prepared = withContext(Dispatchers.Default) { prepareForOcr(bitmap, rotation) }
@@ -303,13 +259,13 @@ fun OcrCaptureScreen(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: OcrException) {
-                fail(e.message ?: tr("小票识别失败，请重拍", "Receipt recognition failed — retake the photo"))
+                fail(e.message ?: tr("小票识别失败，请重新选择照片", "Receipt recognition failed — choose another photo"))
             } catch (e: Exception) {
                 fail(
                     tr(
                         "小票识别失败：%s",
                         "Receipt recognition failed: %s",
-                        e.message ?: tr("请检查光线和清晰度后重试", "check lighting and focus, then retry"),
+                        e.message ?: tr("请检查光线和清晰度后重试", "check lighting, focus and retry"),
                     ),
                 )
             } finally {
@@ -320,26 +276,14 @@ fun OcrCaptureScreen(
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        hasCameraPermission = granted
-        if (!granted) {
-            errorMessage = tr(
-                "未授予相机权限，可以改用「从相册选择」",
-                "Camera permission not granted — you can pick from the gallery instead",
-            )
-            stage = OcrStage.Error
-        } else {
-            errorMessage = null
-            if (stage == OcrStage.Error) stage = OcrStage.Idle
-        }
-    }
-
     val pickImageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        // 没有相机兜底：首次进入时取消选图就关闭页面；结果/错误页取消则留在原状态。
+        if (uri == null) {
+            if (stage == OcrStage.Idle) onClose()
+            return@rememberLauncherForActivityResult
+        }
         launchRecognition {
             val bitmap = decodeImage(context, uri)
             bitmap to 0
@@ -363,42 +307,8 @@ fun OcrCaptureScreen(
         }
     }
 
-    /** 请求相机权限（已拒绝过会走系统二次确认；被永久拒绝时提示改用相册）。 */
-    fun requestCameraPermission() {
-        permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-
-    /** 拍照：成功后把 ImageProxy 转 Bitmap 并识别，失败给中文提示。 */
-    fun capturePhoto() {
-        if (stage == OcrStage.Recognizing) return
-        if (!hasCameraPermission) {
-            requestCameraPermission()
-            return
-        }
-        stage = OcrStage.Recognizing
-        errorMessage = null
-        val executor = ContextCompat.getMainExecutor(context)
-        try {
-            imageCapture.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    val rotation = image.imageInfo.rotationDegrees
-                    val bitmap = runCatching { image.toBitmap() }.getOrNull()
-                    runCatching { image.close() }
-                    if (bitmap == null) {
-                        fail(tr("拍照结果无法解析，请重试", "Could not process the photo — try again"))
-                    } else {
-                        launchRecognition { bitmap to rotation }
-                    }
-                }
-
-                override fun onError(exception: ImageCaptureException) {
-                    fail(tr("拍照失败：%s", "Photo capture failed: %s", exception.message ?: tr("请重试", "try again")))
-                }
-            })
-        } catch (e: Exception) {
-            fail(tr("拍照失败：%s", "Photo capture failed: %s", e.message ?: tr("相机未就绪，请重试", "camera not ready — try again")))
-        }
-    }
+    // 进入页面即打开系统照片选择器（Photo Picker；不申请相机/存储权限）。
+    LaunchedEffect(Unit) { pickFromGallery() }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -413,51 +323,24 @@ fun OcrCaptureScreen(
                     .fillMaxWidth()
                     .padding(horizontal = MileNoteDimens.PageHorizontal),
             ) {
-                // 预览 / 占位
-                if (hasCameraPermission && cameraError == null) {
-                    CameraPreview(
-                        imageCapture = imageCapture,
-                        cameraProvider = cameraProvider,
-                        lifecycleOwner = lifecycleOwner,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(MileNoteShapes.large),
-                        onError = { message -> cameraError = message },
-                    )
-                } else {
-                    CameraPlaceholder(
-                        hasPermission = hasCameraPermission,
-                        cameraError = cameraError,
-                        onRequestPermission = { requestCameraPermission() },
-                        onPickGallery = { pickFromGallery() },
+                when (stage) {
+                    OcrStage.Idle -> PickerPlaceholder(
+                        onPick = { pickFromGallery() },
                         modifier = Modifier.fillMaxSize(),
                     )
-                }
-
-                // 阶段覆盖层
-                when (stage) {
                     OcrStage.Recognizing -> RecognizingOverlay()
                     OcrStage.Result -> ResultOverlay(
                         receipt = receipt,
                         recognizedText = recognizedText,
                         onUse = { parsed -> parsed?.let(onResult) },
-                        onRetake = { resetToIdle() },
+                        onRetake = { pickFromGallery() },
                     )
                     OcrStage.Error -> ErrorOverlay(
                         message = errorMessage ?: tr("识别失败，请重试", "Recognition failed — try again"),
-                        onRetake = { resetToIdle() },
                         onPickGallery = { pickFromGallery() },
                     )
-                    OcrStage.Idle -> Unit
                 }
             }
-
-            OcrBottomActions(
-                enabled = stage == OcrStage.Idle && hasCameraPermission && cameraError == null,
-                onCapture = { capturePhoto() },
-                onPickGallery = { pickFromGallery() },
-                onRequestPermission = { requestCameraPermission() },
-            )
         }
     }
 }
@@ -480,11 +363,11 @@ private fun OcrHeader(onClose: () -> Unit) {
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(tr("拍照识别小票", "Scan receipt"), style = MaterialTheme.typography.titleLarge)
+            Text(tr("识别小票", "Scan receipt"), style = MaterialTheme.typography.titleLarge)
             Text(
                 tr(
-                    "自动识别金额、油量、支付日期与总里程",
-                    "Detects amount, fuel, payment date, and odometer automatically",
+                    "从相册选一张小票或加油机屏幕照片，自动识别金额、油量、支付日期与总里程",
+                    "Pick a receipt or pump-display photo; detects amount, fuel, payment date and odometer",
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -493,80 +376,10 @@ private fun OcrHeader(onClose: () -> Unit) {
     }
 }
 
-/** CameraX 预览（[PreviewView]）。 */
+/** 初始占位：进入页面会自动打开系统照片选择器，这里只作等待/重新选择入口。 */
 @Composable
-private fun CameraPreview(
-    imageCapture: ImageCapture,
-    cameraProvider: MutableState<ProcessCameraProvider?>,
-    lifecycleOwner: LifecycleOwner,
-    modifier: Modifier = Modifier,
-    onError: (String) -> Unit,
-) {
-    val context = LocalContext.current
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            PreviewView(ctx).apply {
-                scaleType = PreviewView.ScaleType.FILL_CENTER
-                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                bindCamera(ctx, this, lifecycleOwner, imageCapture, cameraProvider, onError)
-            }
-        },
-    )
-}
-
-/** 绑定 CameraX 预览 + 拍照用例；失败回调中文提示（相机被占用 / 无相机）。 */
-private fun bindCamera(
-    context: Context,
-    previewView: PreviewView,
-    lifecycleOwner: LifecycleOwner,
-    imageCapture: ImageCapture,
-    cameraProvider: MutableState<ProcessCameraProvider?>,
-    onError: (String) -> Unit,
-) {
-    try {
-        val future = ProcessCameraProvider.getInstance(context)
-        future.addListener({
-            try {
-                val provider = future.get()
-                cameraProvider.value = provider
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-                provider.unbindAll()
-                provider.bindToLifecycle(
-                    lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview,
-                    imageCapture,
-                )
-            } catch (t: Throwable) {
-                onError(
-                    tr(
-                        "相机启动失败：%s",
-                        "Camera failed to start: %s",
-                        t.message ?: tr("可能被其他应用占用", "it may be in use by another app"),
-                    ),
-                )
-            }
-        }, ContextCompat.getMainExecutor(context))
-    } catch (t: Throwable) {
-        onError(
-            tr(
-                "相机初始化失败：%s",
-                "Camera initialization failed: %s",
-                t.message ?: tr("未知错误", "unknown error"),
-            ),
-        )
-    }
-}
-
-@Composable
-private fun CameraPlaceholder(
-    hasPermission: Boolean,
-    cameraError: String?,
-    onRequestPermission: () -> Unit,
-    onPickGallery: () -> Unit,
+private fun PickerPlaceholder(
+    onPick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -584,46 +397,30 @@ private fun CameraPlaceholder(
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                imageVector = MileNoteIcons.Camera,
+                imageVector = MileNoteIcons.Import,
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = when {
-                    cameraError != null -> tr("相机不可用", "Camera unavailable")
-                    !hasPermission -> tr("需要相机权限才能拍照识别", "Camera permission is needed to scan")
-                    else -> tr("正在准备相机…", "Preparing camera…")
-                },
+                tr("选择小票照片", "Pick a receipt photo"),
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = cameraError
-                    ?: if (!hasPermission) {
-                        tr(
-                            "我们只在你拍照时使用相机，图片不会上传或保存。",
-                            "The camera is only used while you take a photo; images are never " +
-                                "uploaded or saved.",
-                        )
-                    } else {
-                        tr(
-                            "若长时间无画面，可直接从相册选择小票。",
-                            "If the preview stays blank, pick a receipt from the gallery instead.",
-                        )
-                    },
+                tr(
+                    "支持加油小票与加油机屏幕照片；图片只在内存中识别，不上传、不落盘。",
+                    "Works with fuel receipts and pump-display photos; the image is read in " +
+                        "memory and never uploaded or saved.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(16.dp))
-            if (!hasPermission) {
-                Button(onClick = onRequestPermission) { Text(tr("允许使用相机", "Allow camera access")) }
-                Spacer(Modifier.height(4.dp))
-            }
-            TextButton(onClick = onPickGallery) { Text(tr("从相册选择", "Choose from gallery")) }
+            Button(onClick = onPick) { Text(tr("从相册选择", "Choose from gallery")) }
         }
     }
 }
@@ -648,7 +445,7 @@ private fun RecognizingOverlay() {
     }
 }
 
-/** 识别结果确认面板：字段回显 + 校验提示 + 使用/重拍。 */
+/** 识别结果确认面板：字段回显 + 校验提示 + 使用/重选照片。 */
 @Composable
 private fun ResultOverlay(
     receipt: FuelReceipt?,
@@ -679,7 +476,7 @@ private fun ResultOverlay(
                 if (hasUsefulField) {
                     tr("请核对以下字段，确认后填入记账表单", "Check the fields below before filling the entry form")
                 } else {
-                    tr("没有识别到有效字段，可重拍或改用手动填写", "No valid fields detected — retake the photo or fill in manually")
+                    tr("没有识别到有效字段，可重新选择照片或手动填写", "No valid fields detected — choose another photo or fill in manually")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -770,7 +567,7 @@ private fun ResultOverlay(
                         .weight(1f)
                         .height(MileNoteDimens.ButtonMinHeight),
                 ) {
-                    Text(tr("重拍 / 换一张", "Retake / change photo"))
+                    Text(tr("重新选择照片", "Choose another photo"))
                 }
             }
 
@@ -834,7 +631,6 @@ private fun ResultOverlay(
 @Composable
 private fun ErrorOverlay(
     message: String,
-    onRetake: () -> Unit,
     onPickGallery: () -> Unit,
 ) {
     Surface(
@@ -852,8 +648,8 @@ private fun ErrorOverlay(
             MessageBar(message = message, kind = MessageKind.ERROR)
             Text(
                 tr(
-                    "拍摄时请让整张小票进入画面、保持光线充足且文字清晰。",
-                    "Keep the whole receipt in frame with good lighting and sharp text.",
+                    "请选择一张整张小票/加油机屏幕进入画面、光线充足且文字清晰的照片。",
+                    "Pick a photo where the whole receipt or pump display is in frame, well lit and sharp.",
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -861,68 +657,14 @@ private fun ErrorOverlay(
             )
             Spacer(Modifier.height(8.dp))
             Button(
-                onClick = onRetake,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(MileNoteDimens.ButtonMinHeight),
-            ) {
-                Text(tr("重试", "Retry"))
-            }
-            OutlinedButton(
                 onClick = onPickGallery,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(MileNoteDimens.ButtonMinHeight),
             ) {
-                Text(tr("从相册选择", "Choose from gallery"))
+                Text(tr("重新选择照片", "Choose another photo"))
             }
             Spacer(Modifier.weight(1f))
-        }
-    }
-}
-
-/** 底部操作区：相册兜底 + 拍照主按钮。 */
-@Composable
-private fun OcrBottomActions(
-    enabled: Boolean,
-    onCapture: () -> Unit,
-    onPickGallery: () -> Unit,
-    onRequestPermission: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = MileNoteDimens.PageHorizontal, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        OutlinedButton(
-            onClick = onPickGallery,
-            modifier = Modifier.height(MileNoteDimens.ButtonMinHeight),
-        ) {
-            Icon(
-                imageVector = MileNoteIcons.Import,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(tr("相册", "Gallery"), modifier = Modifier.padding(start = 6.dp))
-        }
-        Button(
-            onClick = if (enabled) onCapture else onRequestPermission,
-            modifier = Modifier
-                .weight(1f)
-                .height(MileNoteDimens.ButtonMinHeight),
-        ) {
-            Icon(
-                imageVector = MileNoteIcons.Camera,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = if (enabled) tr("拍照识别", "Scan") else tr("启用相机", "Enable camera"),
-                modifier = Modifier.padding(start = 8.dp),
-            )
         }
     }
 }

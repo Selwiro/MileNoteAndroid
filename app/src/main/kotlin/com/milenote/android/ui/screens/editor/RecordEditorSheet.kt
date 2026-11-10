@@ -137,7 +137,7 @@ fun RecordEditorScreen(
         )
     }
     if (showOcr) {
-        // 全屏 OCR：CameraX 预览 + 相册兜底 + Tesseract 识别，图片只在内存中处理。
+        // 全屏 OCR：系统照片选择器 + Tesseract 识别，图片只在内存中处理。
         Dialog(
             onDismissRequest = { showOcr = false },
             properties = DialogProperties(

@@ -1,9 +1,9 @@
 MileNote (里程志) — 第三方组件与许可证清单 / Third-party components and licenses
 
 由 ./dev-gradle.sh :app:dependencies --configuration releaseRuntimeClasspath 的解析结果生成，
-覆盖随 APK 分发的运行期依赖（共 218 个 artifact）。请勿手工编辑；新增依赖后重新生成。
+覆盖随 APK 分发的运行期依赖（共 182 个 artifact）。请勿手工编辑；新增依赖后重新生成。
 
-## Apache License 2.0 —— 全文见 apache-2.0.txt  [216]
+## Apache License 2.0 —— 全文见 apache-2.0.txt  [181]
 androidx.activity:activity-compose:1.13.0
 androidx.activity:activity-ktx:1.13.0
 androidx.activity:activity:1.13.0
@@ -11,18 +11,9 @@ androidx.annotation:annotation-experimental:1.4.1
 androidx.annotation:annotation-jvm:1.10.0
 androidx.annotation:annotation:1.10.0
 androidx.appcompat:appcompat-resources:1.7.1
-androidx.appcompat:appcompat:1.7.1
 androidx.arch.core:core-common:2.2.0
 androidx.arch.core:core-runtime:2.2.0
 androidx.autofill:autofill:1.0.0
-androidx.camera.featurecombinationquery:featurecombinationquery:1.6.2
-androidx.camera.viewfinder:viewfinder-core:1.5.1
-androidx.camera:camera-camera2-pipe:1.6.2
-androidx.camera:camera-camera2:1.6.2
-androidx.camera:camera-core:1.6.2
-androidx.camera:camera-lifecycle:1.6.2
-androidx.camera:camera-video:1.6.2
-androidx.camera:camera-view:1.6.2
 androidx.collection:collection-jvm:1.6.0
 androidx.collection:collection-ktx:1.6.0
 androidx.collection:collection:1.6.0
@@ -65,16 +56,12 @@ androidx.compose.ui:ui-util-android:1.12.1
 androidx.compose.ui:ui-util:1.12.1
 androidx.compose.ui:ui:1.12.1
 androidx.compose:compose-bom:2026.09.00
-androidx.concurrent:concurrent-futures-ktx:1.1.0
 androidx.concurrent:concurrent-futures:1.1.0
-androidx.core:core-backported-fixes:1.0.0
 androidx.core:core-ktx:1.18.0
 androidx.core:core-splashscreen:1.2.0
 androidx.core:core-viewtree:1.0.0
 androidx.core:core:1.18.0
-androidx.cursoradapter:cursoradapter:1.0.0
 androidx.customview:customview-poolingcontainer:1.0.0
-androidx.customview:customview:1.0.0
 androidx.datastore:datastore-android:1.3.0
 androidx.datastore:datastore-core-android:1.3.0
 androidx.datastore:datastore-core-okio-jvm:1.3.0
@@ -86,11 +73,8 @@ androidx.datastore:datastore-preferences-core:1.3.0
 androidx.datastore:datastore-preferences-proto:1.3.0
 androidx.datastore:datastore-preferences:1.3.0
 androidx.datastore:datastore:1.3.0
-androidx.drawerlayout:drawerlayout:1.0.0
-androidx.emoji2:emoji2-views-helper:1.4.0
 androidx.emoji2:emoji2:1.4.0
 androidx.exifinterface:exifinterface:1.4.2
-androidx.fragment:fragment:1.5.4
 androidx.graphics:graphics-path:1.0.1
 androidx.graphics:graphics-shapes-android:1.0.1
 androidx.graphics:graphics-shapes:1.0.1
@@ -98,9 +82,7 @@ androidx.interpolator:interpolator:1.0.0
 androidx.lifecycle:lifecycle-common-java8:2.11.0
 androidx.lifecycle:lifecycle-common-jvm:2.11.0
 androidx.lifecycle:lifecycle-common:2.11.0
-androidx.lifecycle:lifecycle-livedata-core-ktx:2.11.0
 androidx.lifecycle:lifecycle-livedata-core:2.11.0
-androidx.lifecycle:lifecycle-livedata:2.11.0
 androidx.lifecycle:lifecycle-process:2.11.0
 androidx.lifecycle:lifecycle-runtime-android:2.11.0
 androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0
@@ -115,10 +97,6 @@ androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0
 androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0
 androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0
 androidx.lifecycle:lifecycle-viewmodel:2.11.0
-androidx.loader:loader:1.0.0
-androidx.media3:media3-common:1.9.0
-androidx.media3:media3-container:1.9.0
-androidx.media3:media3-muxer:1.9.0
 androidx.navigation:navigation-common-android:2.10.2
 androidx.navigation:navigation-common:2.10.2
 androidx.navigation:navigation-compose-android:2.10.2
@@ -130,7 +108,6 @@ androidx.navigationevent:navigationevent-compose-android:1.1.2
 androidx.navigationevent:navigationevent-compose:1.1.2
 androidx.navigationevent:navigationevent:1.1.2
 androidx.profileinstaller:profileinstaller:1.4.1
-androidx.resourceinspection:resourceinspection-annotation:1.0.1
 androidx.savedstate:savedstate-android:1.5.0
 androidx.savedstate:savedstate-compose-android:1.5.0
 androidx.savedstate:savedstate-compose:1.5.0
@@ -138,24 +115,15 @@ androidx.savedstate:savedstate-ktx:1.5.0
 androidx.savedstate:savedstate:1.5.0
 androidx.startup:startup-runtime:1.2.0
 androidx.tracing:tracing-android:2.0.1
-androidx.tracing:tracing-ktx:2.0.1
 androidx.tracing:tracing:2.0.1
 androidx.vectordrawable:vectordrawable-animated:1.1.0
 androidx.vectordrawable:vectordrawable:1.1.0
 androidx.versionedparcelable:versionedparcelable:1.1.1
-androidx.viewpager:viewpager:1.0.0
 androidx.window:window-core-android:1.5.0
 androidx.window:window-core:1.5.0
 androidx.window:window:1.5.0
 com.google.accompanist:accompanist-drawablepainter:0.37.3
-com.google.auto.value:auto-value-annotations:1.6.3
-com.google.code.findbugs:jsr305:3.0.2
-com.google.dagger:dagger:2.59
-com.google.errorprone:error_prone_annotations:2.28.0
-com.google.guava:failureaccess:1.0.2
-com.google.guava:guava:33.3.1-android
-com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava
-com.google.j2objc:j2objc-annotations:3.0.0
+com.google.guava:listenablefuture:1.0
 com.squareup.okhttp3:okhttp-android:5.5.1
 com.squareup.okhttp3:okhttp:5.5.1
 com.squareup.okio:okio-jvm:3.18.1
@@ -173,8 +141,6 @@ io.coil-kt.coil3:coil-network-core:3.6.3
 io.coil-kt.coil3:coil-network-okhttp-android:3.6.3
 io.coil-kt.coil3:coil-network-okhttp:3.6.3
 io.coil-kt.coil3:coil:3.6.3
-jakarta.inject:jakarta.inject-api:2.0.1
-javax.inject:javax.inject:1
 org.jetbrains.androidx.lifecycle:lifecycle-common:2.9.6
 org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6
 org.jetbrains.androidx.lifecycle:lifecycle-runtime:2.9.6
@@ -204,7 +170,6 @@ org.jetbrains.compose.ui:ui-unit:1.12.0
 org.jetbrains.compose.ui:ui-util-android:1.12.0
 org.jetbrains.compose.ui:ui-util:1.12.0
 org.jetbrains.compose.ui:ui:1.12.0
-org.jetbrains.kotlin:kotlin-bom:1.8.0
 org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21
 org.jetbrains.kotlin:kotlin-stdlib:2.4.21
 org.jetbrains.kotlinx:atomicfu-jvm:0.28.0
@@ -224,11 +189,10 @@ org.jspecify:jspecify:1.0.0
 ## BSD 3-Clause License —— 全文见 bsd-3-clause.txt  [1]
 androidx.datastore:datastore-preferences-external-protobuf:1.3.0
 
-## MIT License —— 全文见 mit.txt  [1]
-org.checkerframework:checker-qual:3.43.0
-
 ---
 本清单不含 jxl（JExcelAPI）：该组件已于 2026-11-09 随 .xls 读取器重写移出项目。
-运行期依赖全部为开源许可（Apache-2.0 / MIT / BSD-3-Clause）；设备端 OCR 使用
+本清单当前不含 MIT 许可组件：原 MIT 组件 org.checkerframework:checker-qual 已于 2026-11-10
+随 CameraX 移除。
+运行期依赖全部为开源许可（Apache-2.0 / BSD-3-Clause）；设备端 OCR 使用
 Tesseract4Android（Apache-2.0），内置的 tessdata_fast chi_sim / eng 模型同样按
 Apache-2.0 分发（https://github.com/tesseract-ocr/tessdata_fast）。
