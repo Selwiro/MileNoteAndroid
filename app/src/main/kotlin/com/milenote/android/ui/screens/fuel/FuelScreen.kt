@@ -27,8 +27,8 @@ import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -724,39 +724,31 @@ private fun FuelPriceCard(
                     null
                 }
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // 上排：左侧「标号 + 油价 + 单位」，右侧「下次调价」。
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.Bottom,
-                        ) {
-                            Text(
-                                text = shownGrade,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = scheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .alignByBaseline()
-                                    .padding(end = 8.dp),
-                            )
-                            Text(
-                                text = shownPrice?.let { Format.money(it) } ?: "—",
-                                style = MaterialTheme.typography.headlineLarge,
-                                color = scheme.onSurface,
-                                modifier = Modifier.alignByBaseline(),
-                            )
-                            Text(
-                                text = tr(" 元/升", " CNY/L"),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = scheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .alignByBaseline()
-                                    .padding(start = 4.dp),
-                            )
-                        }
+                    // 上排：标号 + 油价 + 单位 + 下次调价，同一基线（「下次调价」底边与「元/升」齐）。
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = shownGrade,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .alignByBaseline()
+                                .padding(end = 8.dp),
+                        )
+                        Text(
+                            text = shownPrice?.let { Format.money(it) } ?: "—",
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = scheme.onSurface,
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                        Text(
+                            text = tr(" 元/升", " CNY/L"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .alignByBaseline()
+                                .padding(start = 4.dp),
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
                         Text(
                             text = info.nextAdjustmentText?.let { raw ->
                                 // 仓库层已按语言生成日期，只有中文文案里的空格需要去掉。
@@ -766,15 +758,16 @@ private fun FuelPriceCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.End,
-                            maxLines = 2,
+                            maxLines = 1,
+                            modifier = Modifier.alignByBaseline(),
                         )
                     }
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 10.dp),
+                        modifier = Modifier.padding(vertical = 6.dp),
                         thickness = 1.dp,
                         color = scheme.outlineVariant.copy(alpha = 0.4f),
                     )
-                    // 底排：左「刷新 + 更新于」，右「预计涨跌」，两段文字按基线对齐成一条线。
+                    // 底排：左「刷新 + 更新于」，右「预计涨跌」，整行居中对齐（圆点与文字垂直居中）。
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -791,9 +784,7 @@ private fun FuelPriceCard(
                                 text = bottomText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = bottomColor,
-                                modifier = Modifier
-                                    .padding(start = 8.dp)
-                                    .alignByBaseline(),
+                                modifier = Modifier.padding(start = 8.dp),
                             )
                         }
                         Spacer(modifier = Modifier.weight(1f))
@@ -815,7 +806,6 @@ private fun FuelPriceCard(
                                 text = tr("预计%s", "Expected: %s", trendLabel),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = trendColor,
-                                modifier = Modifier.alignByBaseline(),
                             )
                         }
                     }
@@ -825,18 +815,19 @@ private fun FuelPriceCard(
     }
 }
 
-/** 今日油价卡的刷新按钮：小号 tonal 圆形按钮，位于卡片左下角「更新于」前面。 */
+/** 今日油价卡的刷新按钮：普通小图标（与「更新于」行同高），位于卡片左下角「更新于」前面。 */
 @Composable
 private fun FuelPriceRefreshButton(onClick: () -> Unit, enabled: Boolean) {
-    FilledTonalIconButton(
+    IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(28.dp),
+        modifier = Modifier.size(20.dp),
     ) {
         Icon(
             imageVector = MileNoteIcons.Refresh,
             contentDescription = tr("刷新油价", "Refresh fuel prices"),
             modifier = Modifier.size(15.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
