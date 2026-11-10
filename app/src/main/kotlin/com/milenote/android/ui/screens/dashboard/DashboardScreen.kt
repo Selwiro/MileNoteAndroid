@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -46,14 +47,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -101,6 +99,7 @@ import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.LocalMileNoteHeroGradient
+import com.milenote.android.ui.theme.HeroGradient
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapeTokens
 import com.milenote.android.ui.theme.MileNoteShapes
@@ -335,6 +334,9 @@ private fun VehicleHeroCard(
     }
     val hasPhoto = photoBitmap != null ||
         (!DataUrlImages.isDataUrl(vehicle.image) && !vehicle.image.isNullOrBlank())
+    // 自定义图分两种：普通照片（不透明）走右侧满高肖像区铺满裁切；透明底抠图/贴纸
+    // 跟品牌插画同一构图（右下贴底出血），否则抠图会被铺满裁掉、或被塞进渐变色块里发灰。
+    val cutoutArt = remember(photoBitmap) { photoBitmap != null && isCutoutArt(photoBitmap) }
     val fontScale = LocalDensity.current.fontScale
     val fixedHeight = fontScale < 1.3f
 
@@ -387,23 +389,18 @@ private fun VehicleHeroCard(
                 ),
             )
         }
-        // 顶部 1dp 高光
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(Color.White.copy(alpha = 0.10f)),
-        )
 
-        if (fixedHeight && hasPhoto) {
+        if (fixedHeight && hasPhoto && cutoutArt && photoBitmap != null) {
+            // 透明底抠图：与下方品牌插画同款「贴底 + 右缘出血 + 地面光池」，不裁切、不渐隐。
+            CustomCutoutArt(bitmap = photoBitmap)
+        } else if (fixedHeight && hasPhoto) {
+            // 照片版：整卡铺满（Crop）+ 左侧品牌色渐层压字（scrim），不做半透明「鬼影」渐隐。
             VehiclePortraitPhoto(
                 vehicle = vehicle,
                 bitmap = photoBitmap,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .width(portraitWidth),
+                modifier = Modifier.matchParentSize(),
             )
+            HeroPhotoScrim(gradient = gradient)
         } else if (fixedHeight) {
             // 地面光池 + 品牌插画（右缘出血 12dp、贴底 6dp）
             Canvas(
@@ -431,6 +428,14 @@ private fun VehicleHeroCard(
                     .width(HeroCarArtWidth),
             )
         }
+
+        // 顶部 1dp 高光（画在照片 / 插画之后，照片版也不会被盖住）
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.10f)),
+        )
 
         Column(
             modifier = Modifier
@@ -487,46 +492,130 @@ private fun VehicleHeroCard(
     }
 }
 
-/** 右侧肖像区：用户照片 cover/fit + 左缘渐隐（DstIn），保证照片不压左侧文字。 */
+/**
+ * 照片版 Hero：用户照片整卡铺满裁切（Crop），配合 [HeroPhotoScrim] 在左侧压出可读的品牌色底。
+ *
+ * 旧做法把照片塞进右侧 160dp×全高肖像区、按「完整展示 / 铺满画框」切 Fit / Crop 再拉 55% 长渐隐：
+ * Fit 会在渐变卡里露出带硬边的浮空矩形，长渐隐又让照片半透明、车像鬼影。整卡铺满 + 实色 scrim
+ * 是设计稿里 A/B 合体版的落地方式（见 docs/design/dashboard-hero-redesign-20261108.md §2 升级路径）。
+ */
 @Composable
 private fun VehiclePortraitPhoto(
     vehicle: Vehicle,
     bitmap: ImageBitmap?,
     modifier: Modifier = Modifier,
 ) {
-    val contentScale = if (vehicle.imageFit == "cover") ContentScale.Crop else ContentScale.Fit
-    val fadeModifier = Modifier
-        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-            drawRect(
-                brush = Brush.horizontalGradient(
-                    colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        0.55f to Color.Black,
-                        1f to Color.Black,
-                    ),
-                ),
-                blendMode = BlendMode.DstIn,
-            )
-        }
     when {
         bitmap != null -> Image(
             bitmap = bitmap,
             contentDescription = null,
-            contentScale = contentScale,
-            modifier = modifier.fillMaxSize().then(fadeModifier),
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
         )
         !vehicle.image.isNullOrBlank() -> AsyncImage(
             model = vehicle.image,
             contentDescription = null,
-            contentScale = contentScale,
+            contentScale = ContentScale.Crop,
             placeholder = painterResource(R.drawable.milenote_car_hero),
             error = painterResource(R.drawable.milenote_car_hero),
-            modifier = modifier.fillMaxSize().then(fadeModifier),
+            modifier = modifier,
         )
         else -> Unit
     }
+}
+
+/**
+ * 照片版 Hero 的可读性遮罩：左侧用品牌渐变色做「实色 → 透明」横向渐层（文字区 α≈0.88–0.97，
+ * 照片从卡片宽约 78% 起完全露出），底部再压一层很轻的暗角，避免照片下沿把页脚小字吃掉。
+ */
+@Composable
+private fun BoxScope.HeroPhotoScrim(gradient: HeroGradient) {
+    Canvas(modifier = Modifier.matchParentSize()) {
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colorStops = arrayOf(
+                    0f to gradient.start.copy(alpha = 0.97f),
+                    0.40f to gradient.start.copy(alpha = 0.95f),
+                    0.52f to gradient.start.copy(alpha = 0.88f),
+                    0.60f to gradient.start.copy(alpha = 0.62f),
+                    0.68f to gradient.start.copy(alpha = 0.28f),
+                    0.78f to Color.Transparent,
+                ),
+            ),
+        )
+        drawRect(
+            brush = Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.45f to Color.Transparent,
+                    1f to Color(0x2E141E26),
+                ),
+            ),
+        )
+    }
+}
+
+/**
+ * 透明底抠图 / 贴纸：与品牌插画同一构图（贴底、右缘出血 12dp、地面光池），
+ * 图片按 Fit 完整显示、不裁切（车辆位里选「完整展示」的图在 Hero 里也保持完整）。
+ */
+@Composable
+private fun BoxScope.CustomCutoutArt(bitmap: ImageBitmap) {
+    Canvas(
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .offset(x = 4.dp, y = (-4).dp)
+            .width(190.dp)
+            .height(52.dp),
+    ) {
+        drawOval(
+            brush = Brush.radialGradient(
+                colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                center = Offset(size.width / 2f, size.height / 2f),
+                radius = size.width / 2f,
+            ),
+        )
+    }
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .offset(x = 12.dp, y = (-6).dp)
+            .width(HeroCarArtWidth)
+            .heightIn(max = 132.dp),
+        contentAlignment = Alignment.BottomEnd,
+    ) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/**
+ * 自定义图是否为「透明底抠图 / 贴纸」：只看图片是否真的带透明像素。
+ *
+ * 采样 9×5 网格的 alpha（角落 + 中间），透明像素占比 ≥15% 判为抠图；
+ * 普通照片（JPEG / 不透明 PNG）一律走右侧满高铺满版式。WebP/PNG 带 alpha 通道
+ * 但整张不透明时会落到照片分支，不会误判。
+ */
+private fun isCutoutArt(bitmap: ImageBitmap): Boolean {
+    if (!bitmap.hasAlpha) return false
+    val android = runCatching { bitmap.asAndroidBitmap() }.getOrNull() ?: return false
+    val w = android.width
+    val h = android.height
+    if (w <= 0 || h <= 0) return false
+    var transparent = 0
+    var sampled = 0
+    for (gy in 0..4) {
+        for (gx in 0..8) {
+            val x = (w - 1) * gx / 8
+            val y = (h - 1) * gy / 4
+            sampled++
+            if ((android.getPixel(x, y) ushr 24) and 0xFF < 200) transparent++
+        }
+    }
+    return sampled > 0 && transparent * 100 / sampled >= 15
 }
 
 /** 车型 · 车牌；都为空时给「点击完善车辆信息」引导。 */
