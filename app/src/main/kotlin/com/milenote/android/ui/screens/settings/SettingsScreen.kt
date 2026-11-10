@@ -26,12 +26,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -621,10 +618,11 @@ fun SettingsScreen(
                                     onAction = { openVehicleEditor(null) },
                                 )
                             } else {
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+                                // 竖排：一行一辆、卡片占满内容宽度；间距用 CardGap，比区块间 SectionGap 更紧凑。
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
                                 ) {
-                                    items(cars, key = { it.id }) { car ->
+                                    cars.forEach { car ->
                                         VehicleCard(
                                             ledger = car,
                                             selected = car.id == activeId,
@@ -955,7 +953,7 @@ private fun VehicleCard(
             selected -> BorderStroke(2.dp, scheme.primary)
             else -> BorderStroke(1.dp, scheme.outlineVariant)
         },
-        modifier = Modifier.width(248.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
