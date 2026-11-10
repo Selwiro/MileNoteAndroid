@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.milenote.android.domain.calc.Categories
+import com.milenote.android.domain.calc.CategoryConfig
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.fillEnergyAmounts
 import com.milenote.android.domain.calc.Ids
@@ -153,9 +154,21 @@ internal class RecordEditorState(
     val customCategories: List<String>
         get() = (ledger.customCategories.orEmpty() + draftCategories).distinct()
 
-    /** 分类 chip 选项：9 类 + 自定义 + 记录中出现的分类 + 本次新增。 */
+    /**
+     * 分类 chip 候选：`CategoryConfig.pickOptions`（九类 + 自定义 + 历史分类，减去设置页里
+     * 被隐藏的分类；受保护分类强制保留）+ 本次新增草稿。
+     *
+     * 隐藏只影响「新建」的候选：编辑既有记录时，它的原分类即使已被隐藏也会保留在候选里并选中，
+     * 保存时按原值写回，不会被改写。
+     */
     val categoryOptions: List<String>
-        get() = (Categories.options(ledger) + draftCategories).distinct()
+        get() {
+            val keep = listOf(
+                Categories.normalize(original?.category),
+                Categories.normalize(target.category),
+            ).filter { it.isNotEmpty() }
+            return (CategoryConfig.pickOptions(ledger) + keep + draftCategories).distinct()
+        }
 
     /** 当前是否为能源费（燃油「油费」/ 纯电显示「电费」；手填油耗视为油费，但不显示能量字段）。 */
     val isFuel: Boolean
@@ -391,7 +404,7 @@ internal class RecordEditorState(
                 return tr(
                     "首保项目需包含：%s",
                     "The first service must include: %s",
-                    missing.joinToString("、") { DataLabels.serviceItem(it) },
+                    missing.joinToString("、") { DataLabels.projectFor(ledger, it) },
                 )
             }
         }

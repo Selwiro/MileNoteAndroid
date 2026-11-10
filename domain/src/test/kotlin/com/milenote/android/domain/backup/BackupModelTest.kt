@@ -421,7 +421,8 @@ class BackupModelTest {
 
     @Test
     fun `delete garage data by scope rebuilds blank car`() {
-        val garage = DemoData.createDemoGarage(d("2026-11-02"))
+        // 演示车库现在是 3 辆车；这里只验证「删掉当前车后保留其它车」的语义，取前两辆即可。
+        val garage = DemoData.createDemoGarage(d("2026-11-02")).let { it.copy(cars = it.cars.take(2)) }
         val snapshot = BackupCodec.encode(garage)
         val other = garage.cars[1]
 

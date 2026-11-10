@@ -61,7 +61,12 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.normalizePowertrain
+import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -120,8 +125,8 @@ internal fun CompleteServiceDialog(
                     text = tr(
                         "%s · 记入「%s」",
                         "%s · logged under \"%s\"",
-                        DataLabels.serviceItem(reminder.title),
-                        DataLabels.category(category, ledger.isEv),
+                        DataLabels.projectFor(ledger, reminder.title),
+                        DataLabels.categoryFor(ledger, category, ledger.vehicle.energyProfile),
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -161,7 +166,7 @@ internal fun CompleteServiceDialog(
                 ) {
                     projectOptions.forEach { project ->
                         CategoryChip(
-                            name = DataLabels.serviceItem(project),
+                            name = DataLabels.projectFor(ledger, project),
                             selected = project in selectedProjects,
                             onClick = {
                                 selectedProjects = if (project in selectedProjects) {
@@ -433,8 +438,8 @@ internal fun DefaultServicePlanDialog(
     var baseKm by remember(ledger.id) { mutableStateOf(formatDecimalInput(ledger.vehicle.startKm ?: 0.0)) }
     var includeFirst by remember(ledger.id) { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    // 项数随动力类型变化：燃油 12 项（首保 + 11 项常规）/ 纯电 6 项（首保 + 5 项常规）。
-    val planSize = remember(ledger.id) { defaultServicePlan(ledger.isEv).size }
+    // 项数随动力类型变化：燃油/HEV 12 项、PHEV 13 项、纯电 6 项（均含首保）。
+    val planSize = remember(ledger.id) { defaultServicePlan(ledger.vehicle.powertrainKey).size }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -549,8 +554,8 @@ private data class PlanDraftRow(
 /** 构建方案条目的结果。 */
 private data class PlanBuildResult(val entries: List<PlanEntry>?, val error: String?)
 
-/** 默认草稿行：按动力类型取内置方案（燃油 12 项 / 纯电 6 项）。 */
-private fun defaultPlanDraftRows(ev: Boolean): List<PlanDraftRow> = defaultServicePlan(ev).map { plan ->
+/** 默认草稿行：按动力类型取内置方案（燃油/HEV 12 项 / PHEV 13 项 / 纯电 6 项）。 */
+private fun defaultPlanDraftRows(powertrain: String?): List<PlanDraftRow> = defaultServicePlan(powertrain).map { plan ->
     PlanDraftRow(
         key = plan.key,
         title = plan.title.orEmpty(),
@@ -565,10 +570,10 @@ private fun defaultPlanDraftRows(ev: Boolean): List<PlanDraftRow> = defaultServi
 }
 
 private fun initialPlanDraftRows(ledger: Ledger): List<PlanDraftRow> {
-    val ev = ledger.isEv
-    val defaults = defaultServicePlan(ev)
+    val powertrain = ledger.vehicle.powertrainKey
+    val defaults = defaultServicePlan(powertrain)
     val overrides = ledger.servicePlan.orEmpty().associateBy { it.key }
-    val resolved = runCatching { resolveServicePlan(ledger.servicePlan.orEmpty(), ev) }
+    val resolved = runCatching { resolveServicePlan(ledger.servicePlan.orEmpty(), powertrain) }
         .getOrDefault(defaults)
     return resolved.map { plan ->
         val override = overrides[plan.key]
@@ -712,7 +717,7 @@ internal fun ServicePlanEditorDialog(
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { rows = defaultPlanDraftRows(ledger.isEv) }) {
+                    TextButton(onClick = { rows = defaultPlanDraftRows(ledger.vehicle.powertrainKey) }) {
                         Text(tr("恢复默认", "Reset to default"))
                     }
                 }
@@ -794,7 +799,8 @@ internal fun ServicePlanEditorDialog(
 
                     PlanEditorTable(
                         rows = rows,
-                        ev = ledger.isEv,
+                        ledger = ledger,
+                        powertrain = ledger.vehicle.powertrainKey,
                         onUpdateRow = { key, transform -> updateRow(key, transform) },
                         onRemoveRow = { key -> rows = rows.filterNot { it.key == key } },
                     )
@@ -894,7 +900,8 @@ internal fun ServicePlanEditorDialog(
 @Composable
 private fun PlanEditorTable(
     rows: List<PlanDraftRow>,
-    ev: Boolean,
+    ledger: Ledger,
+    powertrain: String?,
     onUpdateRow: (String, (PlanDraftRow) -> PlanDraftRow) -> Unit,
     onRemoveRow: (String) -> Unit,
 ) {
@@ -933,7 +940,8 @@ private fun PlanEditorTable(
         rows.forEachIndexed { index, row ->
             PlanEditorTableRow(
                 row = row,
-                ev = ev,
+                ledger = ledger,
+                powertrain = powertrain,
                 onUpdate = { transform -> onUpdateRow(row.key, transform) },
                 onRemove = if (row.builtin) null else ({ onRemoveRow(row.key) }),
             )
@@ -947,7 +955,8 @@ private fun PlanEditorTable(
 @Composable
 private fun PlanEditorTableRow(
     row: PlanDraftRow,
-    ev: Boolean,
+    ledger: Ledger,
+    powertrain: String?,
     onUpdate: ((PlanDraftRow) -> PlanDraftRow) -> Unit,
     onRemove: (() -> Unit)?,
 ) {
@@ -963,17 +972,20 @@ private fun PlanEditorTableRow(
         Column(modifier = Modifier.weight(1f)) {
             if (row.builtin) {
                 Text(
-                    text = DataLabels.serviceItem(row.title),
+                    text = DataLabels.projectFor(ledger, row.title),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (row.firstOnly) {
                     Text(
-                        text = if (ev) {
-                            tr("仅一次 · 含三电诊断", "One-off · includes EV system check")
-                        } else {
-                            tr("仅一次 · 含机油机滤", "One-off · includes oil & filter")
+                        text = when (normalizePowertrain(powertrain)) {
+                            POWERTRAIN_EV -> tr("仅一次 · 含三电诊断", "One-off · includes EV system check")
+                            POWERTRAIN_PHEV -> tr(
+                                "仅一次 · 含机油机滤与三电诊断",
+                                "One-off · includes oil & filter and EV system check",
+                            )
+                            else -> tr("仅一次 · 含机油机滤", "One-off · includes oil & filter")
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,

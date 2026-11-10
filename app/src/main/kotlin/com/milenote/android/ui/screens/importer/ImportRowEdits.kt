@@ -8,6 +8,7 @@ import com.milenote.android.domain.calc.fuelBatchConflict
 import com.milenote.android.domain.calc.validateRecord
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.import.normalizeImport
+import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
 
 // ---------------------------------------------------------------------------------------------
@@ -118,7 +119,9 @@ private val FUEL_SOURCES: Set<String> = setOf("小熊油耗", "钱迹")
  * @param sourceKey `bear` / `qianji`
  * @param defaultCategory 钱迹无法识别分类时的兜底分类
  * @param customCategories 本车自定义分类
- * @param ev 当前车是否纯电（纯电不参与油费口径冲突）
+ * @param ev 当前车是否纯电（纯电不参与油费口径冲突；`powertrain` 优先）
+ * @param powertrain 当前车动力类型：PHEV 的行级能量种类（加油/充电）按行判断，
+ *   纯电的所有行按充电，缺省按燃油（兼容旧调用）
  * @param edits 逐行修改，键为原始文件行号（[ImportItem.row]）
  * @param excludedRows 用户取消勾选的行下标（与 [ImportPreview.items] 下标一致）
  * @param existingRecords 账本现有记录（判重与油费冲突用）
@@ -130,6 +133,7 @@ internal fun buildImportPreview(
     defaultCategory: String,
     customCategories: List<String>,
     ev: Boolean,
+    powertrain: String? = null,
     edits: Map<Int, ImportRowEdit> = emptyMap(),
     excludedRows: Set<Int> = emptySet(),
     existingRecords: List<Record> = emptyList(),
@@ -140,7 +144,8 @@ internal fun buildImportPreview(
         source = sourceKey,
         defaultCategory = defaultCategory,
         customCategories = customCategories,
-        ev = ev,
+        // 显式传入的 powertrain 优先；只传 ev 的旧调用按二值折算。
+        powertrain = powertrain ?: if (ev) POWERTRAIN_EV else null,
     )
     val edited = applyRowEdits(normalized, edits, customCategories)
     val marked = markExcludedRows(edited, excludedRows)

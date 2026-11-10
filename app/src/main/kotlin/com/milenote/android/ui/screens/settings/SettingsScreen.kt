@@ -89,6 +89,7 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankVehicle
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.AppLanguage
 import com.milenote.android.i18n.CurrencyUnit
@@ -681,8 +682,43 @@ fun SettingsScreen(
                                 ) { vm.removeCustomCategory(name) },
                             )
                         },
+                        onRenameCategory = { old, new -> vm.renameCategory(old, new) },
+                        onHideCategory = { name ->
+                            vm.confirm(
+                                PendingConfirm(
+                                    title = tr("删除费用分类？", "Remove category?"),
+                                    message = tr(
+                                        "「%s」将从记账与筛选的可选分类中移除，历史记录的分类与金额不受影响；可在「已隐藏（可恢复）」里恢复。",
+                                        "“%s” will be removed from the picker. Existing records and amounts are unchanged, and you can restore it from \"Hidden (restorable)\".",
+                                        activeCar?.let {
+                                            DataLabels.categoryFor(it, name, it.vehicle.energyProfile)
+                                        } ?: name,
+                                    ),
+                                    confirmLabel = tr("删除", "Remove"),
+                                    destructive = true,
+                                ) { vm.hideCategory(name) },
+                            )
+                        },
+                        onUnhideCategory = { name -> vm.unhideCategory(name) },
+                        onResetCategoryLabel = { name -> vm.resetCategoryLabel(name) },
                         onAddProject = { category, name -> vm.addProject(category, name) },
-                        onRemoveProject = { category, name -> vm.removeProject(category, name) },
+                        onRenameProject = { old, new -> vm.renameServiceProject(old, new) },
+                        onHideProject = { category, name ->
+                            vm.confirm(
+                                PendingConfirm(
+                                    title = tr("删除项目？", "Delete item?"),
+                                    message = tr(
+                                        "「%s」将从记账的项目候选中移除，历史记录里的项目文字不受影响；可在「已隐藏（可恢复）」里恢复。",
+                                        "“%s” will be removed from the item picker. Item text in existing records is unchanged, and you can restore it from \"Hidden (restorable)\".",
+                                        activeCar?.let { DataLabels.projectFor(it, name) } ?: DataLabels.serviceItem(name),
+                                    ),
+                                    confirmLabel = tr("删除", "Delete"),
+                                    destructive = true,
+                                ) { vm.hideServiceProject(category, name) },
+                            )
+                        },
+                        onUnhideProject = { name -> vm.unhideServiceProject(name) },
+                        onResetProjectLabel = { name -> vm.resetProjectLabel(name) },
                     )
 
                     SettingsPage.IMPORT -> ExternalImportPage(
@@ -1251,8 +1287,15 @@ private fun CategoryTabsPage(
     vehicleName: String,
     onAddCategory: (String) -> Unit,
     onRemoveCategory: (String) -> Unit,
+    onRenameCategory: (old: String, new: String) -> Unit,
+    onHideCategory: (String) -> Unit,
+    onUnhideCategory: (String) -> Unit,
+    onResetCategoryLabel: (String) -> Unit,
     onAddProject: (category: String, name: String) -> Unit,
-    onRemoveProject: (category: String, name: String) -> Unit,
+    onRenameProject: (old: String, new: String) -> Unit,
+    onHideProject: (category: String, name: String) -> Unit,
+    onUnhideProject: (String) -> Unit,
+    onResetProjectLabel: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -1278,8 +1321,15 @@ private fun CategoryTabsPage(
                 themeId = themeId,
                 onAddCategory = onAddCategory,
                 onRemoveCategory = onRemoveCategory,
+                onRenameCategory = onRenameCategory,
+                onHideCategory = onHideCategory,
+                onUnhideCategory = onUnhideCategory,
+                onResetCategoryLabel = onResetCategoryLabel,
                 onAddProject = onAddProject,
-                onRemoveProject = onRemoveProject,
+                onRenameProject = onRenameProject,
+                onHideProject = onHideProject,
+                onUnhideProject = onUnhideProject,
+                onResetProjectLabel = onResetProjectLabel,
             )
         }
     }

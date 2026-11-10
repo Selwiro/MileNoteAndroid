@@ -5,6 +5,7 @@ import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.importRows
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Vehicle
 import java.nio.charset.StandardCharsets
@@ -148,6 +149,86 @@ class LedgerExportsTest {
         assertEquals(null, item.record.liters)
         assertEquals(0.64, item.record.unitPrice!!, 1e-9)
         assertTrue(item.record.full)
+    }
+
+    // ---- 插混：18 列 = 燃油 17 列 + 末尾「充电量」 ----
+
+    private fun phevLedger(): Ledger = Ledger(
+        id = "car-phev",
+        vehicle = Vehicle(name = "插混", powertrain = POWERTRAIN_PHEV),
+        records = listOf(
+            Record(
+                id = "r-phev-fuel",
+                date = "2026-11-01",
+                category = "油费",
+                amount = 290.0,
+                payable = 300.0,
+                discount = 10.0,
+                unitPrice = 7.5,
+                liters = 40.0,
+                odometer = 12345.0,
+                full = true,
+                fuelGrade = "95#",
+                source = "手动记录",
+            ),
+            Record(
+                id = "r-phev-charge",
+                date = "2026-11-02",
+                category = "油费",
+                amount = 28.8,
+                unitPrice = 0.64,
+                kwh = 45.0,
+                odometer = 12500.0,
+                full = true,
+                source = "手动记录",
+            ),
+        ),
+    )
+
+    @Test
+    fun `phev csv header appends charging column and neutral unit price`() {
+        val headers = parseDelimited(csvText(phevLedger())).first()
+        assertEquals(
+            listOf(
+                "日期", "地点", "项目", "分类", "金额",
+                "应付金额", "优惠金额", "单价", "燃油标号",
+                "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "充电量",
+            ),
+            headers,
+        )
+        assertEquals(18, headers.size)
+    }
+
+    @Test
+    fun `phev csv rows write fuel and charging amounts mutually exclusively`() {
+        val rows = parseDelimited(csvText(phevLedger()))
+        val charge = rows.first { it[0] == "2026-11-02" }
+        val fuel = rows.first { it[0] == "2026-11-01" }
+        // 充电行：单价 = 电价，加油量空，标号空，末尾充电量有值
+        assertEquals("0.64", charge[7])
+        assertEquals("", charge[8])
+        assertEquals("", charge[10])
+        assertEquals("45", charge[17])
+        // 加油行：单价 = 油价，加油量有值，标号有值，末尾充电量空
+        assertEquals("7.5", fuel[7])
+        assertEquals("95#", fuel[8])
+        assertEquals("40", fuel[10])
+        assertEquals("", fuel[17])
+    }
+
+    @Test
+    fun `phev csv imports back splitting fuel and charging rows`() {
+        val rows = parseDelimited(csvText(phevLedger()))
+        val items = importRows(rows.drop(1), detectMap(rows.first()), "qianji")
+        assertTrue(items.all { it.error.isEmpty() })
+        val fuel = items.first { it.record.date == "2026-11-01" }.record
+        assertEquals(40.0, fuel.liters!!, 1e-9)
+        assertEquals(null, fuel.kwh)
+        assertEquals("95#", fuel.fuelGrade)
+        val charge = items.first { it.record.date == "2026-11-02" }.record
+        assertEquals(45.0, charge.kwh!!, 1e-9)
+        assertEquals(null, charge.liters)
+        assertEquals(null, charge.fuelGrade)
     }
 
     @Test

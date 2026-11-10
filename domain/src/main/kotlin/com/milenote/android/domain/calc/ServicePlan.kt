@@ -1,34 +1,50 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.PlanBase
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Reminder
-import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.normalizePowertrain
+import com.milenote.android.domain.model.powertrainKey
 import java.time.LocalDate
 
 /**
  * 解析用户保养方案（Web `resolveServicePlan`）。
  *
- * 以 [defaultServicePlan]（按动力类型：燃油 12 项 / 纯电 6 项）为底按 key 合并，
+ * 以 [defaultServicePlan]（按动力类型：燃油/HEV 12 项 / PHEV 13 项 / 纯电 6 项）为底按 key 合并，
  * 留空字段回退默认；自定义 key 追加。
- * 另一种动力类型专属的 key 会被丢弃（燃油↔纯电切换后计划表不会凭空多出旧项目）。
+ * 另一档位专属的 key 会被丢弃（燃油↔纯电切换后计划表不会凭空多出旧项目）；
+ * PHEV 的 key 集合是燃油超集，两类项目都保留（排除集为空）。
  * 标题不能空 / 重复；公里须为正数、月数 1–600 整数；自定义项目公里与月至少一项。
  */
-fun resolveServicePlan(entries: List<PlanEntry>? = null, ev: Boolean = false): List<PlanEntry> {
+fun resolveServicePlan(entries: List<PlanEntry>? = null, powertrain: String? = null): List<PlanEntry> {
     val input = entries.orEmpty()
-    val otherTypeKeys = defaultServicePlan(!ev).map { it.key }.toSet()
-    val otherDefaults = defaultServicePlan(!ev).associateBy { it.key }
-    val defaults = defaultServicePlan(ev).map { plan ->
+    val defaults = defaultServicePlan(powertrain)
+    val defaultKeys = defaults.map { it.key }.toSet()
+    // 「另一档位」的默认方案：用于专属 key 丢弃与共用 key 的完成判定项目重置。
+    // PHEV 同时具备燃油与纯电项目，两类默认都算「旧档位」。
+    val otherPlans = when (normalizePowertrain(powertrain)) {
+        POWERTRAIN_EV -> listOf(FUEL_SERVICE_PLAN)
+        POWERTRAIN_PHEV -> listOf(FUEL_SERVICE_PLAN, EV_SERVICE_PLAN)
+        else -> listOf(EV_SERVICE_PLAN)
+    }
+    val otherDefaults = otherPlans.flatten().associateBy { it.key }
+    val otherTypeKeys = otherDefaults.keys - defaultKeys
+    val otherProjects = buildMap<String, MutableSet<List<String>>> {
+        for (plan in otherPlans.flatten()) {
+            val projects = plan.projects ?: continue
+            getOrPut(plan.key) { mutableSetOf() }.add(projects)
+        }
+    }
+    val resolved = defaults.map { plan ->
         val entry = input.firstOrNull { it.key == plan.key }
-        // 共用 key（如首保/刹车油）在两种方案里的完成判定项目不同：
-        // 若保存的 projects 仍是「另一种动力类型的默认值」，切换后回退到当前类型的默认，
-        // 避免纯电车首保仍要求「机油机滤」；用户真正自定义过的 projects 保留。
+        // 共用 key（如首保 / 制动液）在不同档位方案里的完成判定项目不同：
+        // 若保存的 projects 仍是「另一档位的默认值」，切换后回退到当前档位的默认，
+        // 避免纯电车首保仍要求「机油机滤」、PHEV 首保漏掉「三电诊断」；用户真正自定义过的保留。
         val savedProjects = entry?.projects
-        val otherDefaultProjects = otherDefaults[plan.key]?.projects
-        val projects = if (savedProjects != null && otherDefaultProjects != null &&
-            savedProjects == otherDefaultProjects
-        ) {
+        val projects = if (savedProjects != null && otherProjects[plan.key]?.contains(savedProjects) == true) {
             plan.projects
         } else {
             savedProjects ?: plan.projects
@@ -43,7 +59,7 @@ fun resolveServicePlan(entries: List<PlanEntry>? = null, ev: Boolean = false): L
         )
     }
     val custom = input
-        .filter { entry -> defaultServicePlan(ev).none { it.key == entry.key } && entry.key !in otherTypeKeys }
+        .filter { entry -> defaults.none { it.key == entry.key } && entry.key !in otherTypeKeys }
         .map {
             PlanEntry(
                 key = it.key,
@@ -55,8 +71,8 @@ fun resolveServicePlan(entries: List<PlanEntry>? = null, ev: Boolean = false): L
             )
         }
     val titles = mutableSetOf<String>()
-    return (defaults + custom).map { plan ->
-        val fallback = defaultServicePlan(ev).firstOrNull { it.key == plan.key }
+    return (resolved + custom).map { plan ->
+        val fallback = defaults.firstOrNull { it.key == plan.key }
         val title = plan.title.orEmpty().trim()
         if (title.isEmpty() || !titles.add(title)) {
             throw IllegalArgumentException("项目名称不能为空或重复")
@@ -72,6 +88,14 @@ fun resolveServicePlan(entries: List<PlanEntry>? = null, ev: Boolean = false): L
         plan.copy(title = title, intervalKm = km, intervalMonths = months)
     }
 }
+
+/** 兼容旧调用（二值 `ev`）。新代码请用 `resolveServicePlan(entries, powertrain)`。 */
+@Deprecated(
+    "改用 resolveServicePlan(entries, powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("resolveServicePlan(entries, if (ev) \"ev\" else null)"),
+)
+fun resolveServicePlan(entries: List<PlanEntry>? = null, ev: Boolean): List<PlanEntry> =
+    resolveServicePlan(entries, if (ev) POWERTRAIN_EV else null)
 
 /**
  * 保存并应用保养方案（Web `applyServicePlan`）。
@@ -89,7 +113,7 @@ fun applyServicePlan(
     if (Dates.dateValue(baseDate).isEmpty() || baseKm == null || !baseKm.isFinite() || baseKm < 0) {
         throw IllegalArgumentException("请填写有效基准日期和里程")
     }
-    val plan = resolveServicePlan(entries, ledger.isEv)
+    val plan = resolveServicePlan(entries, ledger.vehicle.powertrainKey)
     var next = ledger.copy(
         servicePlan = plan,
         servicePlanBase = PlanBase(date = baseDate, km = baseKm, includeFirst = includeFirst),
@@ -121,7 +145,7 @@ fun applyServicePlan(
             done = false,
             source = "自定义保养方案",
             note = if (firstOnly) {
-                if (ledger.isEv) "首保包含三电诊断，仅一次" else "首保包含机油机滤，仅一次"
+                firstServiceNote(ledger.vehicle.powertrainKey)
             } else {
                 "日期或公里数先到为准"
             },
@@ -198,7 +222,7 @@ data class PlanRow(
  * 状态区分「上次已做」与「本轮待做」，过期按日期或公里任一判断，保留远期项目。
  */
 fun servicePlanRows(ledger: Ledger, date: LocalDate, km: Double): List<PlanRow> {
-    val definitions = resolveServicePlan(ledger.servicePlan.orEmpty(), ledger.isEv)
+    val definitions = resolveServicePlan(ledger.servicePlan.orEmpty(), ledger.vehicle.powertrainKey)
         .map {
             PlanDefinition(
                 key = it.key,
@@ -246,7 +270,7 @@ fun servicePlanRows(ledger: Ledger, date: LocalDate, km: Double): List<PlanRow> 
         val current = pending.firstOrNull()
         val history = records.filter { r ->
             done.any { it.recordId == r.id } ||
-                (p.firstOnly != true && splitProjects(r.projects).contains(p.title.orEmpty()))
+                (p.firstOnly != true && splitProjects(r.projects).any { serviceTitleMatches(it, p.title) })
         }.sortedByDescending { it.date }
         val lastDone = done
             .filter { !it.completedDate.isNullOrEmpty() }

@@ -1,9 +1,10 @@
 package com.milenote.android.platform
 
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Reminder
-import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.energyProfile
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -37,10 +38,34 @@ object LedgerExports {
         "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源",
     )
 
-    /** 当前车辆全部记录 → CSV 字节（含 BOM）；表头与能量列按动力类型切换。 */
+    /**
+     * 插混（PHEV / 增程）CSV 表头：**18 列** = 燃油 17 列 + 末尾「充电量」。
+     *
+     * 第 8 列取中性「单价」（同一列既可能是油价也可能是电价），
+     * 第 9 列仍是「燃油标号」（只有加油行有值）；加油行写「加油量」、
+     * 充电行写末尾「充电量」，两者互斥（与记录里 `liters` / `kwh` 互斥一致）。
+     */
+    private val CSV_HEADERS_PHEV = listOf(
+        "日期", "地点", "项目", "分类", "金额",
+        "应付金额", "优惠金额", "单价", "燃油标号",
+        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "充电量",
+    )
+
+    /**
+     * 当前车辆全部记录 → CSV 字节（含 BOM）；表头与能量列按动力类型切换。
+     *
+     * - 燃油 / HEV：17 列，能量列「加油量」；
+     * - 纯电：17 列，能量列「充电量」；
+     * - 插混：18 列，加油行写「加油量」、充电行写末尾「充电量」（互斥）。
+     */
     fun csv(ledger: Ledger): ByteArray {
-        val ev = ledger.vehicle.isEv
-        val headers = if (ev) CSV_HEADERS_EV else CSV_HEADERS_FUEL
+        val profile = ledger.vehicle.energyProfile
+        val headers = when (profile) {
+            EnergyProfile.ELECTRIC_ONLY -> CSV_HEADERS_EV
+            EnergyProfile.DUAL -> CSV_HEADERS_PHEV
+            EnergyProfile.FUEL_ONLY -> CSV_HEADERS_FUEL
+        }
+        val dual = profile == EnergyProfile.DUAL
         val sorted = ledger.records.sortedWith(
             compareByDescending<com.milenote.android.domain.model.Record> { it.date }
                 .thenByDescending { it.odometer ?: 0.0 },
@@ -49,26 +74,34 @@ object LedgerExports {
             append(headers.joinToString(",") { cell(it) })
             append("\r\n")
             for (r in sorted) {
-                val energy = if (ev) r.kwh else r.liters
-                val values = listOf(
-                    r.date,
-                    r.location.orEmpty(),
-                    r.projects.orEmpty(),
-                    r.category,
-                    numberCell(r.amount),
-                    r.payable?.let { numberCell(it) } ?: "",
-                    r.discount?.let { numberCell(it) } ?: "",
-                    r.unitPrice?.let { numberCell(it) } ?: "",
-                    r.fuelGrade.orEmpty(),
-                    r.odometer?.let { numberCell(it) } ?: "",
-                    energy?.let { numberCell(it) } ?: "",
-                    if (r.full) "是" else "否",
-                    if (r.missed) "是" else "否",
-                    (r.rate ?: r.reportedRate)?.let { numberCell(it) } ?: "",
-                    r.distance?.let { numberCell(it) } ?: "",
-                    r.note,
-                    r.source,
-                )
+                // 充电行：有充电量且没有加油量（一条记录只认一种能量）。
+                val charging = dual && r.kwh != null && r.liters == null
+                val energy = when (profile) {
+                    EnergyProfile.ELECTRIC_ONLY -> r.kwh
+                    EnergyProfile.DUAL -> if (charging) null else r.liters
+                    EnergyProfile.FUEL_ONLY -> r.liters
+                }
+                val values = buildList {
+                    add(r.date)
+                    add(r.location.orEmpty())
+                    add(r.projects.orEmpty())
+                    add(r.category)
+                    add(numberCell(r.amount))
+                    add(r.payable?.let { numberCell(it) } ?: "")
+                    add(r.discount?.let { numberCell(it) } ?: "")
+                    add(r.unitPrice?.let { numberCell(it) } ?: "")
+                    // 燃油标号只属于加油行；充电行留空。
+                    add(if (charging) "" else r.fuelGrade.orEmpty())
+                    add(r.odometer?.let { numberCell(it) } ?: "")
+                    add(energy?.let { numberCell(it) } ?: "")
+                    add(if (r.full) "是" else "否")
+                    add(if (r.missed) "是" else "否")
+                    add((r.rate ?: r.reportedRate)?.let { numberCell(it) } ?: "")
+                    add(r.distance?.let { numberCell(it) } ?: "")
+                    add(r.note)
+                    add(r.source)
+                    if (dual) add(if (charging) r.kwh?.let { numberCell(it) } ?: "" else "")
+                }
                 append(values.joinToString(",") { cell(it) })
                 append("\r\n")
             }

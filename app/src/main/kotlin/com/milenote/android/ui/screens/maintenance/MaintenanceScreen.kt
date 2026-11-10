@@ -58,9 +58,12 @@ import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.servicePlanRows
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
+import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -195,6 +198,7 @@ fun MaintenanceScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 groups.near.forEach { reminder ->
                                     ReminderCard(
+                                        ledger = ledger,
                                         reminder = reminder,
                                         km = km,
                                         today = today,
@@ -225,7 +229,7 @@ fun MaintenanceScreen(
                     ) {
                         ServiceHistoryFlatList(
                             records = filteredHistory,
-                            ev = ev,
+                            ledger = ledger,
                             filterActive = historyFilter != "全部" && history.isNotEmpty(),
                             onEdit = { vm.openEditor(recordId = it.id) },
                         )
@@ -256,7 +260,7 @@ fun MaintenanceScreen(
                     ) {
                         if (!configured) {
                             EnableDefaultPlanGuide(
-                                ev = ev,
+                                powertrain = ledger.vehicle.powertrainKey,
                                 onEnableDefault = { showDefaultPlan = true },
                                 onCustomize = { vm.openServicePlanEditor() },
                             )
@@ -276,6 +280,7 @@ fun MaintenanceScreen(
                             PlanTableHeader()
                             rows.forEachIndexed { index, row ->
                                 PlanTableRow(
+                                    ledger = ledger,
                                     row = row,
                                     km = km,
                                     today = today,
@@ -306,6 +311,7 @@ fun MaintenanceScreen(
     // ---- 弹层 ----
     planDetail?.let { row ->
         PlanRowDetailSheet(
+            ledger = ledger,
             row = row,
             km = km,
             today = today,
@@ -374,7 +380,7 @@ fun MaintenanceScreen(
 @Composable
 private fun ServiceHistoryFlatList(
     records: List<Record>,
-    ev: Boolean,
+    ledger: Ledger,
     filterActive: Boolean,
     onEdit: (Record) -> Unit,
 ) {
@@ -401,7 +407,7 @@ private fun ServiceHistoryFlatList(
         records.forEachIndexed { index, record ->
             ServiceHistoryCard(
                 record = record,
-                ev = ev,
+                ledger = ledger,
                 onClick = { onEdit(record) },
             )
             if (index != records.lastIndex) FlatDivider()
@@ -483,6 +489,7 @@ private fun historyFilterCheckIcon(selected: Boolean): (@Composable () -> Unit)?
 
 @Composable
 private fun ReminderCard(
+    ledger: Ledger,
     reminder: Reminder,
     km: Double,
     today: LocalDate,
@@ -523,7 +530,7 @@ private fun ReminderCard(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = DataLabels.serviceItem(reminder.title),
+                text = DataLabels.projectFor(ledger, reminder.title),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -656,9 +663,13 @@ private fun sortPlanRows(rows: List<PlanRow>, km: Double, today: LocalDate): Lis
     )
 
 @Composable
-private fun EnableDefaultPlanGuide(ev: Boolean, onEnableDefault: () -> Unit, onCustomize: () -> Unit) {
-    // 项数随动力类型变化：燃油 12 项（首保 + 11 项常规）/ 纯电 6 项（首保 + 5 项常规）。
-    val planSize = defaultServicePlan(ev).size
+private fun EnableDefaultPlanGuide(
+    powertrain: String?,
+    onEnableDefault: () -> Unit,
+    onCustomize: () -> Unit,
+) {
+    // 项数随动力类型变化：燃油/HEV 12 项、PHEV 13 项、纯电 6 项（均含首保）。
+    val planSize = defaultServicePlan(powertrain).size
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -746,6 +757,7 @@ private fun PlanTableHeader() {
  */
 @Composable
 private fun PlanTableRow(
+    ledger: Ledger,
     row: PlanRow,
     km: Double,
     today: LocalDate,
@@ -805,7 +817,7 @@ private fun PlanTableRow(
                         .background(accent, CircleShape),
                 )
                 Text(
-                    text = DataLabels.serviceItem(row.title),
+                    text = DataLabels.projectFor(ledger, row.title),
                     style = MaterialTheme.typography.titleSmall,
                     color = if (row.status == "unconfigured") scheme.onSurfaceVariant else scheme.onSurface,
                     maxLines = 1,
@@ -914,6 +926,7 @@ private fun PlanTableRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlanRowDetailSheet(
+    ledger: Ledger,
     row: PlanRow,
     km: Double,
     today: LocalDate,
@@ -949,7 +962,7 @@ private fun PlanRowDetailSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = DataLabels.serviceItem(row.title), style = MaterialTheme.typography.titleLarge)
+                    Text(text = DataLabels.projectFor(ledger, row.title), style = MaterialTheme.typography.titleLarge)
                     Text(
                         text = Format.cycleText(row.intervalKm, row.intervalMonths, Units.distanceUnit),
                         style = MaterialTheme.typography.bodySmall,
@@ -1046,7 +1059,7 @@ private fun progressSummary(progress: ServiceProgress): String {
 }
 
 @Composable
-private fun ServiceHistoryCard(record: Record, ev: Boolean, onClick: () -> Unit) {
+private fun ServiceHistoryCard(record: Record, ledger: Ledger, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val projects = record.projects?.takeIf { it.isNotBlank() }
     // 整行可点直接进入编辑；左侧图标垂直居中，只保留日期 + 项目两行。
@@ -1079,8 +1092,8 @@ private fun ServiceHistoryCard(record: Record, ev: Boolean, onClick: () -> Unit)
             )
             Text(
                 text = projects?.let { raw ->
-                    raw.split("、").joinToString(tr("、", ", ")) { DataLabels.serviceItem(it) }
-                } ?: DataLabels.category(record.category, ev),
+                    raw.split("、").joinToString(tr("、", ", ")) { DataLabels.projectFor(ledger, it) }
+                } ?: DataLabels.categoryFor(ledger, record.category, ledger.vehicle.energyProfile),
                 style = MaterialTheme.typography.titleMedium,
                 color = scheme.onSurface,
                 maxLines = 1,

@@ -62,6 +62,7 @@ import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
@@ -144,7 +145,7 @@ private fun RecordsContent(
     // 用空串表示「全部分类」，避免 rememberSaveable 处理 null 的兼容问题。
     var categoryFilter by rememberSaveable { mutableStateOf("") }
     var lastCarId by rememberSaveable { mutableStateOf(ledger.id) }
-    // 动力类型：纯电把「油费」显示为「电费」，手填历史记录叫「手填能耗」。
+    // 动力类型：纯电把「油费」显示为「电费」/ 插混显示「能源」，手填历史记录叫「手填能耗」。
     val ev = ledger.isEv
 
     // 进入记录页 / 从编辑页或其它 tab 返回时：不自动聚焦搜索框，主动清焦点并收起输入法。
@@ -241,7 +242,7 @@ private fun RecordsContent(
                 period = state.period,
                 category = categoryFilter.ifEmpty { null },
                 categories = categoryOptions,
-                ev = ev,
+                ledger = ledger,
                 onSelectPeriod = onSelectPeriod,
                 onSelectCategory = { categoryFilter = it.orEmpty() },
                 onReset = {
@@ -306,7 +307,7 @@ private fun RecordsSearchFilterRow(
     period: Period,
     category: String?,
     categories: List<String>,
-    ev: Boolean,
+    ledger: Ledger,
     onSelectPeriod: (Period) -> Unit,
     onSelectCategory: (String?) -> Unit,
     onReset: () -> Unit,
@@ -341,7 +342,7 @@ private fun RecordsSearchFilterRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = filterPillLabel(period = period, category = category, ev = ev),
+                        text = filterPillLabel(period = period, category = category, ledger = ledger),
                         style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -381,7 +382,9 @@ private fun RecordsSearchFilterRow(
                 )
                 categories.forEach { name ->
                     DropdownMenuItem(
-                        text = { Text(DataLabels.category(name, ev)) },
+                        text = {
+                            Text(DataLabels.categoryFor(ledger, name, ledger.vehicle.energyProfile))
+                        },
                         trailingIcon = filterCheckIcon(category == name),
                         onClick = {
                             onSelectCategory(name)
@@ -432,14 +435,16 @@ private fun filterCheckIcon(selected: Boolean): (@Composable () -> Unit)? =
     }
 
 /** 筛选胶囊文案：无筛选「筛选」；否则「本月」「油费/电费」「本月 · 油费/电费」。 */
-private fun filterPillLabel(period: Period, category: String?, ev: Boolean): String {
+private fun filterPillLabel(period: Period, category: String?, ledger: Ledger): String {
     val parts = buildList {
         when (period) {
             Period.ALL -> Unit
             Period.MONTH -> add(tr("本月", "This month"))
             Period.YEAR -> add(tr("今年", "This year"))
         }
-        category?.takeIf { it.isNotBlank() }?.let { add(DataLabels.category(it, ev)) }
+        category?.takeIf { it.isNotBlank() }?.let {
+            add(DataLabels.categoryFor(ledger, it, ledger.vehicle.energyProfile))
+        }
     }
     return if (parts.isEmpty()) tr("筛选", "Filter") else parts.joinToString(" · ")
 }
@@ -589,7 +594,7 @@ private fun RecordRowCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = recordTitle(record, ledger.isEv),
+                    text = recordTitle(record, ledger),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -601,7 +606,7 @@ private fun RecordRowCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                recordSupporting(record)?.let { supporting ->
+                recordSupporting(record, ledger)?.let { supporting ->
                     Text(
                         text = supporting,
                         style = MaterialTheme.typography.labelSmall,
@@ -650,12 +655,15 @@ private fun RecordRowCard(
     }
 }
 
-/** 记录行标题：手填油耗/能耗单独显示（与 Web 记录表一致）；「油费」在纯电车上显示为「电费」。 */
-private fun recordTitle(record: Record, ev: Boolean): String =
+/**
+ * 记录行标题：手填油耗/能耗单独显示（与 Web 记录表一致）；
+ * 其余分类走 `DataLabels.categoryFor`（用户改名 → 纯电「电费」/ 插混「能源」→ 英文表）。
+ */
+private fun recordTitle(record: Record, ledger: Ledger): String =
     if (record.kind == "manual") {
-        if (ev) tr("手填能耗", "Manual energy entry") else tr("手填油耗", "Manual fuel entry")
+        if (ledger.isEv) tr("手填能耗", "Manual energy entry") else tr("手填油耗", "Manual fuel entry")
     } else {
-        DataLabels.category(Categories.normalize(record.category), ev)
+        DataLabels.categoryFor(ledger, Categories.normalize(record.category), ledger.vehicle.energyProfile)
     }
 
 /** 记录行副标题：日期 + 备注（不再展示记录来源）。 */
@@ -665,13 +673,13 @@ private fun recordSubtitle(record: Record): String {
     return if (note.isNotEmpty()) "$date · $note" else date
 }
 
-/** 记录行第三行：项目 / 地点（服务类记录才有）。 */
-private fun recordSupporting(record: Record): String? {
+/** 记录行第三行：项目 / 地点（服务类记录才有）。项目显示名走 `DataLabels.projectFor`。 */
+private fun recordSupporting(record: Record, ledger: Ledger): String? {
     val parts = buildList {
         val projects = record.projects.orEmpty()
         if (projects.isNotBlank()) {
             val separator = tr("、", ", ")
-            add(splitProjects(projects).joinToString(separator) { DataLabels.serviceItem(it) })
+            add(splitProjects(projects).joinToString(separator) { DataLabels.projectFor(ledger, it) })
         }
         val location = record.location.orEmpty()
         if (location.isNotBlank()) add(location)

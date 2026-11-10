@@ -163,17 +163,21 @@ private const val AddCategoryCell = "__add_category__"
 
 /**
  * 费用分类：置顶、无标题，5 列图标在上文字在下的网格。
- * 内置分类按固定顺序排列，自定义分类排在「汽车用品」之后，「新增分类」固定最后。
+ * 内置分类按固定顺序排列（被隐藏的分类不出现），自定义分类排在「汽车用品」之后，
+ * 「新增分类」固定最后。显示名走 `DataLabels.categoryFor`（改名 + 能量档位，存储值不变）。
  */
 @Composable
 internal fun CategoryField(
     form: RecordEditorState,
     modifier: Modifier = Modifier,
 ) {
+    val builtinCategories = (EditorCategoryOrder + MileNoteCategoryNames)
+        .distinct()
+        .filter { name -> form.categoryOptions.any { Categories.normalize(it) == name } }
     val customCategories = form.categoryOptions.filter {
         Categories.normalize(it) !in MileNoteCategoryNames
     }
-    val cells = EditorCategoryOrder.map { it to false } +
+    val cells = builtinCategories.map { it to false } +
         customCategories.map { it to false } +
         (AddCategoryCell to true)
 
@@ -191,7 +195,7 @@ internal fun CategoryField(
                         label = if (isAdd) {
                             tr("新增分类", "Add category")
                         } else {
-                            DataLabels.category(name, form.energyProfile)
+                            DataLabels.categoryFor(form.ledger, name, form.energyProfile)
                         },
                         icon = when {
                             isAdd -> MileNoteIcons.Add
@@ -497,7 +501,7 @@ internal fun ProjectPickerSection(
                 FilterChip(
                     selected = selected,
                     onClick = { form.toggleProject(project) },
-                    label = { Text(DataLabels.serviceItem(project), style = MaterialTheme.typography.bodyMedium) },
+                    label = { Text(DataLabels.projectFor(form.ledger, project), style = MaterialTheme.typography.bodyMedium) },
                     leadingIcon = if (selected) {
                         {
                             Icon(
@@ -567,7 +571,7 @@ internal fun ServiceFields(
             title = tr(
                 "%s项目 *（可多选）",
                 "%s items * (multi-select)",
-                DataLabels.category(form.effectiveCategory, form.energyProfile),
+                DataLabels.categoryFor(form.ledger, form.effectiveCategory, form.energyProfile),
             ),
         )
     }

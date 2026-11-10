@@ -14,6 +14,9 @@ import com.milenote.android.domain.d
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.normalizeImport
 import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
+import com.milenote.android.domain.model.hasCharging
+import com.milenote.android.domain.model.hasFuel
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.powertrainKey
 import org.junit.Assert.assertEquals
@@ -26,11 +29,11 @@ import org.junit.Test
 class DemoDataTest {
 
     @Test
-    fun `demo garage covers two cars nine categories and plan states`() {
+    fun `demo garage covers three cars nine categories and plan states`() {
         for (dateText in listOf("2026-11-01", "2026-11-30", "2027-01-01")) {
             val date = d(dateText)
             val garage = DemoData.createDemoGarage(date)
-            assertEquals(2, GarageOps.normalizeGarage(garage).cars.size)
+            assertEquals(3, GarageOps.normalizeGarage(garage).cars.size)
             assertEquals("blue", garage.theme)
             assertTrue(garage.cars[0].id != garage.cars[1].id)
             for (car in garage.cars) {
@@ -110,6 +113,60 @@ class DemoDataTest {
     }
 
     @Test
+    fun `demo phev car mixes fuel and charging with thirteen item plan`() {
+        val date = d("2026-11-01")
+        val phev = DemoData.createDemoGarage(date).cars[2]
+
+        // 车辆身份：插混两类能量都有
+        assertEquals("demo-phev", phev.id)
+        assertEquals(POWERTRAIN_PHEV, phev.vehicle.powertrain)
+        assertEquals("phev", phev.vehicle.powertrainKey)
+        assertEquals("BYD · Qin PLUS DM-i", phev.vehicle.model)
+        assertTrue(phev.vehicle.hasFuel)
+        assertTrue(phev.vehicle.hasCharging)
+        assertTrue(phev.isEv.not())
+
+        // 13 项方案 = 燃油 12 项 + 三电诊断（10000 km / 12 月）
+        val plan = phev.servicePlan!!
+        assertEquals(13, plan.size)
+        assertEquals(12, plan.count { it.firstOnly != true })
+        val evDiag = plan.first { it.key == "ev-diag" }
+        assertEquals("三电诊断", evDiag.title)
+        assertEquals(10000.0, evDiag.intervalKm!!, 1e-9)
+        assertEquals(12, evDiag.intervalMonths)
+        assertEquals(listOf("机油机滤", "三电诊断"), plan.first { it.key == "first" }.projects)
+        assertTrue(phev.reminders.any { it.presetKey == "ev-diag" })
+
+        // 双能源：8 次加油 + 20 次充电，一条记录只带一种能量字段
+        val energy = phev.records.filter { Categories.isEnergy(it.category) }
+        val fuel = energy.filter { it.liters != null }
+        val charging = energy.filter { it.kwh != null }
+        assertEquals(28, energy.size)
+        assertEquals(8, fuel.size)
+        assertEquals(20, charging.size)
+        assertTrue(energy.all { (it.liters == null) != (it.kwh == null) })
+        assertTrue(charging.all { it.fuelGrade == null })
+        // 一次未充满、一次漏记、一次缺里程
+        assertTrue(charging.any { !it.full })
+        assertTrue(energy.any { it.missed })
+        assertTrue(energy.any { it.odometer == null })
+
+        // 双流统计：油耗与电耗各自算得出来
+        val result = stats(phev)
+        assertEquals(10000.0, result.distance, 1e-9)
+        assertTrue(result.energyRate!! > 0)
+        assertTrue(result.fuelEnergy!!.rate!! > 0)
+        assertTrue(result.electricEnergy!!.rate!! > 0)
+
+        // 计划状态齐备：已到期 / 计划中 / 已完成
+        val rows = servicePlanRows(phev, date, currentKm(phev))
+        assertTrue(rows.any { it.status == "overdue" })
+        assertTrue(rows.any { it.status == "pending" })
+        assertTrue(rows.any { it.status == "done" })
+        assertTrue(phev.records.all { it.date <= "2026-11-01" })
+    }
+
+    @Test
     fun `demo values match web totals`() {
         // 燃油车与 Web `createDemoGarage('2026-11-01')` 逐字一致：¥10,511 / 42,000 km / 6.25 L/100km
         val garage = DemoData.createDemoGarage(d("2026-11-01"))
@@ -176,7 +233,7 @@ class DemoDataTest {
         assertTrue((rows[3][3] as String).contains("三电诊断"))
         assertEquals("demo-q-service", rows[3][4])
 
-        val items = normalizeImport(rows.drop(1), detectMap(rows[0].map { it.toString() }), "qianji", ev = true)
+        val items = normalizeImport(rows.drop(1), detectMap(rows[0].map { it.toString() }), "qianji", powertrain = "ev")
         assertTrue(items.all { it.error.isEmpty() })
         // 「电费」归类到能源分类（存储值仍是「油费」）
         assertEquals(2, items.count { Categories.isEnergy(it.record.category) })

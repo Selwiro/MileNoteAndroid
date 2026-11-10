@@ -8,7 +8,10 @@ import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.validateRecord
 import com.milenote.android.domain.import.file.SpreadsheetData
 import com.milenote.android.domain.model.FUEL_GRADES
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.normalizePowertrain
 
 /**
  * 一条导入行（Web `importRows` 返回的 `{row, record, error, rawCategory}`，
@@ -98,8 +101,14 @@ private fun textOrEmpty(row: List<Any?>, map: Map<String, Int?>, key: String): S
 /**
  * 原始行 → 记录（Web `importRows`）。
  *
+ * **行级能量种类**：一行只产一种能量记录（`liters` 与 `kwh` 互斥）。
+ * 该行在「充电量 / 电量 / 度电」列有值、或文本（项目/备注/分类/地点）含「充电」→ 充电记录
+ * （`kwh`、`fuelGrade = null`、`fillEnergyAmounts(ev = true)`）；否则按加油记录。
+ * 小熊油耗导出只有加油行，强制按燃油口径。
+ *
  * @param source `bear`（小熊油耗）或 `qianji`（钱迹）
  * @param defaultCategory 钱迹无法识别分类时的兜底（预览页下拉，默认跳过）
+ * @param powertrain 当前车动力类型：`ev` 车的无能量量行按充电；`phev` 按行判定；缺省按燃油
  */
 fun importRows(
     rows: List<List<Any?>>,
@@ -107,11 +116,13 @@ fun importRows(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
-    ev: Boolean = false,
+    powertrain: String? = null,
 ): List<ImportItem> = rows.mapIndexed { i, row ->
     val rawCategory = textCell(row, map, "category")
     val type = textCell(row, map, "type").trim()
     val amount = Numbers.parse(rawCell(row, map, "amount"))
+    // 小熊油耗只有加油记录；钱迹 / 通用表格按行判断是加油还是充电。
+    val electric = source != "bear" && rowIsCharging(row, map, powertrain)
     var record = Record(
         id = Ids.newId(),
         date = Dates.dateValue(rawCell(row, map, "date")),
@@ -122,12 +133,16 @@ fun importRows(
         },
         amount = amount ?: 0.0,
         odometer = Numbers.parse(rawCell(row, map, "odometer")),
-        liters = Numbers.parse(rawCell(row, map, "liters")),
-        kwh = Numbers.parse(rawCell(row, map, "kwh")),
+        liters = if (electric) null else Numbers.parse(rawCell(row, map, "liters")),
+        kwh = if (electric) Numbers.parse(rawCell(row, map, "kwh")) else null,
         unitPrice = Numbers.parse(rawCell(row, map, "unitPrice")),
         payable = Numbers.parse(rawCell(row, map, "payable")),
         discount = Numbers.parse(rawCell(row, map, "discount")),
-        fuelGrade = textCell(row, map, "fuelGrade").trim().takeIf { it in FUEL_GRADES },
+        fuelGrade = if (electric) {
+            null
+        } else {
+            textCell(row, map, "fuelGrade").trim().takeIf { it in FUEL_GRADES }
+        },
         rate = Numbers.parse(rawCell(row, map, "rate")),
         distance = Numbers.parse(rawCell(row, map, "distance")),
         full = FULL_TRUE.matches(textCell(row, map, "full").trim()),
@@ -139,7 +154,7 @@ fun importRows(
         record = record.copy(kind = "manual")
     }
     // 小熊/钱迹新导出可能只有部分金额字段，空白项按「量×价=应付，应付-优惠=实付」补齐。
-    record = fillEnergyAmounts(record, ev)
+    record = fillEnergyAmounts(record, electric)
     val error = if (TYPE_SKIP.containsMatchIn(type)) {
         "非支出记录，已跳过"
     } else {
@@ -148,20 +163,81 @@ fun importRows(
     ImportItem(row = i + 2, record = record, error = error, rawCategory = rawCategory)
 }
 
+/** 兼容旧调用（二值 `ev`）。新代码请用 `importRows(..., powertrain)`。 */
+@Deprecated(
+    "改用 importRows(..., powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("importRows(rows, map, source, defaultCategory, customCategories, if (ev) \"ev\" else null)"),
+)
+fun importRows(
+    rows: List<List<Any?>>,
+    map: Map<String, Int?>,
+    source: String,
+    defaultCategory: String,
+    customCategories: List<String>,
+    ev: Boolean,
+): List<ImportItem> = importRows(
+    rows,
+    map,
+    source,
+    defaultCategory,
+    customCategories,
+    if (ev) POWERTRAIN_EV else null,
+)
+
+/** 充电记录提示词：项目 / 备注 / 分类 / 地点里出现这些词即视为充电行。 */
+private val CHARGING_HINT = Regex("充电|快充|慢充|超充|家充|换电|满电")
+
+/**
+ * 判断一行是否充电记录（用于 [importRows] 的行级能量种类）。
+ *
+ * 优先级：充电量列有值 → 充电；加油量列有值 → 加油；文本含「充电」→ 充电；
+ * 否则按车（`ev` 车无能量量时只可能是充电）兜底。
+ */
+private fun rowIsCharging(row: List<Any?>, map: Map<String, Int?>, powertrain: String?): Boolean {
+    val kwh = Numbers.parse(rawCell(row, map, "kwh"))
+    if (kwh != null && kwh > 0) return true
+    val liters = Numbers.parse(rawCell(row, map, "liters"))
+    if (liters != null && liters > 0) return false
+    val text = listOf("projects", "note", "category", "location")
+        .joinToString(" ") { textCell(row, map, it) }
+    if (CHARGING_HINT.containsMatchIn(text)) return true
+    return normalizePowertrain(powertrain) == POWERTRAIN_EV
+}
+
 /** 表格文件版 [importRows]（消费另一位队友产出的 [SpreadsheetData]）。 */
 fun importRows(
     data: SpreadsheetData,
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
-    ev: Boolean = false,
+    powertrain: String? = null,
 ): List<ImportItem> = importRows(
     data.rows,
     detectMap(data.headers),
     source,
     defaultCategory,
     customCategories,
-    ev,
+    powertrain,
+)
+
+/** 兼容旧调用（二值 `ev`）。新代码请用 `importRows(data, ...)`。 */
+@Deprecated(
+    "改用 importRows(data, ..., powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("importRows(data, source, defaultCategory, customCategories, if (ev) \"ev\" else null)"),
+)
+fun importRows(
+    data: SpreadsheetData,
+    source: String,
+    defaultCategory: String,
+    customCategories: List<String>,
+    ev: Boolean,
+): List<ImportItem> = importRows(
+    data.rows,
+    detectMap(data.headers),
+    source,
+    defaultCategory,
+    customCategories,
+    if (ev) POWERTRAIN_EV else null,
 )
 
 /**
@@ -174,15 +250,15 @@ fun normalizeImport(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
-    ev: Boolean = false,
-): List<ImportItem> = importRows(rows, map, source, defaultCategory, customCategories, ev)
+    powertrain: String? = null,
+): List<ImportItem> = importRows(rows, map, source, defaultCategory, customCategories, powertrain)
     .mapIndexed { i, item ->
         var record = inferServiceNote(
             item.record.copy(
                 projects = textOrEmpty(rows[i], map, "projects"),
                 location = textOrEmpty(rows[i], map, "location"),
             ),
-            ev = ev,
+            powertrain = powertrain,
         )
         record = record.copy(
             sourceId = textCell(rows[i], map, "sourceId"),
@@ -209,14 +285,55 @@ fun normalizeImport(
     source: String,
     defaultCategory: String = "",
     customCategories: List<String> = emptyList(),
-    ev: Boolean = false,
+    powertrain: String? = null,
 ): List<ImportItem> = normalizeImport(
     data.rows,
     detectMap(data.headers),
     source,
     defaultCategory,
     customCategories,
-    ev,
+    powertrain,
+)
+
+/** 兼容旧调用（单元格版，二值 `ev`）。 */
+@Deprecated(
+    "改用 normalizeImport(..., powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("normalizeImport(rows, map, source, defaultCategory, customCategories, if (ev) \"ev\" else null)"),
+)
+fun normalizeImport(
+    rows: List<List<Any?>>,
+    map: Map<String, Int?>,
+    source: String,
+    defaultCategory: String,
+    customCategories: List<String>,
+    ev: Boolean,
+): List<ImportItem> = normalizeImport(
+    rows,
+    map,
+    source,
+    defaultCategory,
+    customCategories,
+    if (ev) POWERTRAIN_EV else null,
+)
+
+/** 兼容旧调用（表格文件版，二值 `ev`）。 */
+@Deprecated(
+    "改用 normalizeImport(data, ..., powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("normalizeImport(data, source, defaultCategory, customCategories, if (ev) \"ev\" else null)"),
+)
+fun normalizeImport(
+    data: SpreadsheetData,
+    source: String,
+    defaultCategory: String,
+    customCategories: List<String>,
+    ev: Boolean,
+): List<ImportItem> = normalizeImport(
+    data.rows,
+    detectMap(data.headers),
+    source,
+    defaultCategory,
+    customCategories,
+    if (ev) POWERTRAIN_EV else null,
 )
 
 private val MILEAGE = Regex(
@@ -256,15 +373,24 @@ private val PROJECT_ALIASES_EV: List<Pair<String, Regex>> = PROJECT_ALIASES_FUEL
 } + ("三电诊断" to Regex("三电|电池健康|电池检测|电机|电控|高压系统|三电系统"))
 
 /**
+ * 插混项目别名：燃油 12 项（标题沿用燃油方案，含「制动液」）+ 三电诊断。
+ *
+ * PHEV 方案 title 是燃油超集，所以「三电诊断 / 刹车油 / 制动液」三种写法都要能识别。
+ */
+private val PROJECT_ALIASES_PHEV: List<Pair<String, Regex>> = PROJECT_ALIASES_FUEL +
+    ("三电诊断" to Regex("三电|电池健康|电池检测|电机|电控|高压系统|三电系统"))
+
+/**
  * 从备注中识别保养里程与项目（Web `inferServiceNote`）。
  *
  * 保守策略：有「下次 / 周期 / 间隔 / 行驶 / 建议」等前缀的里程不算；
  * 多个不同候选不猜测；已有明确字段优先保留；否定从句里的项目不算。
  * 仅对保养 / 维修 / 汽车美容类记录生效，其余原样返回。
  *
- * @param ev true=纯电（项目名用纯电方案标题，如「刹车油」「三电诊断」）
+ * @param powertrain 动力类型：`ev` 用纯电方案标题（「刹车油」「三电诊断」）；
+ *   `phev` 用燃油标题 + 三电诊断（并集）；缺省/燃油用燃油标题
  */
-fun inferServiceNote(record: Record, ev: Boolean = false): Record {
+fun inferServiceNote(record: Record, powertrain: String? = null): Record {
     if (record.category !in setOf("保养", "维修保养", "维修", "汽车美容")) return record
     val note = record.note
     var result = record
@@ -298,7 +424,11 @@ fun inferServiceNote(record: Record, ev: Boolean = false): Record {
         val clauses = note
             .split(Regex("[，,。；;\\n、]+"))
             .filterNot { NEGATIVE_CLAUSE.containsMatchIn(it) }
-        val aliases = if (ev) PROJECT_ALIASES_EV else PROJECT_ALIASES_FUEL
+        val aliases = when (normalizePowertrain(powertrain)) {
+            POWERTRAIN_EV -> PROJECT_ALIASES_EV
+            POWERTRAIN_PHEV -> PROJECT_ALIASES_PHEV
+            else -> PROJECT_ALIASES_FUEL
+        }
         val projects = aliases
             .filter { (_, pattern) -> clauses.any { pattern.containsMatchIn(it) } }
             .joinToString("、") { it.first }
@@ -306,3 +436,11 @@ fun inferServiceNote(record: Record, ev: Boolean = false): Record {
     }
     return result
 }
+
+/** 兼容旧调用（二值 `ev`）。新代码请用 `inferServiceNote(record, powertrain)`。 */
+@Deprecated(
+    "改用 inferServiceNote(record, powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("inferServiceNote(record, if (ev) \"ev\" else null)"),
+)
+fun inferServiceNote(record: Record, ev: Boolean): Record =
+    inferServiceNote(record, if (ev) POWERTRAIN_EV else null)

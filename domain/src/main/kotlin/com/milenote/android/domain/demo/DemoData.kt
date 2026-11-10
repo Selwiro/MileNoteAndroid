@@ -11,6 +11,7 @@ import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
@@ -22,15 +23,23 @@ import java.time.LocalDate
 object DemoData {
 
     /**
-     * 生成两辆车的演示车库（Web `createDemoGarage`）。
+     * 生成三辆车的演示车库（Web `createDemoGarage` + Android PHEV 车）。
      *
-     * 两台车都覆盖 9 类费用、6 个月油费序列（含未加满、漏记）、
+     * - `demo-weekend`（周末出逃计划）= 燃油车，12 项方案；
+     * - `demo-city`（城市通勤）= 纯电车，6 项方案；
+     * - `demo-phev`（插混通勤）= 插电混动，13 项方案，同时有加油与充电记录。
+     *
+     * 三台车都覆盖 9 类费用、6 个月能源序列（含未加满/未充满、漏记）、
      * 已完成的保养记录与默认保养方案、自定义提醒，合计多种待办状态。
      *
      * @param date 演示基准日（默认今天），确保生成的数据不晚于该日
      */
     fun createDemoGarage(date: LocalDate = Dates.today()): Garage {
-        val cars = listOf(build(date, secondary = false), build(date, secondary = true))
+        val cars = listOf(
+            build(date, secondary = false),
+            build(date, secondary = true),
+            buildPhev(date),
+        )
         return Garage(version = 2, activeId = cars[0].id, theme = "blue", cars = cars)
     }
 
@@ -284,6 +293,263 @@ object DemoData {
             id = Ids.newId(),
             title = "检查轮胎",
             dueKm = km(45000),
+            done = false,
+            note = tr("仅按里程管理", "Mileage-based only"),
+        )
+
+        ledger = ledger.copy(
+            records = records.toList(),
+            reminders = reminders,
+            serviceProjectsByCategory = mapOf(
+                "维修" to listOf("车窗异响处理"),
+                "汽车美容" to listOf("玻璃护理"),
+                "保养" to listOf("天窗轨道润滑"),
+            ),
+        )
+        return syncServiceHistory(ledger)
+    }
+
+    /**
+     * 第三辆车：插电混动（PHEV / 增程口径）。
+     *
+     * 合成数据，不来自任何真实账本：6 个月、8 次加油 + 20 次充电（含一次未充满、
+     * 一次漏记、一次缺里程）、3 项已完成常规保养 + 首保、13 项默认保养方案。
+     * 能源记录全部落在「上个月结束之前」，保证任何演示基准日下条数一致。
+     */
+    private fun buildPhev(date: LocalDate): Ledger {
+        val dateText = Dates.iso(date)
+        val companionDate = Dates.addMonths(dateText, -6)
+        var ledger = blankLedger(POWERTRAIN_PHEV).copy(
+            id = "demo-phev",
+            vehicle = Vehicle(
+                name = tr("插混通勤", "Plug-in commute"),
+                model = "BYD · Qin PLUS DM-i",
+                plate = tr("C 号车", "Car C"),
+                companionDate = companionDate,
+                startKm = 0.0,
+                currentKm = 10000.0,
+                fuelCostSource = "combined",
+                fuelGrade = "92#",
+                powertrain = POWERTRAIN_PHEV,
+            ),
+        )
+        // PHEV 默认 13 项方案（燃油 12 项 + 三电诊断，首保=机油机滤 + 三电诊断）。
+        ledger = applyServicePlan(ledger, emptyList(), companionDate, 0.0, true)
+
+        val records = mutableListOf<Record>()
+        var reminders = ledger.reminders
+
+        fun add(
+            category: String,
+            amount: Double,
+            day: String,
+            odometer: Double? = null,
+            liters: Double? = null,
+            kwh: Double? = null,
+            full: Boolean = false,
+            missed: Boolean = false,
+            source: String = "演示数据",
+            sourceId: String? = null,
+            fuelCounted: Boolean? = null,
+            note: String = "",
+            projects: String? = null,
+            location: String? = null,
+        ): Record {
+            val record = Record(
+                id = Ids.newId(),
+                date = day,
+                category = category,
+                amount = amount,
+                odometer = odometer,
+                liters = liters,
+                kwh = kwh,
+                full = full,
+                missed = missed,
+                note = note,
+                location = location,
+                projects = projects,
+                source = source,
+                sourceId = sourceId,
+                kind = "expense",
+                fuelCounted = fuelCounted,
+                fuelGrade = if (liters != null) "92#" else null,
+            )
+            records.add(record)
+            return record
+        }
+
+        // 首保（免费）：机油机滤 + 三电诊断
+        val first = add(
+            "保养",
+            0.0,
+            Dates.addMonths(dateText, -5),
+            odometer = 3000.0,
+            projects = "机油机滤、三电诊断",
+            location = tr("品牌服务中心", "Authorized service center"),
+            note = tr("首保免费 · 机油机滤 + 三电诊断", "Free first service · Oil & filter + EV system check"),
+        )
+        reminders.firstOrNull { it.firstOnly == true }?.let {
+            reminders = completeService(reminders, it, first)
+        }
+
+        // 3 项已完成常规保养：空调滤芯按里程已到期，机油机滤/三电诊断按周期滚动
+        val completions = listOf(
+            ServiceCompletion("机油机滤", "Oil & filter", -4, 4200, 520.0),
+            ServiceCompletion("三电诊断", "EV system check", -3, 5800, 320.0),
+            ServiceCompletion("空调滤芯", "Cabin filter", -6, 1800, 120.0),
+        )
+        for (spec in completions) {
+            val record = add(
+                "保养",
+                spec.amount,
+                Dates.addMonths(dateText, spec.months),
+                odometer = spec.odometer.toDouble(),
+                projects = spec.title,
+                location = tr("安心养车服务站", "Trusty car care station"),
+                note = tr("已完成 ${spec.title}", "Completed ${spec.titleEn}"),
+            )
+            reminders.firstOrNull { it.title == spec.title && !it.done }?.let {
+                reminders = completeService(reminders, it, record)
+            }
+        }
+
+        // 6 个月双能源序列：8 次加油（含一次未加满、一次漏记）+ 20 次充电（含一次未充满、一次缺里程）
+        var odometer = 1600.0
+        var fuelIndex = 0
+        var chargeIndex = 0
+        val currentMonth = date.withDayOfMonth(1)
+        for (m in 6 downTo 1) {
+            val month = currentMonth.minusMonths(m.toLong())
+            val key = "%04d-%02d".format(month.year, month.monthValue)
+            val monthIndex = 6 - m
+            fun day(dayOfMonth: Int): String = "$key-${dayOfMonth.toString().padStart(2, '0')}"
+            // 同月按日期排序，保证里程单调递增。
+            val events = mutableListOf<Pair<Int, Boolean>>() // day → 是否加油
+            events += 3 to true
+            if (monthIndex == 0 || monthIndex == 3) events += 25 to true
+            events += 9 to false
+            events += 15 to false
+            events += 21 to false
+            if (monthIndex == 2) events += 12 to false
+            if (monthIndex == 4) events += 27 to false
+            for ((dayOfMonth, isFuel) in events.sortedBy { it.first }) {
+                if (isFuel) {
+                    val partial = monthIndex == 2 && dayOfMonth == 3
+                    val missed = monthIndex == 3 && dayOfMonth == 3
+                    val liters = if (partial) 22.0 else 38.0 + (fuelIndex % 3) * 2
+                    val price = 7.35 + (fuelIndex % 3) * 0.08
+                    odometer += if (partial) 300.0 else 800.0
+                    add(
+                        "油费",
+                        Math.round(liters * price).toDouble(),
+                        day(dayOfMonth),
+                        odometer = odometer,
+                        liters = liters,
+                        full = !partial,
+                        missed = missed,
+                        source = "小熊油耗",
+                        sourceId = "demo-phev-fuel-$fuelIndex",
+                        fuelCounted = true,
+                        note = when {
+                            partial -> tr("中途未加满，累计到下次满箱计算", "Partial fill — carried over to the next full tank")
+                            missed -> tr("此前漏记，本次满箱重新建立油耗基准", "Previously missed — this full tank re-establishes the fuel-economy baseline")
+                            else -> tr("92# 汽油 · 实付金额", "92# gasoline · paid amount")
+                        },
+                    )
+                    fuelIndex++
+                } else {
+                    val notFull = monthIndex == 1 && dayOfMonth == 15
+                    val noOdometer = monthIndex == 5 && dayOfMonth == 21
+                    val kwh = if (notFull) 18.0 else 30.0 + (chargeIndex % 4) * 3
+                    val home = chargeIndex % 2 == 0
+                    val price = if (home) 0.62 else 1.25 + (chargeIndex % 3) * 0.05
+                    odometer += if (notFull) 80.0 else 100.0
+                    add(
+                        "油费",
+                        Math.round(kwh * price * 100.0) / 100.0,
+                        day(dayOfMonth),
+                        odometer = if (noOdometer) null else odometer,
+                        kwh = kwh,
+                        full = !notFull,
+                        source = "手动记录",
+                        sourceId = "demo-phev-charge-$chargeIndex",
+                        fuelCounted = true,
+                        note = when {
+                            noOdometer -> tr("补记充电，当时未记总里程", "Charging logged later — odometer was not recorded")
+                            notFull -> tr("快充至 80%，未充满，累计到下次充满", "Fast charge to 80% — carried over to the next full charge")
+                            home -> tr("家充 · 0.62 元/度", "Home charging · 0.62 CNY/kWh")
+                            else -> tr("快充 · 1.25 元/度", "Fast charging · 1.25 CNY/kWh")
+                        },
+                    )
+                    chargeIndex++
+                }
+            }
+            add("停车费", 160.0 + (monthIndex % 3) * 20, day(1), note = tr("月度停车", "Monthly parking"))
+            add("过路费", 48.0 + monthIndex * 9, day(1), note = tr("通勤出行", "Commute tolls"))
+            add(
+                "汽车美容",
+                40.0,
+                day(1),
+                projects = "洗车",
+                location = tr("街角洗车店", "Corner car wash"),
+                note = tr("外观清洗", "Exterior wash"),
+            )
+        }
+
+        add(
+            "保险",
+            2980.0,
+            Dates.addMonths(dateText, -2),
+            note = tr("交强险及商业险", "Compulsory insurance & commercial insurance"),
+        )
+        add(
+            "维修",
+            80.0,
+            Dates.addMonths(dateText, -1),
+            projects = "补胎",
+            odometer = 9000.0,
+            location = tr("轮胎服务中心", "Tire service center"),
+            note = tr("右后轮补胎", "Rear-right tire repair"),
+        )
+        add(
+            "罚单",
+            100.0,
+            Dates.addMonths(dateText, -3),
+            note = tr("停车罚单（虚构示例）", "Parking ticket (fictional sample)"),
+        )
+        add("汽车用品", 128.0, dateText, note = tr("随车充收纳包", "Portable charger bag"))
+        add(
+            "保养",
+            180.0,
+            Dates.addMonths(dateText, -2),
+            projects = "天窗轨道润滑",
+            odometer = 6500.0,
+            location = tr("安心养车服务站", "Trusty car care station"),
+            note = tr("自定义保养项目", "Custom service item"),
+        )
+        add(
+            "维修",
+            240.0,
+            dateText,
+            projects = "车窗异响处理",
+            location = tr("安心养车服务站", "Trusty car care station"),
+            note = tr("自定义维修项目", "Custom repair item"),
+        )
+
+        reminders = reminders + Reminder(
+            id = Ids.newId(),
+            title = "洗车",
+            projects = listOf("洗车"),
+            dueDate = Dates.addMonths(dateText, 1),
+            intervalMonths = 1,
+            baseDate = dateText,
+            done = false,
+            note = tr("自定义汽车美容提醒", "Custom detailing reminder"),
+        )
+        reminders = reminders + Reminder(
+            id = Ids.newId(),
+            title = "检查轮胎",
+            dueKm = 40000.0,
             done = false,
             note = tr("仅按里程管理", "Mileage-based only"),
         )

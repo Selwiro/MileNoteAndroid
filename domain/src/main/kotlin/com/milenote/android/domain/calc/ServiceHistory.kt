@@ -5,7 +5,7 @@ import com.milenote.android.domain.model.HistoryBaseline
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
-import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.powertrainKey
 
 /**
  * 按最近一次实际保养记录重算所有未完成提醒（Web `syncServiceHistory`）。
@@ -18,7 +18,8 @@ import com.milenote.android.domain.model.isEv
  */
 fun syncServiceHistory(ledger: Ledger): Ledger {
     val records = ledger.records.filter { isServiceRecord(it) && Dates.isValid(it.date) }
-    val plans = resolveServicePlan(ledger.servicePlan.orEmpty(), ledger.isEv).filter { it.firstOnly != true }
+    val plans = resolveServicePlan(ledger.servicePlan.orEmpty(), ledger.vehicle.powertrainKey)
+        .filter { it.firstOnly != true }
     val titles = LinkedHashSet<String>()
     plans.forEach { titles.add(it.title.orEmpty()) }
     ledger.reminders
@@ -30,8 +31,9 @@ fun syncServiceHistory(ledger: Ledger): Ledger {
 
     var reminders = ledger.reminders.toMutableList()
     for (title in titles) {
+        // 别名并集：燃油方案写「制动液」、纯电方案写「刹车油」，PHEV 两类历史都算同一项。
         val history = records
-            .filter { splitProjects(it.projects).contains(title) }
+            .filter { record -> splitProjects(record.projects).any { serviceTitleMatches(it, title) } }
             .sortedWith(
                 compareByDescending<Record> { it.date }
                     .thenByDescending { it.odometer ?: -1.0 },
@@ -132,7 +134,7 @@ fun completeImportedServices(ledger: Ledger, recordIds: List<String>): CompleteI
                 } else {
                     val inferred = inferServiceNote(
                         Record(category = "保养", note = reminder.title),
-                        ev = ledger.isEv,
+                        powertrain = ledger.vehicle.powertrainKey,
                     ).projects
                     if (!inferred.isNullOrEmpty()) inferred else reminder.title
                 }

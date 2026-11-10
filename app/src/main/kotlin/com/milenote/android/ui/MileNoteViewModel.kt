@@ -24,6 +24,7 @@ import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.domain.calc.Categories
+import com.milenote.android.domain.calc.CategoryConfig
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
@@ -33,8 +34,6 @@ import com.milenote.android.domain.calc.restoreServiceRemindersAfterRecordDelete
 import com.milenote.android.domain.calc.currentKm
 import com.milenote.android.domain.calc.defaultServicePlan
 import com.milenote.android.domain.calc.defaultServiceReminders
-import com.milenote.android.domain.calc.EV_ONLY_SERVICE_TITLES
-import com.milenote.android.domain.calc.FUEL_ONLY_SERVICE_TITLES
 import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.EnergyProfile
@@ -326,7 +325,11 @@ class MileNoteViewModel(
 
     fun saveRecord(record: Record) {
         // 能源费分类显示名随能量档位：纯电「电费」、插混「能源」；燃油车保持原提示文案不变。
-        val profile = _state.value.activeCar?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
+        val active = _state.value.activeCar
+        val profile = active?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
+        // 分类显示名优先用本车改名（只影响显示，账本存储值不变）。
+        val categoryLabel = active?.let { DataLabels.categoryFor(it, record.category, profile) }
+            ?: DataLabels.category(record.category, profile)
         viewModelScope.launch {
             repository.update(syncHistory = true) { garage ->
                 updateActive(garage) { ledger ->
@@ -342,7 +345,7 @@ class MileNoteViewModel(
             _state.value = _state.value.copy(
                 editor = null,
                 message = if (profile != EnergyProfile.FUEL_ONLY) {
-                    tr("已保存 · %s", "Saved · %s", DataLabels.category(record.category, profile))
+                    tr("已保存 · %s", "Saved · %s", categoryLabel)
                 } else {
                     tr("已保存", "Saved")
                 },
@@ -351,6 +354,8 @@ class MileNoteViewModel(
     }
 
     fun deleteRecord(record: Record) {
+        val active = _state.value.activeCar
+        val profile = active?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
         val linked = _state.value.activeCar?.reminders.orEmpty()
             .filter { it.done == true && it.recordId == record.id }
         if (linked.isNotEmpty()) {
@@ -365,7 +370,7 @@ class MileNoteViewModel(
         confirm(
             PendingConfirm(
                 title = tr("删除这条记录？", "Delete this record?"),
-                message = "${Dates.displayDots(record.date)} · ${DataLabels.category(record.category)} · ${Units.currencySymbol}${Format.money(record.amount)}",
+                message = "${Dates.displayDots(record.date)} · ${active?.let { DataLabels.categoryFor(it, record.category, profile) } ?: DataLabels.category(record.category, profile)} · ${Units.currencySymbol}${Format.money(record.amount)}",
                 confirmLabel = tr("删除", "Delete"),
                 destructive = true,
             ) {
@@ -446,8 +451,8 @@ class MileNoteViewModel(
                     if (ledger.vehicle.powertrainKey != nextVehicle.powertrainKey) {
                         next = migratePowertrain(
                             ledger = next,
-                            fromEv = ledger.vehicle.isEv,
-                            toEv = nextVehicle.isEv,
+                            fromPowertrain = ledger.vehicle.powertrainKey,
+                            toPowertrain = nextVehicle.powertrainKey,
                             pruneReminders = prunePowertrainReminders,
                         )
                     }
@@ -530,7 +535,11 @@ class MileNoteViewModel(
         }
     }
 
-    /** 新增某个分类下的可选项目（保养/维修/汽车美容/保险等）。 */
+    /**
+     * 新增某个分类下的可选项目（保养/维修/汽车美容/保险等）。
+     *
+     * 同名项目此前被删除（隐藏）过时顺带解除隐藏，避免「新增了却不出现在候选里」。
+     */
     fun addProject(category: String, name: String) {
         val cat = Categories.normalize(category)
         val trimmed = name.trim()
@@ -540,7 +549,13 @@ class MileNoteViewModel(
                 updateActive(garage) { ledger ->
                     val map = ledger.serviceProjectsByCategory.orEmpty().toMutableMap()
                     map[cat] = (map[cat].orEmpty() + trimmed).distinct()
-                    ledger.copy(serviceProjectsByCategory = map)
+                    val hidden = ledger.hiddenServiceProjects.orEmpty()
+                        .mapValues { (_, projects) -> projects.filter { it != trimmed } }
+                        .filterValues { it.isNotEmpty() }
+                    ledger.copy(
+                        serviceProjectsByCategory = map,
+                        hiddenServiceProjects = hidden.takeIf { it.isNotEmpty() },
+                    )
                 }
             }
         }
@@ -563,15 +578,177 @@ class MileNoteViewModel(
         }
     }
 
-    /** 新增/持久化自定义费用分类（不产生记录）。 */
+    /**
+     * 新增/持久化自定义费用分类（不产生记录）。
+     *
+     * 同名分类此前被删除（隐藏）过时顺带解除隐藏，避免「新增了却不出现在候选里」。
+     */
     fun addCustomCategory(name: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
+        val key = Categories.normalize(trimmed)
         viewModelScope.launch {
             repository.update(syncHistory = false) { garage ->
                 updateActive(garage) { ledger ->
-                    if (ledger.customCategories.orEmpty().contains(trimmed)) ledger
-                    else ledger.copy(customCategories = ledger.customCategories.orEmpty() + trimmed)
+                    val categories = if (ledger.customCategories.orEmpty().contains(trimmed)) {
+                        ledger.customCategories.orEmpty()
+                    } else {
+                        ledger.customCategories.orEmpty() + trimmed
+                    }
+                    val hidden = ledger.hiddenCategories.orEmpty()
+                        .map { Categories.normalize(it) }
+                        .filter { it.isNotEmpty() && it != key }
+                    ledger.copy(
+                        customCategories = categories,
+                        hiddenCategories = hidden.takeIf { it.isNotEmpty() },
+                    )
+                }
+            }
+        }
+    }
+
+    // ---------- 分类 / 项目库：改名与隐藏（只改显示名与候选，绝不改写历史记录） ----------
+
+    /**
+     * 分类改名：只写 `categoryLabels`（存储值 → 显示名），**不改写任何记录的分类值**。
+     *
+     * 新名字与存储值相同时等于恢复默认名（删除映射）。
+     */
+    fun renameCategory(old: String, new: String) {
+        val key = Categories.normalize(old)
+        val label = new.trim()
+        if (key.isEmpty() || label.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val labels = ledger.categoryLabels.orEmpty().toMutableMap()
+                    if (label == key) labels.remove(key) else labels[key] = label
+                    ledger.copy(categoryLabels = labels.takeIf { it.isNotEmpty() })
+                }
+            }
+        }
+    }
+
+    /** 恢复某个分类的默认显示名（删除自定义显示名映射）。 */
+    fun resetCategoryLabel(name: String) {
+        val key = Categories.normalize(name)
+        if (key.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val labels = ledger.categoryLabels.orEmpty() - key
+                    ledger.copy(categoryLabels = labels.takeIf { it.isNotEmpty() })
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除（隐藏）内置费用分类：写入 `hiddenCategories`，只影响新建记录的候选与设置页展示。
+     *
+     * 受保护分类（油费/保险/保养/维修）拒绝隐藏；历史记录的分类值保持不变。
+     */
+    fun hideCategory(name: String) {
+        val key = Categories.normalize(name)
+        if (key.isEmpty()) return
+        if (CategoryConfig.isProtected(key)) {
+            _state.value = _state.value.copy(
+                message = tr("「%s」是必需分类，不能删除", "\"%s\" is a required category and cannot be removed", key),
+            )
+            return
+        }
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val hidden = (ledger.hiddenCategories.orEmpty() + key).distinct()
+                    ledger.copy(hiddenCategories = hidden)
+                }
+            }
+        }
+    }
+
+    /** 恢复被隐藏的分类（重新进入新建记录的分类候选）。 */
+    fun unhideCategory(name: String) {
+        val key = Categories.normalize(name)
+        if (key.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val hidden = ledger.hiddenCategories.orEmpty()
+                        .map { Categories.normalize(it) }
+                        .filter { it.isNotEmpty() && it != key }
+                    ledger.copy(hiddenCategories = hidden.takeIf { it.isNotEmpty() })
+                }
+            }
+        }
+    }
+
+    /**
+     * 项目改名：只写 `serviceProjectLabels`（项目原始文字 → 显示名），
+     * **不改写 `Record.projects` 里的历史文字**。
+     */
+    fun renameServiceProject(old: String, new: String) {
+        val key = old.trim()
+        val label = new.trim()
+        if (key.isEmpty() || label.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val labels = ledger.serviceProjectLabels.orEmpty().toMutableMap()
+                    if (label == key) labels.remove(key) else labels[key] = label
+                    ledger.copy(serviceProjectLabels = labels.takeIf { it.isNotEmpty() })
+                }
+            }
+        }
+    }
+
+    /** 恢复某个项目的默认显示名。 */
+    fun resetProjectLabel(name: String) {
+        val key = name.trim()
+        if (key.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val labels = ledger.serviceProjectLabels.orEmpty() - key
+                    ledger.copy(serviceProjectLabels = labels.takeIf { it.isNotEmpty() })
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除（隐藏）项目：按当前分类写入 `hiddenServiceProjects`，
+     * 只影响项目候选与设置页展示；历史记录里的项目文字保持原样。
+     */
+    fun hideServiceProject(category: String, name: String) {
+        val cat = Categories.normalize(category)
+        val key = name.trim()
+        if (cat.isEmpty() || key.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val map = ledger.hiddenServiceProjects.orEmpty().toMutableMap()
+                    map[cat] = (map[cat].orEmpty() + key).distinct()
+                    ledger.copy(hiddenServiceProjects = map)
+                }
+            }
+        }
+    }
+
+    /**
+     * 恢复被隐藏的项目（接口不带分类：从所有分类的隐藏集合里移除同名项）。
+     * 项目文字是跨分类唯一的历史值，恢复后回到原分类的项目候选里。
+     */
+    fun unhideServiceProject(name: String) {
+        val key = name.trim()
+        if (key.isEmpty()) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    val map = ledger.hiddenServiceProjects.orEmpty().mapValues { (_, projects) ->
+                        projects.filter { it != key }
+                    }.filterValues { it.isNotEmpty() }
+                    ledger.copy(hiddenServiceProjects = map.takeIf { it.isNotEmpty() })
                 }
             }
         }
@@ -638,7 +815,12 @@ class MileNoteViewModel(
             try {
                 repository.update(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
-                        val reminders = defaultServiceReminders(baseDate, baseKm, includeFirst, ev = ledger.isEv)
+                        val reminders = defaultServiceReminders(
+                            baseDate,
+                            baseKm,
+                            includeFirst,
+                            powertrain = ledger.vehicle.powertrainKey,
+                        )
                         val existing = ledger.reminders.filter { r ->
                             reminders.none { n -> n.presetKey == r.presetKey || n.title == r.title }
                         }
@@ -1249,23 +1431,30 @@ class MileNoteViewModel(
     /**
      * 动力类型切换后的账本迁移（设计 §6.3）。
      *
-     * 1. `servicePlan` 只丢弃旧动力类型专属的 key（燃油→纯电 7 项、纯电→燃油 `ev-diag`）；
+     * 1. `servicePlan` 只丢弃旧动力类型专属的 key（燃油↔纯电、插混的「三电诊断」等）：
      *    共用 key 的用户周期覆盖与自定义 key 保留（与 `resolveServicePlan` 的取舍一致）；
-     * 2. [pruneReminders] 时删除未完成且只属于旧动力类型的提醒（按旧方案 key / 旧类型专属标题）；
+     * 2. [pruneReminders] 时删除未完成、且只属于旧动力类型的提醒（按旧方案 key / 旧方案独有标题）；
      *    已完成提醒与费用记录保留为历史；
      * 3. `currentKm / startKm / records` 不动。
+     *
+     * 保留/丢弃集合由 [defaultServicePlan] 按动力类型现算：
+     * `fuel` / `hev` → 12 项、`phev` → 13 项（燃油 12 项 + 三电诊断）、`ev` → 6 项。
      */
     private fun migratePowertrain(
         ledger: Ledger,
-        fromEv: Boolean,
-        toEv: Boolean,
+        fromPowertrain: String,
+        toPowertrain: String,
         pruneReminders: Boolean,
     ): Ledger {
-        if (fromEv == toEv) return ledger
-        val oldKeys = defaultServicePlan(fromEv).map { it.key }.toSet()
-        val newKeys = defaultServicePlan(toEv).map { it.key }.toSet()
+        if (fromPowertrain == toPowertrain) return ledger
+        val oldPlan = defaultServicePlan(fromPowertrain)
+        val newPlan = defaultServicePlan(toPowertrain)
+        val oldKeys = oldPlan.map { it.key }.toSet()
+        val newKeys = newPlan.map { it.key }.toSet()
         val staleKeys = oldKeys - newKeys
-        val staleTitles = if (toEv) FUEL_ONLY_SERVICE_TITLES else EV_ONLY_SERVICE_TITLES
+        // 旧方案独有的项目标题（标题可能同名不同 key，如燃油「制动液」/纯电「刹车油」）。
+        val newTitles = newPlan.mapNotNull { it.title }.toSet()
+        val staleTitles = oldPlan.mapNotNull { it.title }.filter { it !in newTitles }.toSet()
         val plan = ledger.servicePlan?.filter { it.key in newKeys || it.key !in oldKeys }
         val reminders = if (pruneReminders) {
             ledger.reminders.filterNot { reminder ->

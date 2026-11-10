@@ -77,9 +77,11 @@ import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
+import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
@@ -231,6 +233,7 @@ private fun DashboardContent(
                 customRange = state.customRange,
                 statsResult = periodStats,
                 ev = ledger.isEv,
+                phev = ledger.vehicle.energyProfile == EnergyProfile.DUAL,
                 onSelectPeriod = onSelectPeriod,
                 onSelectCustomRange = onSelectCustomRange,
             )
@@ -597,6 +600,7 @@ private fun VehicleStatsCard(
     customRange: DateRange?,
     statsResult: StatsResult,
     ev: Boolean = false,
+    phev: Boolean = false,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
@@ -605,6 +609,13 @@ private fun VehicleStatsCard(
     var showRangePicker by remember { mutableStateOf(false) }
     // 平均油耗/能耗：满箱/满电区间加权；纯电没有满充区间时回退累计估算口径。
     val energyRate = statsResult.energyRate ?: if (ev) statsResult.estimatedEnergyRate else null
+    // 插混：主口径仍是油耗（与能耗页一致），在「平均油耗」格下方补一行电耗小字；
+    // 电耗同样优先区间加权，没有满充区间时用累计估算；两条流都没有值时不显示这一行。
+    val electricRate = if (phev) {
+        statsResult.electricEnergy?.let { it.rate ?: it.estimated }
+    } else {
+        null
+    }
 
     DashboardCard(
         modifier = modifier,
@@ -661,6 +672,9 @@ private fun VehicleStatsCard(
                     label = if (ev) tr("平均能耗", "Energy economy") else tr("平均油耗", "Fuel economy"),
                     value = energyRate?.let { Numbers.toFixed2(it) } ?: "—",
                     unit = if (energyRate == null) null else if (ev) Units.energyConsumption else Units.consumption,
+                    caption = electricRate?.let {
+                        tr("电耗 %s %s", "Electric %s %s", Numbers.toFixed2(it), Units.energyConsumption)
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1161,6 +1175,7 @@ private fun StatCell(
     value: String,
     unit: String?,
     modifier: Modifier = Modifier,
+    caption: String? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(
@@ -1191,6 +1206,16 @@ private fun StatCell(
                     maxLines = 1,
                 )
             }
+        }
+        // PHEV 的「平均油耗」格下方补一行电耗小字（其它指标不传，布局不变）。
+        if (caption != null) {
+            Text(
+                text = caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

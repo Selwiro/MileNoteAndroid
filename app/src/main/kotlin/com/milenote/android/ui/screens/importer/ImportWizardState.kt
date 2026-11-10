@@ -11,7 +11,9 @@ import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.import.detectMap
 import com.milenote.android.domain.import.file.SpreadsheetData
+import com.milenote.android.domain.model.hasFuel
 import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -122,6 +124,12 @@ internal class ImportWizardState(
 
     /** 当前车是否纯电（决定来源列表、字段标签与油费口径相关计算是否参与）。 */
     private val isEv: Boolean get() = ledger?.isEv == true
+
+    /** 当前车是否有油箱（燃油 / HEV / PHEV）：决定是否走小熊/钱迹油费口径合并。 */
+    private val hasFuelTank: Boolean get() = ledger?.vehicle?.hasFuel == true
+
+    /** 当前车动力类型（`fuel` / `phev` / `ev`），行级能量种类按它判断。 */
+    private val powertrain: String? get() = ledger?.vehicle?.powertrainKey
 
     // ---------- 来源与文件 ----------
 
@@ -544,6 +552,7 @@ internal class ImportWizardState(
         val currentExcluded = excluded
         val currentEdits = rowEdits
         val ev = isEv
+        val currentPowertrain = powertrain
         scope.launch {
             busy = true
             busyMessage = tr("正在生成预览…", "Building preview…")
@@ -558,6 +567,7 @@ internal class ImportWizardState(
                         defaultCategory = currentDefault,
                         customCategories = custom,
                         ev = ev,
+                        powertrain = currentPowertrain,
                         edits = currentEdits,
                         excludedRows = currentExcluded,
                         existingRecords = base,
@@ -642,15 +652,17 @@ internal class ImportWizardState(
                         }
                         // 纯电不走油费口径（mergeFuelBatch 会把钱迹能源记录标成「不计成本」）；
                         // 直接按普通判重合并，让充电支出全部计入电费。
-                        val ev = isEv
+                        // 插混有油箱：加油行照常走油费口径，充电行（有 kwh、无 liters）由
+                        // domain 的 `isFuelSourceRecord` 排除，不会被写 fuelCounted。
+                        val withFuelTank = hasFuelTank
                         val merge = withContext(Dispatchers.Default) {
-                            if (ev) {
-                                mergeImported(currentLedger?.records.orEmpty(), items)
-                            } else {
+                            if (withFuelTank) {
                                 mergeFuelBatch(currentLedger?.records.orEmpty(), items, fuelBasis)
+                            } else {
+                                mergeImported(currentLedger?.records.orEmpty(), items)
                             }
                         }
-                        vm.applyImport(items, if (ev) null else fuelBasis, overwriteDuplicates)
+                        vm.applyImport(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
                         result = WizardResult(
                             title = if (overwriteDuplicates) {
                                 tr("导入已提交（覆盖重复）", "Import submitted (duplicates overwritten)")

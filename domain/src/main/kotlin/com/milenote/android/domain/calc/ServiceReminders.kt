@@ -1,6 +1,7 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.model.HistoryBaseline
+import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import java.time.LocalDate
@@ -11,18 +12,18 @@ import java.time.LocalDate
  * @param baseDate 基准日期（默认用提车日期）
  * @param baseKm 基准里程（默认用记账起始里程）
  * @param includeFirst 是否包含一次性首保
- * @param ev true=纯电 6 项方案，false=燃油 12 项
+ * @param powertrain 动力类型：`fuel`（含 HEV，缺省）12 项 / `phev` 13 项 / `ev` 6 项
  */
 fun defaultServiceReminders(
     baseDate: String,
     baseKm: Double?,
     includeFirst: Boolean = true,
-    ev: Boolean = false,
+    powertrain: String? = null,
 ): List<Reminder> {
     if (Dates.dateValue(baseDate).isEmpty() || baseKm == null || !baseKm.isFinite() || baseKm < 0) {
         throw IllegalArgumentException("请填写有效基准日期和里程")
     }
-    return defaultServicePlan(ev)
+    return defaultServicePlan(powertrain)
         .filter { includeFirst || it.firstOnly != true }
         .map { plan ->
             val months = plan.intervalMonths
@@ -40,14 +41,25 @@ fun defaultServiceReminders(
                 done = false,
                 source = "默认保养方案",
                 note = if (plan.firstOnly == true) {
-                    if (ev) "首保包含三电诊断，仅执行一次；公里或时间先到为准"
-                    else "首保包含机油机滤，仅执行一次；公里或时间先到为准"
+                    firstServiceNote(powertrain) + "；公里或时间先到为准"
                 } else {
                     "用户设置的默认周期；公里或时间先到为准"
                 },
             )
         }
 }
+
+/** 兼容旧调用（二值 `ev`）。新代码请用 `defaultServiceReminders(..., powertrain)`。 */
+@Deprecated(
+    "改用 defaultServiceReminders(..., powertrain: String?)；ev = true 等价于 powertrain = \"ev\"",
+    ReplaceWith("defaultServiceReminders(baseDate, baseKm, includeFirst, if (ev) \"ev\" else null)"),
+)
+fun defaultServiceReminders(
+    baseDate: String,
+    baseKm: Double?,
+    includeFirst: Boolean = true,
+    ev: Boolean,
+): List<Reminder> = defaultServiceReminders(baseDate, baseKm, includeFirst, if (ev) POWERTRAIN_EV else null)
 
 /**
  * 完成一次保养后的下一轮提醒（Web `nextService`）。
