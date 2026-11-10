@@ -25,8 +25,9 @@
 - WebDAV **只在前台同步**（打开时一次 + 本地修改后防抖），退出应用即结束；不要引入后台周期同步。
 - 非代码产物（APK、截图、构建日志）**不进仓库**；构建日志写 `/tmp/*.log` 再 grep 关键行。
 - **官网只放在 `gh-pages` 分支**（GitHub Pages Source = gh-pages /(root)），`main` 保持纯代码，
-  不要在 main 放网站资源（HTML/CSS/JS/图片/字体）。页面加载时从 GitHub Releases API 自动跟随最新
-  Release，发版后无需改站点；站点维护与发布操作步骤属维护者本机文档（不入库，见 `AGENTS.local.md`）。
+  不要在 main 放网站资源（HTML/CSS/JS/图片/字体）。**页面里不写版本号**：所有下载按钮静态指向
+  `.../releases` 页面，JS 取到最新 Release 时才升级成 APK 直链（API 失败就保持 Releases 页），
+  所以发版后无需改站点；站点维护步骤属维护者本机文档（`docs/website.md`，不入库）。
 - 样例数据一律合成：车牌、加油站、订单号、行程等，**不得**使用真实小票/真实账本内容。
 
 ## 构建与测试
@@ -35,7 +36,7 @@
 （`ANDROID_HOME` 或 `local.properties`）。任何人 clone 后 `./gradlew assembleDebug` 即可出 APK。
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（286 + 149），必须全绿
+./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（286 + 151），必须全绿
 ./gradlew :app:assembleDebug                   # 编译检查，产物在 app/build/outputs/apk/debug/
 ./build.sh debug                               # 编译 + 归档到 dist/
 ./build.sh release                             # R8 +（有密钥时）签名，归档到 dist/ 并生成 .sha256
