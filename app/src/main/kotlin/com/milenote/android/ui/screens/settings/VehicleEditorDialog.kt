@@ -70,8 +70,10 @@ import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.POWERTRAIN_FUEL
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.Vehicle
-import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.normalizePowertrain
+import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
@@ -125,7 +127,7 @@ internal fun VehicleEditorDialog(
     var plate by remember(initial) { mutableStateOf(initial.plate) }
     var model by remember(initial) { mutableStateOf(initial.model) }
     // 动力类型：缺省/null 视为燃油；只在本对话框内切换，确认保存后才写回账本。
-    var powertrainEv by remember(initial) { mutableStateOf(initial.isEv) }
+    var powertrainKey by remember(initial) { mutableStateOf(initial.powertrainKey) }
     var fuelGrade by remember(initial) { mutableStateOf(initial.fuelGrade ?: "92#") }
     var currentKmText by remember(initial) {
         mutableStateOf(if (initial.currentKm > 0.0) Format.fmt(initial.currentKm) else "")
@@ -200,11 +202,11 @@ internal fun VehicleEditorDialog(
             companionDate = companionDate,
             image = image,
             imageFit = imageFit,
-            powertrain = if (powertrainEv) POWERTRAIN_EV else POWERTRAIN_FUEL,
-            // 纯电不保留旧版油费成本口径（否则电费会被小熊/钱迹口径判成 0）；燃油保持原值。
-            fuelCostSource = if (powertrainEv) null else initial.fuelCostSource,
+            powertrain = normalizePowertrain(powertrainKey),
+            // 插混 / 纯电不保留旧版油费成本口径（否则钱迹来源的加油/充电记录会被判成 0）；燃油保持原值。
+            fuelCostSource = if (powertrainKey != POWERTRAIN_FUEL) null else initial.fuelCostSource,
         )
-        if (powertrainEv != initial.isEv && recordCount > 0) {
+        if (powertrainKey != initial.powertrainKey && recordCount > 0) {
             prunePowertrainReminders = true
             pendingPowertrainSave = next
         } else {
@@ -342,37 +344,40 @@ internal fun VehicleEditorDialog(
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                listOf(false to tr("燃油", "Fuel"), true to tr("纯电", "EV"))
-                                    .forEachIndexed { index, (ev, label) ->
-                                        SegmentedButton(
-                                            selected = powertrainEv == ev,
-                                            onClick = { powertrainEv = ev },
-                                            shape = SegmentedButtonDefaults.itemShape(
-                                                index = index,
-                                                count = 2,
-                                            ),
-                                            label = {
-                                                Text(
-                                                    text = label,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    maxLines = 1,
-                                                )
-                                            },
-                                        )
-                                    }
+                                listOf(
+                                    POWERTRAIN_FUEL to tr("燃油", "Fuel"),
+                                    POWERTRAIN_PHEV to tr("插电混动", "Plug-in hybrid"),
+                                    POWERTRAIN_EV to tr("纯电", "EV"),
+                                ).forEachIndexed { index, (key, label) ->
+                                    SegmentedButton(
+                                        selected = powertrainKey == key,
+                                        onClick = { powertrainKey = key },
+                                        shape = SegmentedButtonDefaults.itemShape(
+                                            index = index,
+                                            count = 3,
+                                        ),
+                                        label = {
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                maxLines = 1,
+                                            )
+                                        },
+                                    )
+                                }
                             }
                             Text(
                                 text = tr(
-                                    "纯电车型改用充电量与电价记账，保养方案与能耗分析随动力类型切换。",
-                                    "EVs record charging amount and price instead; the service plan and energy analysis follow the powertrain.",
+                                    "插电混动同时记加油与充电，能耗分油耗 / 电耗两个口径；纯电只用充电量记账。保养方案与能耗分析随动力类型切换。",
+                                    "Plug-in hybrids record both refuelling and charging (fuel and energy economy are reported separately); EVs only record charging. The service plan and energy analysis follow the powertrain.",
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
-                    // 「燃油标号」只对燃油车有意义；纯电隐藏但保留选值，切回燃油时原样显示。
-                    if (!powertrainEv) {
+                    // 「燃油标号」对燃油与插混有意义；纯电隐藏但保留选值，切回燃油/插混时原样显示。
+                    if (powertrainKey != POWERTRAIN_EV) {
                         item("fuelGrade") {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(

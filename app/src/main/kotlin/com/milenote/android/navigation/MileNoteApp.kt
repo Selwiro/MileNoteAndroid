@@ -67,7 +67,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.milenote.android.domain.calc.Dates
-import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.EnergyProfile
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
@@ -92,29 +93,32 @@ private data class BottomTab(
 }
 
 /**
- * 底栏 tab 列表：文案在组合内按当前车动力类型求值（燃油「油耗 / Fuel」，纯电「能耗 / Energy」），
+ * 底栏 tab 列表：文案在组合内按当前车能量档位求值（燃油「油耗 / Fuel」，纯电与插混「能耗 / Energy」），
  * 不再使用顶层静态文案；pager 索引与 Routes 契约不变。
  */
-private fun bottomTabsFor(ev: Boolean): List<BottomTab> = listOf(
-    BottomTab(Routes.DASHBOARD, "总览", "Overview", MileNoteIcons.Home, MileNoteIcons.HomeFilled),
-    BottomTab(Routes.RECORDS, "记录", "Records", MileNoteIcons.Records, MileNoteIcons.RecordsFilled),
-    BottomTab(
-        Routes.FUEL,
-        if (ev) "能耗" else "油耗",
-        if (ev) "Energy" else "Fuel",
-        MileNoteIcons.Fuel,
-        MileNoteIcons.FuelFilled,
-    ),
-    BottomTab(Routes.MAINTENANCE, "保养", "Maintenance", MileNoteIcons.Maintenance, MileNoteIcons.MaintenanceFilled),
-)
+private fun bottomTabsFor(profile: EnergyProfile): List<BottomTab> {
+    val energyUi = profile != EnergyProfile.FUEL_ONLY
+    return listOf(
+        BottomTab(Routes.DASHBOARD, "总览", "Overview", MileNoteIcons.Home, MileNoteIcons.HomeFilled),
+        BottomTab(Routes.RECORDS, "记录", "Records", MileNoteIcons.Records, MileNoteIcons.RecordsFilled),
+        BottomTab(
+            Routes.FUEL,
+            if (energyUi) "能耗" else "油耗",
+            if (energyUi) "Energy" else "Fuel",
+            MileNoteIcons.Fuel,
+            MileNoteIcons.FuelFilled,
+        ),
+        BottomTab(Routes.MAINTENANCE, "保养", "Maintenance", MileNoteIcons.Maintenance, MileNoteIcons.MaintenanceFilled),
+    )
+}
 
 private data class TopBarCopy(val title: String, val subtitle: String)
 
-/** 顶栏标题：油耗分析 / 能耗分析按当前车动力类型切换（其余路由与语言无关逻辑不变）。 */
-private fun topBarCopy(route: String?, ev: Boolean): TopBarCopy? = when (route) {
+/** 顶栏标题：油耗分析 / 能耗分析按当前车能量档位切换（其余路由与语言无关逻辑不变）。 */
+private fun topBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
     Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
     Routes.RECORDS -> TopBarCopy(tr("费用统计", "Analytics"), "")
-    Routes.FUEL -> if (ev) {
+    Routes.FUEL -> if (profile != EnergyProfile.FUEL_ONLY) {
         TopBarCopy(tr("能耗分析", "Energy"), "")
     } else {
         TopBarCopy(tr("油耗分析", "Fuel"), "")
@@ -131,9 +135,9 @@ fun MileNoteApp(vm: MileNoteViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    // 当前车动力类型：底栏 / 顶栏文案在组合内求值（切换车辆后自动更新）。
-    val ev = state.activeCar?.isEv == true
-    val bottomTabs = bottomTabsFor(ev)
+    // 当前车能量档位：底栏 / 顶栏文案与分类显示名在组合内求值（切换车辆后自动更新）。
+    val profile = state.activeCar?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
+    val bottomTabs = bottomTabsFor(profile)
     val pagerState = rememberPagerState(pageCount = { bottomTabs.size })
     val scope = rememberCoroutineScope()
     val isTabs = currentRoute == Routes.DASHBOARD
@@ -146,7 +150,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             navController.navigate(Routes.IMPORTER)
         }
     }
-    val copy = if (isTabs) topBarCopy(bottomTabs[currentPage].route, ev) else null
+    val copy = if (isTabs) topBarCopy(bottomTabs[currentPage].route, profile) else null
 
     // 四个底部 tab 支持左右滑动切换；在非首个 tab 按返回先回总览。
     BackHandler(enabled = isTabs && currentPage != 0) {
@@ -325,7 +329,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "${Dates.displayDots(record.date)} · ${com.milenote.android.i18n.DataLabels.category(record.category, ev)}" +
+                        "${Dates.displayDots(record.date)} · ${com.milenote.android.i18n.DataLabels.category(record.category, profile)}" +
                             " · ¥${Format.money(record.amount)}",
                     )
                     Text(

@@ -25,6 +25,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -101,7 +102,7 @@ internal fun AmountField(
         supportingText = error?.let {
             { Text(text = it, style = MaterialTheme.typography.bodySmall) }
         },
-        trailingIcon = if (form.isFuel && !form.isEv && onOcrClick != null) {
+        trailingIcon = if (form.isFuel && !form.electricView && onOcrClick != null) {
             {
                 IconButton(onClick = onOcrClick) {
                     Icon(
@@ -190,7 +191,7 @@ internal fun CategoryField(
                         label = if (isAdd) {
                             tr("新增分类", "Add category")
                         } else {
-                            DataLabels.category(name, form.isEv)
+                            DataLabels.category(name, form.energyProfile)
                         },
                         icon = when {
                             isAdd -> MileNoteIcons.Add
@@ -276,9 +277,9 @@ internal fun FuelFields(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FormField(
-                value = if (form.isEv) form.kwh else form.liters,
+                value = if (form.electricView) form.kwh else form.liters,
                 onValueChange = {
-                    if (form.isEv) {
+                    if (form.electricView) {
                         form.kwh = it
                         form.onFuelFieldChanged("kwh")
                     } else {
@@ -286,8 +287,8 @@ internal fun FuelFields(
                         form.onFuelFieldChanged("liters")
                     }
                 },
-                label = if (form.isEv) tr("充电量", "Charge amount") else tr("加油量", "Fuel amount"),
-                suffix = if (form.isEv) Units.energyUnit else Units.volumeUnit,
+                label = if (form.electricView) tr("充电量", "Charge amount") else tr("加油量", "Fuel amount"),
+                suffix = if (form.electricView) Units.energyUnit else Units.volumeUnit,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -297,8 +298,8 @@ internal fun FuelFields(
                     form.unitPrice = it
                     form.onFuelFieldChanged("unitPrice")
                 },
-                label = if (form.isEv) tr("电价", "Unit price") else tr("油价", "Unit price"),
-                suffix = if (form.isEv) Units.pricePerEnergy else Units.pricePerVolume,
+                label = if (form.electricView) tr("电价", "Unit price") else tr("油价", "Unit price"),
+                suffix = if (form.electricView) Units.pricePerEnergy else Units.pricePerVolume,
                 keyboardType = KeyboardType.Decimal,
                 modifier = Modifier.weight(1f),
             )
@@ -335,7 +336,7 @@ internal fun FuelFields(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             CheckRow(
-                label = if (form.isEv) tr("本次充满", "Full charge this time") else tr("本次加满", "Filled up this time"),
+                label = if (form.electricView) tr("本次充满", "Full charge this time") else tr("本次加满", "Filled up this time"),
                 checked = form.full,
                 onCheckedChange = { form.full = it },
                 fillWidth = false,
@@ -346,11 +347,11 @@ internal fun FuelFields(
                 onCheckedChange = { form.missed = it },
                 fillWidth = false,
             )
-            if (!form.isEv) {
+            if (form.hasFuel) {
                 Spacer(modifier = Modifier.weight(1f))
                 CompactFuelGradeDropdown(
                     form = form,
-                    modifier = Modifier.width(78.dp),
+                    modifier = Modifier.width(86.dp),
                 )
             }
         }
@@ -374,14 +375,15 @@ private fun CompactFuelGradeDropdown(
             contentPadding = PaddingValues(horizontal = 8.dp),
         ) {
             Text(
-                text = form.fuelGrade,
+                // 插混：下拉兼作「加油 / 充电」切换（选中「充电」后能量字段变成充电量 / 电价）。
+                text = if (form.charging && form.chargeOption) tr("充电", "Charge") else form.fuelGrade,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
             )
             Spacer(modifier = Modifier.weight(1f))
             Icon(
                 imageVector = MileNoteIcons.ChevronDown,
-                contentDescription = tr("燃油标号", "Fuel grade"),
+                contentDescription = if (form.chargeOption) tr("燃油标号或充电", "Fuel grade or charging") else tr("燃油标号", "Fuel grade"),
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -393,10 +395,32 @@ private fun CompactFuelGradeDropdown(
                 DropdownMenuItem(
                     text = { Text(fuelGradeLabel(grade)) },
                     onClick = {
+                        form.switchChargingMode(false)
                         form.fuelGrade = grade
                         expanded = false
                     },
-                    trailingIcon = if (form.fuelGrade == grade) {
+                    trailingIcon = if (!form.charging && form.fuelGrade == grade) {
+                        {
+                            Icon(
+                                imageVector = MileNoteIcons.Check,
+                                contentDescription = tr("已选中", "Selected"),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+            if (form.chargeOption) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(tr("充电", "Charge")) },
+                    onClick = {
+                        form.switchChargingMode(true)
+                        expanded = false
+                    },
+                    trailingIcon = if (form.charging) {
                         {
                             Icon(
                                 imageVector = MileNoteIcons.Check,
@@ -543,7 +567,7 @@ internal fun ServiceFields(
             title = tr(
                 "%s项目 *（可多选）",
                 "%s items * (multi-select)",
-                DataLabels.category(form.effectiveCategory, form.isEv),
+                DataLabels.category(form.effectiveCategory, form.energyProfile),
             ),
         )
     }

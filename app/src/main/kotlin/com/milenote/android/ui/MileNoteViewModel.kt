@@ -37,13 +37,19 @@ import com.milenote.android.domain.calc.EV_ONLY_SERVICE_TITLES
 import com.milenote.android.domain.calc.FUEL_ONLY_SERVICE_TITLES
 import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.model.Garage
+import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_FUEL
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankLedger
+import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
+import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.calc.completeImportedServices
@@ -319,8 +325,8 @@ class MileNoteViewModel(
     }
 
     fun saveRecord(record: Record) {
-        // 纯电车的「油费」在界面上显示为「电费 / Charging」；燃油车保持原提示文案不变。
-        val ev = _state.value.activeCar?.isEv == true
+        // 能源费分类显示名随能量档位：纯电「电费」、插混「能源」；燃油车保持原提示文案不变。
+        val profile = _state.value.activeCar?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
         viewModelScope.launch {
             repository.update(syncHistory = true) { garage ->
                 updateActive(garage) { ledger ->
@@ -335,8 +341,8 @@ class MileNoteViewModel(
             }
             _state.value = _state.value.copy(
                 editor = null,
-                message = if (ev) {
-                    tr("已保存 · %s", "Saved · %s", DataLabels.category(record.category, ev = ev))
+                message = if (profile != EnergyProfile.FUEL_ONLY) {
+                    tr("已保存 · %s", "Saved · %s", DataLabels.category(record.category, profile))
                 } else {
                     tr("已保存", "Saved")
                 },
@@ -427,16 +433,20 @@ class MileNoteViewModel(
      *   （默认 false，保持既有调用点行为不变）。
      */
     fun saveVehicle(vehicle: Vehicle, prunePowertrainReminders: Boolean = false) {
-        // 纯电车辆不保留旧版油费成本口径（否则电费会被小熊/钱迹口径判成 0）。
-        val nextVehicle = if (vehicle.isEv) vehicle.copy(fuelCostSource = null) else vehicle
+        // 插混 / 纯电不保留旧版油费成本口径（否则钱迹来源的加油/充电记录会被判成 0）。
+        val nextVehicle = if (vehicle.powertrainKey != POWERTRAIN_FUEL) {
+            vehicle.copy(fuelCostSource = null)
+        } else {
+            vehicle
+        }
         viewModelScope.launch {
             repository.update(syncHistory = false) { garage ->
                 updateActive(garage) { ledger ->
                     var next = ledger.copy(vehicle = nextVehicle)
-                    if (ledger.isEv != nextVehicle.isEv) {
+                    if (ledger.vehicle.powertrainKey != nextVehicle.powertrainKey) {
                         next = migratePowertrain(
                             ledger = next,
-                            fromEv = ledger.isEv,
+                            fromEv = ledger.vehicle.isEv,
                             toEv = nextVehicle.isEv,
                             pruneReminders = prunePowertrainReminders,
                         )
@@ -449,11 +459,11 @@ class MileNoteViewModel(
     }
 
     fun addVehicle(vehicle: Vehicle) {
-        // 新账本没有历史可保留：纯电车清掉燃油标号与旧版油费口径；燃油车保持表单值。
-        val nextVehicle = if (vehicle.isEv) {
-            vehicle.copy(fuelCostSource = null, fuelGrade = null)
-        } else {
-            vehicle
+        // 新账本没有历史可保留：插混 / 纯电清掉旧版油费口径；纯电连燃油标号一并清空。
+        val nextVehicle = when (vehicle.powertrainKey) {
+            POWERTRAIN_EV -> vehicle.copy(fuelCostSource = null, fuelGrade = null)
+            POWERTRAIN_PHEV -> vehicle.copy(fuelCostSource = null)
+            else -> vehicle
         }
         viewModelScope.launch {
             repository.update(syncHistory = false) { garage ->

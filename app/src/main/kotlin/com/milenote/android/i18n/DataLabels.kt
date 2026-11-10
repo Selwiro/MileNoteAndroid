@@ -1,5 +1,7 @@
 package com.milenote.android.i18n
 
+import com.milenote.android.domain.model.EnergyProfile
+
 /**
  * 数据值 → 显示文案的映射。
  *
@@ -97,6 +99,23 @@ object DataLabels {
 
     /** 当前动力类型的能源费分类名（记录编辑器默认分类 chip / 标题用）。 */
     fun energyCategory(ev: Boolean): String = category("油费", ev)
+
+    /**
+     * 按车辆能量档位取分类显示名：
+     * 燃油 / HEV →「油费」；纯电 →「电费」；插混 / 增程 →「能源」（油与电混在同一分类里，叫"油费"会误导）。
+     */
+    fun category(name: String?, profile: EnergyProfile): String {
+        val raw = name.orEmpty()
+        if (raw != "油费") return category(raw, ev = false)
+        return when (profile) {
+            EnergyProfile.ELECTRIC_ONLY -> category("油费", ev = true)
+            EnergyProfile.DUAL -> tr("能源", "Energy")
+            EnergyProfile.FUEL_ONLY -> category("油费", ev = false)
+        }
+    }
+
+    /** 当前能量档位下能源费分类的显示名。 */
+    fun energyCategory(profile: EnergyProfile): String = category("油费", profile)
 
     /** 皮肤中文名 → 英文；未知值原样返回。 */
     fun theme(label: String?): String {

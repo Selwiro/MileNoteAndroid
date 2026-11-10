@@ -12,7 +12,11 @@ import com.milenote.android.domain.calc.SERVICE_CATEGORIES
 import com.milenote.android.domain.calc.serviceProjectOptions
 import com.milenote.android.domain.calc.splitProjects
 import com.milenote.android.domain.calc.validateRecord
+import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
+import com.milenote.android.domain.model.energyProfile
+import com.milenote.android.domain.model.hasCharging
+import com.milenote.android.domain.model.hasFuel
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
@@ -46,8 +50,47 @@ internal class RecordEditorState(
     /** 记录 id（新增时生成，编辑时保留）。 */
     val recordId: String = original?.id ?: Ids.newId()
 
-    /** 当前车辆是否纯电（决定标题、能量字段与「电费」显示）。 */
+    /** 当前车辆的「能量档位」：燃油 / 插混双流 / 纯电（决定标题、能量字段与分类显示名）。 */
+    val energyProfile: EnergyProfile = ledger.vehicle.energyProfile
+
+    /** 当前车辆是否纯电（保留给纯电专属判断用）。 */
     val isEv: Boolean = ledger.vehicle.isEv
+
+    /** 有油箱 / 有充电口（插混两者都有）。 */
+    val hasFuel: Boolean = ledger.vehicle.hasFuel
+    val hasCharging: Boolean = ledger.vehicle.hasCharging
+
+    /**
+     * 插混：本条记录录的是「充电」（由燃油标号下拉的「充电」选项切换）。
+     * 编辑既有充电记录（`kwh != null`）时默认选中充电，避免保存时被改写成加油记录。
+     */
+    var charging by mutableStateOf(original?.kwh != null)
+
+    /** 本条记录的能量种类是否是充电：纯电恒 true，燃油恒 false，插混看下拉。 */
+    val electricView: Boolean
+        get() = when (energyProfile) {
+            EnergyProfile.ELECTRIC_ONLY -> true
+            EnergyProfile.DUAL -> charging
+            EnergyProfile.FUEL_ONLY -> false
+        }
+
+    /** 燃油标号下拉是否提供「充电」选项（仅插混）。 */
+    val chargeOption: Boolean
+        get() = energyProfile == EnergyProfile.DUAL
+
+    /**
+     * 插混切换「加油 / 充电」：两种量纲的能源量与单价不能沿用，清空后由用户重填；
+     * 金额 / 应付 / 优惠 保留，自动补全标记一并清掉。
+     */
+    fun switchChargingMode(charging: Boolean) {
+        if (!chargeOption || this.charging == charging) return
+        this.charging = charging
+        liters = ""
+        kwh = ""
+        unitPrice = ""
+        autoFuelFields.clear()
+        autoFillFuel()
+    }
 
     /** 历史手填油耗记录（编辑时不显示分类网格，改为油耗 + 行驶里程）。 */
     val isManual: Boolean = original?.kind == "manual"
@@ -137,7 +180,7 @@ internal class RecordEditorState(
     val title: String
         get() = when {
             original != null -> tr("编辑记录", "Edit record")
-            isFuel -> if (isEv) tr("记录充电", "Log charging") else tr("记录加油", "Log refuel")
+            isFuel -> if (electricView) tr("记录充电", "Log charging") else tr("记录加油", "Log refuel")
             else -> tr("记一笔", "Add entry")
         }
 
@@ -194,7 +237,8 @@ internal class RecordEditorState(
             }
         }
         receipt.liters?.let { value ->
-            if (liters.isBlank()) {
+            // 充电记录不写升数（插混切到「充电」时 OCR 也不会出现，双保险）
+            if (!electricView && liters.isBlank()) {
                 liters = Numbers.jsString(value)
                 filled += tr("加油量", "fuel amount")
             }
@@ -259,21 +303,21 @@ internal class RecordEditorState(
         if (!isFuel) return
         // 自动填过的字段先置空再重算，避免输入变化后沿用旧的派生值。
         // 上一次自动补出来的能源量/金额都不当作「用户填写」，否则会出现 48 度 × 0.64 之类的自洽错误。
-        val energyField = if (isEv) "kwh" else "liters"
-        val energyValue = Numbers.parse(if (isEv) kwh else liters)
+        val energyField = if (electricView) "kwh" else "liters"
+        val energyValue = Numbers.parse(if (electricView) kwh else liters)
             .takeUnless { energyField in autoFuelFields }
         val seed = Record(
             category = "油费",
             // 上一次自动补出来的实付金额不当作「用户填写」，否则会把应付-实付算成优惠。
             amount = (Numbers.parse(amount).takeUnless { "amount" in autoFuelFields }) ?: 0.0,
-            liters = if (isEv) null else energyValue,
-            kwh = if (isEv) energyValue else null,
+            liters = if (electricView) null else energyValue,
+            kwh = if (electricView) energyValue else null,
             unitPrice = Numbers.parse(unitPrice).takeUnless { "unitPrice" in autoFuelFields },
             payable = Numbers.parse(payable).takeUnless { "payable" in autoFuelFields },
             discount = Numbers.parse(discount).takeUnless { "discount" in autoFuelFields },
         )
-        val filled = fillEnergyAmounts(seed, isEv)
-        if (isEv) {
+        val filled = fillEnergyAmounts(seed, electricView)
+        if (electricView) {
             applyAuto("kwh", kwh, filled.kwh) { kwh = it }
         } else {
             applyAuto("liters", liters, filled.liters) { liters = it }
@@ -305,10 +349,10 @@ internal class RecordEditorState(
             category = effectiveCategory,
             amount = Numbers.parse(amount) ?: 0.0,
             odometer = Numbers.parse(odometer),
-            liters = if (isFuel && !isEv) Numbers.parse(liters) else null,
-            kwh = if (isFuel && isEv) Numbers.parse(kwh) else null,
+            liters = if (isFuel && !electricView) Numbers.parse(liters) else null,
+            kwh = if (isFuel && electricView) Numbers.parse(kwh) else null,
             unitPrice = if (isFuel) Numbers.parse(unitPrice) else null,
-            fuelGrade = if (isFuel && !isEv) fuelGrade.takeIf { it in FuelGradeOptions } else null,
+            fuelGrade = if (isFuel && !electricView) fuelGrade.takeIf { it in FuelGradeOptions } else null,
             payable = if (isFuel) Numbers.parse(payable) else null,
             discount = if (isFuel) Numbers.parse(discount) else null,
             rate = if (isManual) Numbers.parse(rate) else null,
@@ -327,7 +371,7 @@ internal class RecordEditorState(
             kind = if (isManual) "manual" else "expense",
             time = null,
         )
-        return fillEnergyAmounts(record, isEv)
+        return fillEnergyAmounts(record, electricView)
     }
 
     /**
