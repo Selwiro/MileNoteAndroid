@@ -122,8 +122,8 @@ Supported sources:
 
 | Source | Import formats |
 |---|---|
-| Bear | XLS, XLSX |
-| Qianji | TXT, JSON, CSV, XLSX |
+| Bear | XLS |
+| Qianji | XLSX, JSON |
 | MileNote full backup | JSON |
 
 While importing you can adjust field mapping, preview and edit records row by row, and skip detected duplicates. You can also send a file to MileNote through the Android share sheet.

@@ -1297,12 +1297,12 @@ private fun ExternalImportPage(
             SectionCard(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             ) {
-                // 小熊油耗只有加油记录（XLS/XLSX），纯电车辆不适用；钱迹等入口保持不变。
+                // 小熊油耗只有加油记录（XLS），纯电车辆不适用；钱迹等入口保持不变。
                 if (!ev) {
                     SettingsMenuRow(
                         icon = MileNoteIcons.CategoryFuel,
                         title = tr("小熊油耗", "Bear"),
-                        subtitle = tr("XLS / XLSX · 导入加油记录", "XLS / XLSX · Import fuel records"),
+                        subtitle = tr("XLS · 导入加油记录", "XLS · Import fuel records"),
                         onClick = { onOpenImporter("bear") },
                     )
                     SectionDivider()
@@ -1310,7 +1310,7 @@ private fun ExternalImportPage(
                 SettingsMenuRow(
                     icon = MileNoteIcons.Wallet,
                     title = tr("钱迹记账", "Qianji"),
-                    subtitle = tr("TXT / JSON / CSV · 导入支出记录", "TXT / JSON / CSV · Import expense records"),
+                    subtitle = tr("XLSX / JSON · 导入支出记录", "XLSX / JSON · Import expense records"),
                     onClick = { onOpenImporter("qianji") },
                 )
 

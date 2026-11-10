@@ -204,6 +204,8 @@ internal class ImportWizardState(
             if (bytes.isEmpty()) {
                 throw ImportFileException(tr("文件是空的，请选择有效文件", "The file is empty — choose a valid file"))
             }
+            // 按来源限制格式：小熊只有 .xls；钱迹只有 XLSX 或 JSON（含 .txt 的 JSON 导出）。
+            sourceFileError(src, bytes)?.let { throw ImportFileException(it) }
             picked = PickedFile(name, bytes.size.toLong(), bytes)
             parsePicked(src, name, bytes)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -220,9 +222,10 @@ internal class ImportWizardState(
     /**
      * 系统分享（ACTION_SEND）进来时调用：自动识别来源并直接进入「读取与预览」。
      *
-     * - 文本 / 文件字节统一走 [readSpreadsheet]（xlsx/xls 按文件签名，JSON/CSV/TXT 按内容）；
+     * - 文本 / 文件字节统一走 [readSpreadsheet]（按文件签名识别 xlsx/xls，JSON 按内容识别）；
      * - 来源判断：表头「总里程/加油量/日期时间」→ 小熊；「时间/类型/金额」→ 钱迹；
      *   文件名/ MIME 兜底；无法判断默认钱迹（用户可在界面「重新选择来源」）；
+     * - 识别来源后按来源限制格式（小熊只有 XLS；钱迹只有 XLSX / JSON），见 [sourceFileError]；
      * - 若分享内容像 Web 备份 JSON（version + vehicle/cars），按备份恢复处理。
      * - 10 MB / 20,000 行限制由 domain 校验，错误 message 可直接展示。
      */
@@ -279,6 +282,8 @@ internal class ImportWizardState(
                     ),
                 )
             }
+            // 分享进来的文件同样按来源限制格式（内容判定，不受分享目标改名影响）。
+            sourceFileError(detected, bytes)?.let { throw ImportFileException(it) }
             source = detected
             picked = PickedFile(name, bytes.size.toLong(), bytes)
             setupSheet(data)

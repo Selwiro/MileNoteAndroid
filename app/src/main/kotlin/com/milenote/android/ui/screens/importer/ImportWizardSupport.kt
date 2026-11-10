@@ -41,8 +41,8 @@ internal enum class ImportSource(val key: String) {
     val title: String
         get() = when (this) {
             BACKUP -> tr("账本备份 JSON", "Ledger backup JSON")
-            BEAR -> tr("小熊油耗 XLS / XLSX", "Bear XLS / XLSX")
-            QIANJI -> tr("钱迹 TXT / JSON / CSV", "Qianji TXT / JSON / CSV")
+            BEAR -> tr("小熊油耗 XLS", "Bear XLS")
+            QIANJI -> tr("钱迹 XLSX / JSON", "Qianji XLSX / JSON")
         }
 
     /** 用户可见的来源说明（随语言切换）。 */
@@ -272,6 +272,52 @@ internal fun readSpreadsheetSheet(
 internal fun readSheetNames(bytes: ByteArray, fileName: String): List<String> {
     return runCatching { SpreadsheetFiles().sheetNames(bytes, fileName) }.getOrDefault(emptyList())
 }
+
+/**
+ * 来源允许的导入格式校验（按内容判定，不只看扩展名）：
+ * - 小熊油耗：只接受 Excel 97-2003 工作簿（OLE2/BIFF8 的 `.xls`）；
+ * - 钱迹：接受 XLSX 工作簿，或内容是 JSON 的文本（钱迹的「JSON 导出」也可能存成 `.txt`）；
+ * - 账本备份：格式由 [inspectBackup] 校验，这里不限制。
+ *
+ * @return 可直接展示给用户的错误文案；null 表示通过。
+ */
+internal fun sourceFileError(source: ImportSource, bytes: ByteArray): String? = when (source) {
+    ImportSource.BACKUP -> null
+
+    ImportSource.BEAR -> if (isOle2Signature(bytes)) {
+        null
+    } else {
+        tr(
+            "小熊油耗只支持 Excel 97-2003 工作簿（.xls），当前文件不是有效的 .xls；请在小熊油耗里导出 Excel 后重试",
+            "Bear imports accept only Excel 97-2003 workbooks (.xls). This file isn't a valid .xls — export Excel from Bear and try again",
+        )
+    }
+
+    ImportSource.QIANJI -> if (isXlsxSignature(bytes) || looksLikeJson(bytes)) {
+        null
+    } else {
+        tr(
+            "钱迹只支持 XLSX 或 JSON 文件，当前文件不是这两种格式；请在钱迹里导出 Excel 或 JSON 后重试",
+            "Qianji imports accept only XLSX or JSON files. This file is neither — export Excel or JSON from Qianji and try again",
+        )
+    }
+}
+
+/** XLSX（ZIP）文件头 `PK\x03\x04`。 */
+private fun isXlsxSignature(bytes: ByteArray): Boolean =
+    bytes.size >= 4 &&
+        bytes[0] == 0x50.toByte() &&
+        bytes[1] == 0x4B.toByte() &&
+        bytes[2] == 0x03.toByte() &&
+        bytes[3] == 0x04.toByte()
+
+/** XLS（OLE2 复合文档）文件头 `D0 CF 11 E0`。 */
+private fun isOle2Signature(bytes: ByteArray): Boolean =
+    bytes.size >= 8 &&
+        bytes[0] == 0xD0.toByte() &&
+        bytes[1] == 0xCF.toByte() &&
+        bytes[2] == 0x11.toByte() &&
+        bytes[3] == 0xE0.toByte()
 
 /** UTF-8 解码并去掉 BOM（钱迹导出常见 BOM）。 */
 internal fun decodeText(bytes: ByteArray): String =

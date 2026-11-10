@@ -5,6 +5,8 @@ import com.milenote.android.i18n.I18n
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -87,6 +89,36 @@ class ImportWizardSupportTest {
         assertTrue(fuel.contains(ImportSource.QIANJI))
         assertFalse(ev.contains(ImportSource.BEAR))
         assertTrue(ev.contains(ImportSource.QIANJI))
+    }
+
+    // ---------- 来源格式限制（内容判定） ----------
+
+    private val xlsxBytes = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0)
+    private val xlsBytes = byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0, 0, 0, 0)
+    private val jsonBytes = """[{"key":"qj1","date":"2026-01-05","money":12.5}]""".toByteArray()
+    private val csvBytes = "日期,金额\n2026-01-05,12".toByteArray()
+
+    @Test
+    fun `bear import only accepts xls workbooks`() {
+        assertNull(sourceFileError(ImportSource.BEAR, xlsBytes))
+        assertNotNull(sourceFileError(ImportSource.BEAR, xlsxBytes))
+        assertNotNull(sourceFileError(ImportSource.BEAR, jsonBytes))
+        assertNotNull(sourceFileError(ImportSource.BEAR, csvBytes))
+    }
+
+    @Test
+    fun `qianji import accepts xlsx or json content whatever the extension`() {
+        assertNull(sourceFileError(ImportSource.QIANJI, xlsxBytes))
+        assertNull(sourceFileError(ImportSource.QIANJI, jsonBytes))
+        // 钱迹的 JSON 导出也可能存成 .txt：按内容识别，BOM + 前后空白也接受。
+        assertNull(sourceFileError(ImportSource.QIANJI, "\uFEFF  [{\"key\":\"qj1\"}]".toByteArray()))
+        assertNotNull(sourceFileError(ImportSource.QIANJI, xlsBytes))
+        assertNotNull(sourceFileError(ImportSource.QIANJI, csvBytes))
+    }
+
+    @Test
+    fun `backup import keeps content based validation`() {
+        assertNull(sourceFileError(ImportSource.BACKUP, csvBytes))
     }
 
     @Test

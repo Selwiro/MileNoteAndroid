@@ -85,7 +85,7 @@ import com.milenote.android.ui.theme.MileNoteDimens
 /**
  * 导入向导（二级页）：三步完成从文件到账本的导入。
  *
- * 1. 选择来源：小熊油耗 XLS-XLSX / 钱迹 TXT-JSON-CSV（纯电当前车隐藏小熊）；
+ * 1. 选择来源：小熊油耗 XLS / 钱迹 XLSX-JSON（纯电当前车隐藏小熊）；
  * 2. 读取与预览：SAF 选文件（≤10 MB）→ 字段映射 → 逐行预览 / 排除 →
  *    油费冲突选择（默认小熊；纯电不显示，字段改用电价 / 充电量）→ 钱迹默认分类；
  * 3. 确认：调用 `vm.applyImport` / `vm.restoreBackup`，展示结果。
@@ -458,17 +458,17 @@ private fun SourceStep(wizard: ImportWizardState, ev: Boolean, onPick: () -> Uni
             Text(
                 text = if (ev) {
                     tr(
-                        "钱迹：TXT / JSON / CSV；账本备份 JSON（version 2 多车或旧版单车）" +
+                        "钱迹：XLSX / JSON；账本备份 JSON（version 2 多车或旧版单车）" +
                             "仅在系统分享导入时自动识别。纯电车辆不提供小熊油耗（加油记录）导入。",
-                        "Qianji: TXT / JSON / CSV. Ledger backup JSON (version 2 multi-car or legacy " +
+                        "Qianji: XLSX / JSON. Ledger backup JSON (version 2 multi-car or legacy " +
                             "single-car) is only auto-detected when imported via system share. Bear fuel " +
                             "imports aren't available for EVs.",
                     )
                 } else {
                     tr(
-                        "小熊油耗：XLS / XLSX；钱迹：TXT / JSON / CSV；账本备份 JSON（version 2 多车或旧版单车）" +
+                        "小熊油耗：XLS；钱迹：XLSX / JSON；账本备份 JSON（version 2 多车或旧版单车）" +
                             "仅在系统分享导入时自动识别。",
-                        "Bear: XLS / XLSX; Qianji: TXT / JSON / CSV. Ledger backup JSON (version 2 multi-car " +
+                        "Bear: XLS; Qianji: XLSX / JSON. Ledger backup JSON (version 2 multi-car " +
                             "or legacy single-car) is only auto-detected when imported via system share.",
                     )
                 },
