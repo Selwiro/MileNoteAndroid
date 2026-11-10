@@ -156,6 +156,22 @@ object GarageOps {
             byCategory[category] = splitProjects(byCategory[category].orEmpty() + projects)
         }
         n = n.copy(serviceProjectsByCategory = byCategory)
+        // 分类/项目库配置：隐藏集合取并集（任一侧隐藏都保留隐藏），显示名以「本机已有」优先。
+        n = n.copy(
+            hiddenCategories = (n.hiddenCategories.orEmpty() + incoming.hiddenCategories.orEmpty())
+                .map { Categories.normalize(it) }
+                .filter { it.isNotEmpty() }
+                .distinct(),
+            categoryLabels = incoming.categoryLabels.orEmpty() + n.categoryLabels.orEmpty(),
+        )
+        val hiddenProjects = LinkedHashMap<String, List<String>>(n.hiddenServiceProjects.orEmpty())
+        for ((category, projects) in incoming.hiddenServiceProjects.orEmpty()) {
+            hiddenProjects[category] = (hiddenProjects[category].orEmpty() + projects).distinct()
+        }
+        n = n.copy(
+            hiddenServiceProjects = hiddenProjects,
+            serviceProjectLabels = incoming.serviceProjectLabels.orEmpty() + n.serviceProjectLabels.orEmpty(),
+        )
         n = n.copy(
             servicePlanConfigured = existing.servicePlanConfigured == true ||
                 incoming.servicePlanConfigured == true,

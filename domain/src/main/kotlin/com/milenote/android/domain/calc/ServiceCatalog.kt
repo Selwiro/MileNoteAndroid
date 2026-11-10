@@ -117,7 +117,7 @@ fun serviceProjectOptions(ledger: Ledger, category: String? = null): List<String
             groups.flatMap { it.projects } +
                 ledger.serviceProjects.orEmpty() +
                 ledger.records.flatMap { splitProjects(it.projects) },
-        ).filter { it !in crossType }
+        ).filter { it !in crossType && it !in CategoryConfig.allHiddenProjects(ledger) }
     }
     val builtins = groups.firstOrNull { it.title == cat }?.projects.orEmpty()
     val otherBuiltins = groups
@@ -141,7 +141,9 @@ fun serviceProjectOptions(ledger: Ledger, category: String? = null): List<String
     }
     return splitProjects(
         builtins + ledger.serviceProjectsByCategory.orEmpty()[cat].orEmpty() + legacy + history,
-    ).filter { it !in otherBuiltins && it !in crossType }
+    ).filter {
+        it !in otherBuiltins && it !in crossType && it !in CategoryConfig.hiddenProjects(ledger, cat)
+    }
 }
 
 /** 分类归一 + 记录是否是服务类（保养/维修/汽车美容/旧维修保养）。 */

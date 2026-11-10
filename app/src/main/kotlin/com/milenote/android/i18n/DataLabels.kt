@@ -1,6 +1,8 @@
 package com.milenote.android.i18n
 
+import com.milenote.android.domain.calc.CategoryConfig
 import com.milenote.android.domain.model.EnergyProfile
+import com.milenote.android.domain.model.Ledger
 
 /**
  * 数据值 → 显示文案的映射。
@@ -116,6 +118,17 @@ object DataLabels {
 
     /** 当前能量档位下能源费分类的显示名。 */
     fun energyCategory(profile: EnergyProfile): String = category("油费", profile)
+
+    /**
+     * 带用户改名的分类显示名：`CategoryConfig` 的改名优先，再走能量档位 / 英文映射。
+     * 有账本上下文时**优先用这个**（隐藏只影响候选，显示仍按原值）。
+     */
+    fun categoryFor(ledger: Ledger, name: String?, profile: EnergyProfile): String =
+        category(CategoryConfig.categoryLabel(ledger, name), profile)
+
+    /** 带用户改名的项目显示名（英文映射在后）。 */
+    fun projectFor(ledger: Ledger, name: String?): String =
+        serviceItem(CategoryConfig.projectLabel(ledger, name))
 
     /** 皮肤中文名 → 英文；未知值原样返回。 */
     fun theme(label: String?): String {

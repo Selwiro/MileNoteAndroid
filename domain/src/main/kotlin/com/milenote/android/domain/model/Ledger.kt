@@ -28,4 +28,18 @@ data class Ledger(
     val serviceProjects: List<String>? = null,
     /** 按费用分类隔离的保养项目池。 */
     val serviceProjectsByCategory: Map<String, List<String>>? = null,
+    /**
+     * 被隐藏的内置费用分类（存储值，如 `"罚单"`）。
+     *
+     * 只影响「新建记录的可选分类」与设置页展示，**不改写历史记录的分类值**；
+     * 受保护分类（油费/保险/保养/维修）不可隐藏。null 表示没有隐藏项（老备份缺省）。
+     */
+    val hiddenCategories: List<String>? = null,
+    /** 用户自定义的分类显示名：存储值 → 显示名（不改写记录）。 */
+    val categoryLabels: Map<String, String>? = null,
+    /** 被隐藏的保养/维修等项目：分类 → 项目原始文字。
+     *  只影响候选与设置页展示，不改写 `Record.projects` 里的历史文字。 */
+    val hiddenServiceProjects: Map<String, List<String>>? = null,
+    /** 用户自定义的项目显示名：项目原始文字 → 显示名。 */
+    val serviceProjectLabels: Map<String, String>? = null,
 )
