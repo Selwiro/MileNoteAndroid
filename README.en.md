@@ -138,7 +138,7 @@ While importing you can adjust field mapping, preview and edit records row by ro
 
 Export comes in two forms:
 
-- **Expense CSV:** the current vehicle's expense details, with 17 columns.
+- **Expense CSV:** the current vehicle's expense details — 17 columns for fuel/EV, 18 for plug-in hybrid (trailing "charging amount"). For viewing and reconciling in Excel; the app does not import CSV back.
 - **Full JSON backup:** every vehicle, record, service entry and related data.
 
 A full backup works for switching phones, restoring data, or keeping as a standalone local archive.
@@ -356,7 +356,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **286 domain unit tests** and **157 app unit tests**.
+The suite currently contains **314 domain unit tests** and **197 app unit tests**.
 
 ### Building a release APK
 
