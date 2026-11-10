@@ -18,8 +18,9 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 ## Highlights
 
 - **Local-first, no account:** the ledger stays on your device by default, with no subscriptions, ads or analytics.
-- **Fuel cars and EVs:** separate fuel-economy and energy analysis, with matching service plans for each powertrain.
+- **Fuel cars, plug-in hybrids and EVs:** fuel-economy, dual fuel + energy analysis, or energy analysis, each with a matching service plan.
 - **Independent multi-vehicle management:** expenses, energy and service records are kept per vehicle; a full backup covers every vehicle.
+- **Customisable categories and item library:** built-in expense categories and service items can be renamed or hidden (Fuel/Insurance/Service/Repair cannot be deleted); hiding only affects new-entry candidates, never existing records or statistics.
 - **Easy migration:** import records from Bear and Qianji, with CSV export, full JSON backups and optional WebDAV sync (encrypted upload supported).
 
 ## Screenshots
@@ -67,6 +68,12 @@ Fuel economy is calculated from the distance and the actual fuel volume between 
 - If a refuel was missed, mark it as missed and rebuild the baseline.
 - Outputs include average fuel economy, fuel cost per kilometre, trends and fill-up details.
 
+**Plug-in hybrids / range extenders: dual fuel and energy**
+
+Plug-in hybrids record both refuelling and charging: pick "Charge" in the fuel-grade dropdown when adding an entry and the fields switch to charge amount, price and full charge.
+Energy analysis reports **L/100 km and kWh/100 km** as two separate figures, plus a shared cost per kilometre.
+Both figures use total mileage as the denominator (including distance driven on the other energy source), so they read lower than charge-depleted fuel economy — that is the definition, not a calculation error.
+
 **EVs: full-charge method**
 
 EVs use charging records for energy analysis, showing average energy economy in **kWh/100 km**, plus charging spend and cost per kilometre.
@@ -80,6 +87,7 @@ All analysis is based on recorded data; the app never invents missing records.
 The app ships with preset service plans for each powertrain:
 
 - Fuel cars: 12 default service items.
+- Plug-in hybrids / range extenders: 13 items (the 12 fuel items plus an EV system check); the first service includes oil & filter and the EV system check.
 - EVs: 6 default service items.
 
 Reminders consider both time and mileage, and **whichever threshold is reached first marks the item as due**.
