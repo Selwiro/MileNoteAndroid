@@ -110,13 +110,16 @@ object MileNoteIcons {
      */
     val VehicleFuel: ImageVector get() = Fuel
 
-    /** 纯电车（BEV）：电池外壳 + 实心闪电（一眼「电」）。 */
+    /**
+     * 纯电车（BEV）：充电插头（两脚插头 + 圆底插体）。
+     *
+     * 不用电池图形：18dp 的胶囊图标里长条电池很容易被当成「手机电量」，充电插头语义更明确。
+     */
     val VehicleElectric: ImageVector by lazy {
-        strokeAndFillIcon(
+        strokeIcon(
             name = "MileNote.VehicleElectric",
-            "M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z",
-            "M20.5 10.5v3",
-            filled = "M11.8 8 8.5 12.4h2.4l-1 3.6 3.6-4.9h-2.4L11.8 8Z",
+            "M9.2 3.5V9M14.8 3.5V9",
+            "M6.6 9h10.8v2.6a5.4 5.4 0 0 1-10.8 0Z",
         )
     }
 
