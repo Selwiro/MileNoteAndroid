@@ -508,7 +508,6 @@ type(范围): 摘要
 - [Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/)：外部贡献的签署约定。
 - [Material Design](https://m3.material.io/) / Material 3 Expressive 设计指南：界面与动效的参考。
 - [Android 开发者文档](https://developer.android.com/docs)：Compose、DataStore、网络与平台能力的使用参考。
-- 本项目的 Web 端（已冻结）与微信小程序端：作为历史行为基线、数据格式与跨端经验的参考（同作者实现）。
 
 ### 完整依赖清单
 

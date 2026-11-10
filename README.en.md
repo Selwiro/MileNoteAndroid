@@ -508,7 +508,6 @@ The seven-segment display decoder for fuel-pump screens is our own geometric imp
 - [Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/) for external contributions.
 - [Material Design](https://m3.material.io/) / Material 3 Expressive guidelines for UI and motion.
 - [Android developer documentation](https://developer.android.com/docs) for Compose, DataStore, networking and platform APIs.
-- The project's frozen Web app and WeChat Mini Program: historical behaviour baseline, data format and cross-platform experience (same author).
 
 ### Full dependency list
 
