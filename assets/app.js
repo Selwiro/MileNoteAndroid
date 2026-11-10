@@ -56,45 +56,131 @@
     }
   }
 
-  /* ---------- 顶栏 ---------- */
-  function initHeader() {
+  /* ---------- 幻灯片翻页（空格 / ↓ / PageDown 前进，↑ 后退） ---------- */
+  function initDeck() {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    if (!slides.length) return;
+
+    var dots = Array.prototype.slice.call(document.querySelectorAll('[data-goto]'));
+    var countEl = document.querySelector('[data-pager-count]');
+    var hint = document.querySelector('[data-deck-hint]');
     var header = document.querySelector('.site-header');
-    if (header) {
-      var onScroll = function () {
-        header.classList.toggle('is-scrolled', window.scrollY > 6);
-      };
-      window.addEventListener('scroll', onScroll, { passive: true });
-      onScroll();
+    var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    var index = 0;
+    var ticking = false;
+
+    /* 浏览器会在刷新时恢复上次滚动位置，和「一屏一页」冲突，这里关掉 */
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+    function paint(i) {
+      slides.forEach(function (slide, j) {
+        slide.classList.toggle('is-active', j === i);
+      });
+      dots.forEach(function (dot, j) {
+        dot.setAttribute('aria-current', j === i ? 'true' : 'false');
+      });
+      if (countEl) countEl.textContent = pad(i + 1) + ' / ' + pad(slides.length);
+      if (hint) hint.classList.toggle('is-hidden', i > 0);
+      if (header) header.classList.toggle('is-scrolled', i > 0);
     }
 
-    var toggle = document.querySelector('.nav-toggle');
-    var menu = document.getElementById('mobile-menu');
-    if (!toggle || !menu) return;
+    function setActive(i, syncHash) {
+      index = Math.max(0, Math.min(slides.length - 1, i));
+      paint(index);
+      if (syncHash !== false && slides[index].id) {
+        try { history.replaceState(null, '', '#' + slides[index].id); } catch (e) { /* ignore */ }
+      }
+    }
 
-    var setOpen = function (open) {
-      menu.hidden = !open;
-      toggle.setAttribute('aria-expanded', String(open));
-      toggle.setAttribute('aria-label', open
-        ? t('关闭菜单', 'Close menu')
-        : t('打开菜单', 'Open menu'));
-    };
+    function goTo(i) {
+      i = Math.max(0, Math.min(slides.length - 1, i));
+      setActive(i);
+      slides[i].scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    }
 
-    toggle.addEventListener('click', function () {
-      setOpen(menu.hidden);
-    });
+    /* 当前页：以视口 40% 处所在的幻灯片为准 */
+    function nearest() {
+      var y = window.scrollY || window.pageYOffset || 0;
+      var ref = y + window.innerHeight * 0.4;
+      var best = 0;
+      for (var i = 0; i < slides.length; i += 1) {
+        if (slides[i].offsetTop <= ref) best = i;
+      }
+      return best;
+    }
 
-    menu.addEventListener('click', function (event) {
-      if (event.target.closest('a')) setOpen(false);
+    window.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        setActive(nearest());
+      });
+    }, { passive: true });
+
+    dots.forEach(function (dot) {
+      dot.addEventListener('click', function () {
+        goTo(parseInt(dot.getAttribute('data-goto'), 10) || 0);
+      });
     });
 
     document.addEventListener('keydown', function (event) {
-      if (event.key !== 'Escape' || menu.hidden) return;
-      setOpen(false);
-      toggle.focus();
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      var tag = ((event.target && event.target.tagName) || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      var step = function (delta) {
+        event.preventDefault();
+        goTo(nearest() + delta);
+      };
+
+      switch (event.key) {
+        case ' ':
+        case 'Spacebar':
+          step(event.shiftKey ? -1 : 1);
+          break;
+        case 'ArrowDown':
+        case 'PageDown':
+          step(1);
+          break;
+        case 'ArrowUp':
+        case 'PageUp':
+          step(-1);
+          break;
+        case 'Home':
+          event.preventDefault();
+          goTo(0);
+          break;
+        case 'End':
+          event.preventDefault();
+          goTo(slides.length - 1);
+          break;
+        default:
+          break;
+      }
     });
 
-    window.addEventListener('resize', function () {
-      if (window.innerWidth > 860 && !menu.hidden) setOpen(false);
+    /* 带 #hash 打开时直接落到对应那一屏 */
+    var start = 0;
+    if (location.hash) {
+      var target = location.hash.slice(1);
+      slides.forEach(function (slide, j) {
+        if (slide.id === target) start = j;
+      });
+    }
+    function jumpTo(i) {
+      slides[i].scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+
+    setActive(start, false);
+    jumpTo(start);
+    /* 图片/字体加载完后浏览器可能再动一次滚动，load 时校正 */
+    window.addEventListener('load', function () {
+      jumpTo(start);
+      setActive(start, false);
     });
   }
 
@@ -121,59 +207,56 @@
     shots.forEach(function (shot) { shot.src = base + shot.file; });
 
     var preloaded = {};
-    function preload(index) {
-      var shot = shots[index];
+    function preload(i) {
+      var shot = shots[(i + shots.length) % shots.length];
       if (!shot || preloaded[shot.src]) return;
       preloaded[shot.src] = true;
       var img = new Image();
       img.src = shot.src;
     }
 
-    function show(index) {
-      var next = (index + shots.length) % shots.length;
-      var shot = shots[next];
+    var current = 0;
+
+    function show(i) {
+      current = (i + shots.length) % shots.length;
+      var shot = shots[current];
       stageImg.src = shot.src;
       stageImg.alt = shot.cap + t('界面', ' screen');
       if (caption) caption.textContent = shot.cap;
-      tabs.forEach(function (tab, i) {
-        tab.setAttribute('aria-selected', String(i === next));
-        tab.tabIndex = i === next ? 0 : -1;
+      tabs.forEach(function (tab, j) {
+        tab.setAttribute('aria-selected', String(j === current));
+        tab.tabIndex = j === current ? 0 : -1;
       });
-      preload(next + 1);
-      preload(next - 1);
+      preload(current + 1);
+      preload(current - 1);
     }
-
-    var current = 0;
 
     tabs.forEach(function (tab, i) {
       tab.tabIndex = i === 0 ? 0 : -1;
-      tab.addEventListener('click', function () {
-        current = i;
-        show(current);
-      });
+      tab.addEventListener('click', function () { show(i); });
       tab.addEventListener('keydown', function (event) {
         var delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
         if (!delta) return;
+        /* ← → 只在 tab 内部换图，不触发整页翻页 */
         event.preventDefault();
-        current = (i + delta + tabs.length) % tabs.length;
-        show(current);
-        tabs[current].focus();
+        event.stopPropagation();
+        show(i + delta);
+        var next = tabs[(i + delta + tabs.length) % tabs.length];
+        if (next) next.focus();
       });
     });
 
     var prev = document.querySelector('[data-screen-prev]');
     var next = document.querySelector('[data-screen-next]');
-    if (prev) prev.addEventListener('click', function () { current -= 1; show(current); });
-    if (next) next.addEventListener('click', function () { current += 1; show(current); });
+    if (prev) prev.addEventListener('click', function () { show(current - 1); });
+    if (next) next.addEventListener('click', function () { show(current + 1); });
 
     preload(1);
     preload(2);
   }
 
-  /* ---------- 版本信息：跟随最新 GitHub Release ----------
-     静态 HTML 里的下载按钮指向 Releases 页面，任何情况下都不会指向旧版本；
-     这里只在取到更新的元数据时，把按钮直接指向最新 APK，并补上版本号。
-     失败（被墙、限流、禁用 JS）就保持原样，不显示任何可能过期的版本号。 */
+  /* ---------- 下载入口：静态指向 Releases 页，取到最新 Release 才升级为 APK 直链 ----------
+     取不到（被墙、限流、禁用 JS）就保持 Releases 页面：最多多一次跳转，绝不会给旧版本。 */
   function initRelease() {
     var links = document.querySelectorAll('[data-download]');
     if (!links.length) return;
@@ -184,13 +267,6 @@
 
     function apply(data) {
       links.forEach(function (link) { link.href = data.apkUrl; });
-
-      var sizeText = data.size ? t('约 ' + Math.round(data.size / 1048576) + ' MB',
-        'about ' + Math.round(data.size / 1048576) + ' MB') : '';
-      var versionText = t('最新版本 v', 'Latest v') + data.version + (sizeText ? ' · ' + sizeText : '');
-      document.querySelectorAll('[data-release-version]').forEach(function (el) {
-        el.textContent = versionText;
-      });
 
       var ld = document.querySelector('script[type="application/ld+json"]');
       if (ld) {
@@ -211,7 +287,7 @@
       if (!apk || !apk.browser_download_url) return null;
       var version = String(release.tag_name || '').replace(/^v/i, '');
       if (!version) return null;
-      return { version: version, apkUrl: apk.browser_download_url, size: apk.size || 0 };
+      return { version: version, apkUrl: apk.browser_download_url };
     }
 
     var cached = null;
@@ -243,7 +319,7 @@
         }
       })
       .catch(function () {
-        /* 取不到就保持 Releases 页面链接：宁可多一次跳转，也不给旧版本 */
+        /* 取不到就保持 Releases 页面链接 */
       });
   }
 
@@ -255,7 +331,7 @@
   }
 
   initTheme();
-  initHeader();
+  initDeck();
   initScreens();
   initRelease();
   initYear();

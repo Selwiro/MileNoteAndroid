@@ -42,6 +42,7 @@
           ? stored
           : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.add('js');
       } catch (e) {
         document.documentElement.dataset.theme = 'light';
       }
@@ -53,7 +54,7 @@
   <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
   <link rel="manifest" href="../site.webmanifest">
   <link rel="preload" as="image" href="../assets/screens-en/dashboard.webp">
-  <link rel="stylesheet" href="../assets/style.css?v=20261110">
+  <link rel="stylesheet" href="../assets/style.css?v=20261110b">
 
   <script type="application/ld+json">
   {
@@ -72,55 +73,34 @@
   </script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to content</a>
+  <a class="skip-link" href="#hero">Skip to content</a>
 
   <header class="site-header" id="top">
-    <div class="container header-inner">
-      <a class="brand" href="../">
+    <div class="header-inner">
+      <a class="brand" href="#hero">
         <img src="../assets/img/brand-tile.png" width="30" height="30" alt="">
         <span class="brand-name">MileNote</span>
         <span class="brand-latin" lang="zh-CN">里程志</span>
       </a>
-
-      <nav class="nav" aria-label="Main">
-        <a href="#features">Features</a>
-        <a href="#screens">Screens</a>
-        <a href="#privacy">Privacy</a>
-        <a href="#download">Download</a>
-      </nav>
-
       <div class="header-actions">
         <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle light or dark mode" aria-pressed="false">
           <svg class="ico-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>
           <svg class="ico-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"/></svg>
         </button>
         <a class="lang-switch" href="../" hreflang="zh-CN" lang="zh-CN">中文</a>
-        <a class="btn btn-primary btn-sm" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>Download</a>
-        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu" aria-label="Open menu">
-          <svg class="ico-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-          <svg class="ico-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-        </button>
-      </div>
-    </div>
-
-    <div class="mobile-menu" id="mobile-menu" hidden>
-      <div class="container">
-        <a href="#features">Features</a>
-        <a href="#screens">Screens</a>
-        <a href="#privacy">Privacy</a>
-        <a href="#download">Download</a>
-        <a href="#opensource">Open source</a>
-        <a href="../" hreflang="zh-CN" lang="zh-CN">简体中文</a>
-        <a class="mobile-menu-cta" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>Download for Android</a>
+        <a class="btn btn-primary btn-sm" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>
+          Download
+        </a>
       </div>
     </div>
   </header>
 
-  <main id="main">
+  <main class="deck">
 
-    <!-- ================= hero ================= -->
-    <section class="hero">
-      <div class="container hero-grid">
+    <!-- ============ 01 hero ============ -->
+    <section class="slide slide-hero is-active" id="hero" aria-label="MileNote">
+      <div class="slide-inner hero-grid">
         <div class="hero-copy">
           <span class="eyebrow">Native Android · Free and open source · Local-first</span>
           <h1>MileNote<span class="latin" lang="zh-CN">里程志</span></h1>
@@ -140,17 +120,17 @@
         </div>
 
         <div class="hero-visual">
-          <figure class="phone">
+          <figure class="phone phone-hero">
             <img src="../assets/screens-en/dashboard.webp" width="720" height="1600" alt="MileNote overview screen with running costs, average fuel economy and maintenance reminders">
           </figure>
         </div>
       </div>
     </section>
 
-    <!-- ================= features ================= -->
-    <section class="section" id="features">
-      <div class="container">
-        <div class="section-head">
+    <!-- ============ 02 features ============ -->
+    <section class="slide" id="features" aria-label="Features">
+      <div class="slide-inner">
+        <div class="slide-head">
           <h2>What it does</h2>
         </div>
         <ul class="feature-grid">
@@ -188,10 +168,10 @@
       </div>
     </section>
 
-    <!-- ================= screens ================= -->
-    <section class="section section-soft" id="screens">
-      <div class="container">
-        <div class="section-head section-head-center">
+    <!-- ============ 03 screens ============ -->
+    <section class="slide slide-soft" id="screens" aria-label="Screens">
+      <div class="slide-inner">
+        <div class="slide-head slide-head-center">
           <span class="eyebrow">Screens</span>
           <h2>A calm, uncluttered interface</h2>
           <p class="lede">Built with Material 3 Expressive, with five colour schemes, light and dark themes, and a Chinese or English interface.</p>
@@ -209,7 +189,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
           </button>
           <figure class="screen-figure">
-            <div class="phone">
+            <div class="phone phone-screen">
               <img data-screen-img data-screen-base="../assets/screens-en/" src="../assets/screens-en/dashboard.webp" width="720" height="1600" alt="Overview screen">
             </div>
             <figcaption data-screen-cap>Overview</figcaption>
@@ -221,10 +201,10 @@
       </div>
     </section>
 
-    <!-- ================= privacy ================= -->
-    <section class="section" id="privacy">
-      <div class="container privacy-grid">
-        <div class="section-head">
+    <!-- ============ 04 privacy ============ -->
+    <section class="slide" id="privacy" aria-label="Privacy and data">
+      <div class="slide-inner privacy-grid">
+        <div class="slide-head">
           <span class="eyebrow">Privacy and data</span>
           <h2>Your data stays on your device by default</h2>
           <p class="privacy-note">No ads, no subscriptions, no analytics.</p>
@@ -257,69 +237,25 @@
       </div>
     </section>
 
-    <!-- ================= download ================= -->
-    <section class="section section-soft" id="download">
-      <div class="container">
-        <div class="download-card">
-          <div>
-            <span class="eyebrow">Download</span>
-            <h2>A free, open-source app for Android</h2>
-            <p>MileNote is in beta and under active development.</p>
-            <p>Download the latest APK from GitHub Releases, where you'll also find release notes and file checksums.</p>
-            <p class="dl-meta">Android 8.0+<span class="dot">·</span>Free<span class="dot">·</span>No account</p>
-          </div>
-          <div class="download-action">
-            <a class="btn btn-primary btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>
-              Download the latest version
-            </a>
-            <p class="dl-version" data-release-version>Latest release on GitHub Releases</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= open source ================= -->
-    <section class="section" id="opensource">
-      <div class="container oss-grid">
-        <div class="section-head">
-          <h2>Open source</h2>
-          <p class="lede">MileNote is written in Kotlin and Jetpack Compose; the source lives on GitHub. Browse the code, open an issue, or share what you would like to see improved.</p>
-        </div>
-        <div class="oss-links">
-          <a class="btn btn-quiet" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub repository</a>
-          <a class="btn btn-quiet" href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">Issues</a>
-        </div>
-      </div>
-    </section>
-
   </main>
 
-  <footer class="site-footer">
-    <div class="container">
-      <div class="footer-top">
-        <div class="footer-brand">
-          <img src="../assets/img/brand-tile.png" width="40" height="40" alt="">
-          <div>
-            <strong>MileNote</strong>
-            <p>A car-expense app for Android</p>
-          </div>
-        </div>
-        <nav class="footer-nav" aria-label="Footer">
-          <a href="../">Home</a>
-          <a href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/Selwiro/MileNoteAndroid/releases" target="_blank" rel="noopener">Releases</a>
-          <a href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">Issues</a>
-          <a href="../" hreflang="zh-CN" lang="zh-CN">简体中文</a>
-        </nav>
-      </div>
-      <div class="footer-bottom">
-        <p>Screenshots come from the app's built-in demo ledger; the data is synthetic.</p>
-        <p>© <span id="year">2026</span> MileNote</p>
-      </div>
+  <div class="deck-bar">
+    <div class="pager" role="group" aria-label="Slides">
+      <button class="pager-dot" type="button" data-goto="0" aria-label="Slide 1: MileNote" aria-current="true"></button>
+      <button class="pager-dot" type="button" data-goto="1" aria-label="Slide 2: Features"></button>
+      <button class="pager-dot" type="button" data-goto="2" aria-label="Slide 3: Screens"></button>
+      <button class="pager-dot" type="button" data-goto="3" aria-label="Slide 4: Privacy"></button>
+      <span class="pager-count" data-pager-count>01 / 04</span>
     </div>
-  </footer>
+    <p class="deck-hint" data-deck-hint>Press Space or ↓ to continue</p>
+    <div class="bar-links">
+      <a href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Selwiro/MileNoteAndroid/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">Issues</a>
+      <span class="bar-copy">© <span id="year">2026</span> MileNote</span>
+    </div>
+  </div>
 
-  <script src="../assets/app.js?v=20261110" defer></script>
+  <script src="../assets/app.js?v=20261110b" defer></script>
 </body>
 </html>
