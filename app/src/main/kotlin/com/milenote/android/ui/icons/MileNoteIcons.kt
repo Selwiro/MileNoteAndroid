@@ -114,12 +114,13 @@ object MileNoteIcons {
      * 纯电车（BEV）：充电插头（两脚插头 + 圆底插体）。
      *
      * 不用电池图形：18dp 的胶囊图标里长条电池很容易被当成「手机电量」，充电插头语义更明确。
+     * 几何按视口垂直居中（视觉中心 y≈12.4，和加油枪 / 油枪+闪电同一基线），否则插口会显得偏上。
      */
     val VehicleElectric: ImageVector by lazy {
         strokeIcon(
             name = "MileNote.VehicleElectric",
-            "M9.2 3.5V9M14.8 3.5V9",
-            "M6.6 9h10.8v2.6a5.4 5.4 0 0 1-10.8 0Z",
+            "M9.2 5.7V11.2M14.8 5.7V11.2",
+            "M6.6 11.2h10.8v2.6a5.4 5.4 0 0 1-10.8 0Z",
         )
     }
 
