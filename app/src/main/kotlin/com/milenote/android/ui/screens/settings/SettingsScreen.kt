@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -104,6 +105,7 @@ import com.milenote.android.ui.QuarantinedRaw
 import com.milenote.android.ui.WebDavDownloadMode
 import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.LoadingState
+import com.milenote.android.ui.components.MarkdownText
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.components.SecondaryTabs
@@ -136,6 +138,8 @@ private data class UpdateDialogState(
     val title: String,
     val message: String,
     val link: String?,
+    /** Release 正文的 Markdown（只有「发现新版本」时有）；渲染成富文本后滚动展示。 */
+    val notes: String? = null,
 )
 
 /** 许可证全文弹层。 */
@@ -1496,14 +1500,9 @@ private fun AboutPage(
             updateDialog = when (result) {
                 is UpdateCheckResult.Available -> UpdateDialogState(
                     title = tr("发现新版本 %s", "Version %s available", result.info.version),
-                    message = buildString {
-                        if (result.info.notes.isNotBlank()) {
-                            append(result.info.notes.trim())
-                            append("\n\n")
-                        }
-                        append(tr("是否前往 GitHub 下载最新 APK？", "Open GitHub to download the latest APK?"))
-                    },
+                    message = tr("是否前往 GitHub 下载最新 APK？", "Open GitHub to download the latest APK?"),
                     link = result.info.apkUrl ?: result.info.pageUrl,
+                    notes = result.info.notes.ifBlank { null },
                 )
 
                 UpdateCheckResult.UpToDate -> UpdateDialogState(
@@ -1640,7 +1639,24 @@ private fun AboutPage(
         AlertDialog(
             onDismissRequest = { updateDialog = null },
             title = { Text(dialog.title) },
-            text = { Text(dialog.message) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 400.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Release 正文按 Markdown 渲染；内容超过弹层高度时在内部滚动。
+                    dialog.notes?.let { notes ->
+                        MarkdownText(markdown = notes)
+                    }
+                    Text(
+                        text = dialog.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
             confirmButton = {
                 if (dialog.link != null) {
                     TextButton(

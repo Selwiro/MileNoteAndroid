@@ -97,7 +97,7 @@ object UpdateChecker {
             val pageUrl = root["html_url"]?.jsonPrimitive?.content?.trim().orEmpty()
             if (tag.isBlank() || pageUrl.isBlank()) return@mapNotNull null
             val version = tag.removePrefix("v").removePrefix("V")
-            val notes = root["body"]?.jsonPrimitive?.content.orEmpty().take(600)
+            val notes = cleanNotes(root["body"]?.jsonPrimitive?.content.orEmpty())
             val apkUrl: String? = runCatching<String?> {
                 root["assets"]?.jsonArray
                     ?.mapNotNull { it.jsonObject }
@@ -111,4 +111,24 @@ object UpdateChecker {
             UpdateInfo(version = version, pageUrl = pageUrl, apkUrl = apkUrl, notes = notes)
         }
     }.getOrDefault(emptyList())
+
+    /**
+     * 整理 GitHub Release 正文，供检查更新弹层展示。
+     *
+     * - 去掉正文首行给官网读取的 `versionCode: n` 机器标记（不是给用户看的）；
+     * - 去掉成行的 HTML 注释；
+     * - 不做字符数硬截断：弹层改成可滚动 + Markdown 渲染后，截断只会把语法切一半。
+     */
+    internal fun cleanNotes(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw.replace("\r\n", "\n")
+            .split('\n')
+            .filterNot { line ->
+                val trimmed = line.trim()
+                trimmed.startsWith("versionCode:", ignoreCase = true) ||
+                    (trimmed.startsWith("<!--") && trimmed.endsWith("-->"))
+            }
+            .joinToString("\n")
+            .trim()
+    }
 }
