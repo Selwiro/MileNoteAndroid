@@ -47,12 +47,17 @@ import kotlin.math.abs
  * 能耗走势图（Canvas 自绘，对应 Web `fuelPage` 的 `.fuel-chart` 折线）。
  *
  * 视觉规格（本轮增强）：
- * - 平滑曲线（Catmull-Rom → 三次贝塞尔），下方主色 0.25 → 透明的面积渐变；
- * - 圆点 + 最近一次能耗的 pill（`最近 7.38 升/百公里` / `最近 18.2 度/百公里`），
- *   点按数据点显示「数值 · 日期」气泡；
+ * - 平滑曲线用**单调三次 Hermite**（[FuelTrendGeometry.monotoneSegments]），不再用均匀 Catmull-Rom：
+ *   横轴按日期比例定位、采样间隔极不均匀时，Catmull-Rom 的控制点会越过段端点，让曲线在 x 上
+ *   回摆并自交成环（走势图「打结」），单调插值保证 x 单向、y 不过冲；
+ * - 平滑前按日期合并同一天的多个区间（[FuelTrendGeometry.mergeSameDate]），避免同一 x 上画竖线；
+ * - 下方主色 0.25 → 透明的面积渐变；
+ * - 圆点 + 最近一次能耗的 pill（`最近 7.38 升/百公里` / `最近 18.2 度/百公里`），pill 画在绘图区
+ *   上方的留白条里（右对齐），不压住曲线；点按数据点显示「数值 · 日期」气泡；
  * - 网格线弱化到 `outlineVariant × 0.5`；
  * - 横轴[monthAxis]：筛选范围 > 31 天显示月份（6月 / 7月…），≤ 31 天显示 5 天一个的 MM-DD 刻度；
- * - 纵轴下限 10（与 Web 一致，避免小波动被放大）；
+ * - 纵轴 0 基线 + **上限按 10 兜底**（`maxOf(10, 数据最大值)`，避免小波动被放大 → 这是上限，不是
+ *   注释里曾误写的「下限」），顶部另留 [FuelTrendGeometry.TopHeadroomRatio] 的几何留白；
  * - 线/点使用主题分类色中的「油费/电费」色，深色与 5 套皮肤自动适配；
  * - 数据为空时不应调用（由页面渲染 `EmptyState`）。
  *
@@ -70,8 +75,9 @@ fun FuelTrendChart(
     unit: String = Units.consumption,
 ) {
     if (intervals.isEmpty()) return
-    // 展示筛选范围内的全部区间（不再截断为最近 12 个），按日期排序保证曲线顺序。
-    val points = remember(intervals) { intervals.sortedBy { it.date } }
+    // 展示筛选范围内的全部区间（不再截断为最近 12 个），按日期排序保证曲线顺序；
+    // 同一天多次加油合并成一个点——横轴按日期定位，不合并就是同一 x 上的竖线。
+    val points = remember(intervals) { FuelTrendGeometry.mergeSameDate(intervals) }
     val maxRate = remember(points) { maxOf(10.0, points.maxOf { it.rate }) }
     val latest = points.last()
 
@@ -110,7 +116,7 @@ fun FuelTrendChart(
     val description = tr(
         "能耗走势：最近 %d 个有效区间，最近一次 %s %s。点按数据点查看数值。",
         "Energy trend: last %d valid intervals, latest %s %s. Tap a data point to see its value.",
-        points.size, Format.money(latest.rate), unit,
+        intervals.size, Format.money(latest.rate), unit,
     )
 
     BoxWithConstraints(
@@ -149,10 +155,8 @@ fun FuelTrendChart(
             return leftPad + plotWidth * fraction
         }
 
-        fun yOf(rate: Double): Float {
-            val ratio = (rate / maxRate).toFloat().coerceIn(0f, 1f)
-            return topPad + plotHeight * (1f - ratio)
-        }
+        fun yOf(rate: Double): Float =
+            FuelTrendGeometry.yOf(rate, maxRate, topPad, plotHeight)
 
         Canvas(
             modifier = Modifier
@@ -176,11 +180,11 @@ fun FuelTrendChart(
                     }
                 },
         ) {
-            // 网格线（弱化）+ 纵轴刻度（max / max÷2 / 0）
+            // 网格线（弱化）+ 纵轴刻度（max / max÷2 / 0）；位置走同一个 yOf，保证与数据点对齐
             val gridWidth = 1.dp.toPx()
             val axisValues = listOf(maxRate, maxRate / 2.0, 0.0)
-            axisValues.forEachIndexed { index, value ->
-                val gy = topPad + plotHeight * (index * 0.5f)
+            axisValues.forEach { value ->
+                val gy = yOf(value)
                 drawLine(
                     color = gridColor,
                     start = Offset(leftPad, gy),
@@ -307,25 +311,24 @@ fun FuelTrendChart(
                 }
             }
 
-            // 最近一次能耗 pill（选中最后一点时由气泡替代，避免重复）
+            // 最近一次能耗 pill：画在绘图区上方的留白条里（右对齐），不再压住曲线与数据点。
+            // 选中最后一点时由气泡替代，避免重复。
             if (selectedIndex != count - 1) {
-                val lastX = xOf(count - 1)
-                val lastY = yOf(latest.rate)
                 drawPill(
                     textMeasurer = textMeasurer,
                     text = tr("最近 %s %s", "Latest %s %s", Format.money(latest.rate), unit),
                     style = pillStyle,
-                    centerX = lastX,
-                    anchorY = lastY,
-                    placeAbove = true,
-                    gap = pillGap,
+                    centerX = leftPad + plotWidth,
+                    anchorY = 0f,
+                    placeAbove = false,
+                    gap = with(density) { 2.dp.toPx() },
                     horizontalPad = 8.dp.toPx(),
                     verticalPad = 4.dp.toPx(),
                     corner = 8.dp.toPx(),
                     minX = leftPad,
                     maxX = leftPad + plotWidth,
                     minY = 0f,
-                    maxY = totalHeight,
+                    maxY = topPad - with(density) { 2.dp.toPx() },
                     containerColor = lineColor,
                 )
             }
@@ -357,25 +360,23 @@ fun FuelTrendChart(
     }
 }
 
-/** Catmull-Rom → 三次贝塞尔，得到过所有数据点的平滑曲线。 */
+/**
+ * 单调三次 Hermite → 三次贝塞尔，得到过所有数据点、且不折返/不过冲的平滑曲线。
+ *
+ * 曲线本身由 [FuelTrendGeometry.monotoneSegments] 算好（纯 Kotlin，可单测），这里只落到 [Path]。
+ */
 private fun smoothPath(points: List<Offset>): Path {
     val path = Path()
     if (points.isEmpty()) return path
     path.moveTo(points.first().x, points.first().y)
-    if (points.size < 2) return path
-    for (index in 0 until points.size - 1) {
-        val p0 = if (index == 0) points[0] else points[index - 1]
-        val p1 = points[index]
-        val p2 = points[index + 1]
-        val p3 = if (index + 2 < points.size) points[index + 2] else points[index + 1]
-        // 控制点偏移更大 → 曲线更圆滑（仍过所有数据点）。
+    FuelTrendGeometry.monotoneSegments(points.map { ChartPoint(it.x, it.y) }).forEach { segment ->
         path.cubicTo(
-            p1.x + (p2.x - p0.x) / 4.2f,
-            p1.y + (p2.y - p0.y) / 4.2f,
-            p2.x - (p3.x - p1.x) / 4.2f,
-            p2.y - (p3.y - p1.y) / 4.2f,
-            p2.x,
-            p2.y,
+            segment.c1.x,
+            segment.c1.y,
+            segment.c2.x,
+            segment.c2.y,
+            segment.to.x,
+            segment.to.y,
         )
     }
     return path
