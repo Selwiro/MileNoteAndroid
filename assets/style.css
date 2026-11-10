@@ -497,6 +497,7 @@ button { font: inherit; color: inherit; }
 #screens .slide-inner {
   display: flex;
   flex-direction: column;
+  padding-bottom: 16px;
   height: calc(100vh - var(--header-h) - var(--bar-h) - var(--slide-pad) * 2);
   height: calc(100dvh - var(--header-h) - var(--bar-h) - var(--slide-pad) * 2);
   min-height: 0;
@@ -551,9 +552,17 @@ button { font: inherit; color: inherit; }
 .privacy-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: clamp(24px, 4.5vw, 64px);
-  align-items: start;
+  gap: clamp(24px, 5vw, 72px);
+  align-items: stretch;
 }
+
+/* 左栏：标题贴顶、补充说明贴底，避免「标题悬在中间、下面一大片空」 */
+#privacy .slide-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+#privacy .privacy-note:first-of-type { margin-top: auto; }
 
 .privacy-list {
   margin: 0;
@@ -564,8 +573,8 @@ button { font: inherit; color: inherit; }
 .privacy-list li {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 13px;
-  padding: 20px 0;
+  gap: 14px;
+  padding: 25px 0;
   border-bottom: 1px solid var(--line);
 }
 .privacy-list svg {
@@ -577,7 +586,7 @@ button { font: inherit; color: inherit; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.privacy-list b { display: block; font-size: 1.05rem; font-weight: 600; }
+.privacy-list b { display: block; font-size: 1.08rem; font-weight: 600; }
 .privacy-list span { color: var(--muted); font-size: 0.97rem; }
 .privacy-note {
   margin-top: 12px;
@@ -635,10 +644,7 @@ button { font: inherit; color: inherit; }
 }
 .deck-hint.is-hidden { opacity: 0; visibility: hidden; }
 
-.bar-links { display: flex; align-items: center; gap: 16px; }
-.bar-links a { text-decoration: none; }
-.bar-links a:hover { color: var(--ink); }
-.bar-copy { opacity: .85; }
+.bar-copy { flex: none; opacity: .85; }
 
 /* ---------- 404 ---------- */
 
@@ -681,7 +687,6 @@ button { font: inherit; color: inherit; }
   .hero-copy .lede { max-width: 40em; }
   .privacy-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
   .phone-hero { --phone-h: clamp(240px, 34dvh, 340px); }
-  .bar-copy { display: none; }
 }
 
 /* 窗口不高（13 寸笔电 / 浏览器占满前后）时整体收紧，保证每一屏仍然装得下 */
@@ -718,12 +723,12 @@ button { font: inherit; color: inherit; }
 
   .hero-visual { display: none; }
 
-  .hero-copy h1 { font-size: clamp(2.05rem, 10.5vw, 2.7rem); }
-  .hero-copy .lede { margin-top: 14px; font-size: 15px; }
-  .hero-copy .lede + .lede { font-size: 14px; }
-  .hero-actions { margin-top: 20px; }
+  .hero-copy h1 { font-size: clamp(2.25rem, 11.2vw, 2.95rem); }
+  .hero-copy .lede { margin-top: 18px; font-size: 15.5px; }
+  .hero-copy .lede + .lede { margin-top: 12px; font-size: 14.5px; }
+  .hero-actions { margin-top: 26px; }
   .hero-actions .btn { flex: 1 1 auto; }
-  .hero-meta { margin-top: 12px; font-size: 12.5px; }
+  .hero-meta { margin-top: 16px; font-size: 12.5px; }
 
   /* 手机上功能改成单列「图标 + 标题 + 说明」的行式，中英文案长度不同也装得下 */
   .feature-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
@@ -732,7 +737,7 @@ button { font: inherit; color: inherit; }
     grid-template-columns: 28px minmax(0, 1fr);
     column-gap: 10px;
     row-gap: 1px;
-    padding: 9px 13px 10px;
+    padding: 7px 12px 8px;
     border-radius: 14px;
   }
   .feature-icon { grid-column: 1; grid-row: 1 / span 2; width: 28px; height: 28px; margin: 1px 0 0; border-radius: 9px; }
@@ -748,23 +753,23 @@ button { font: inherit; color: inherit; }
   .screen-tabs { gap: 6px; margin-top: 14px; }
   .screen-tab { padding: 6px 13px; font-size: 12.5px; }
   .screen-stage { margin-top: 14px; gap: 8px; }
+  #screens .slide-inner { padding-bottom: 20px; }
   .screen-arrow { width: 32px; height: 32px; }
   .screen-figure figcaption { margin-top: 10px; }
 
-  .privacy-list li { padding: 11px 0; }
+  .privacy-list li { padding: 13px 0; }
   .privacy-list b { font-size: 0.96rem; }
   .privacy-list span { font-size: 0.9rem; }
   .privacy-note { margin-top: 10px; font-size: 12px; }
 
   .deck-hint { display: none; }
-  .bar-links { gap: 12px; }
-  .bar-links a:nth-child(2),
-  .bar-links a:nth-child(3) { display: none; }
+  .bar-copy { opacity: .8; }
 }
 
 @media (max-width: 400px) {
-  .feature-grid { gap: 8px; }
-  .feature p { font-size: 0.75rem; }
+  .feature-grid { gap: 4px; }
+  .feature { padding: 6px 11px 7px; }
+  .feature p { font-size: 0.775rem; line-height: 1.45; }
 }
 
 @media (prefers-reduced-motion: reduce) {
