@@ -14,18 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,7 +52,6 @@ import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
-import com.milenote.android.domain.calc.splitProjects
 import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
@@ -67,8 +61,12 @@ import com.milenote.android.domain.model.isEv
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
 import com.milenote.android.ui.components.CategoryBadge
+import com.milenote.android.ui.components.CompactSearchField
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.FormField
+import com.milenote.android.ui.components.FilterMenuCheckIcon
+import com.milenote.android.ui.components.FilterMenuDivider
+import com.milenote.android.ui.components.FilterMenuGroupLabel
+import com.milenote.android.ui.components.FilterPill
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MoneySize
 import com.milenote.android.ui.components.MoneyText
@@ -320,119 +318,63 @@ private fun RecordsSearchFilterRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        FormField(
+        CompactSearchField(
             value = query,
             onValueChange = onQueryChange,
-            label = tr("搜索备注、日期或来源…", "Search notes, dates or sources…"),
-            leadingIcon = MileNoteIcons.Search,
-            shape = CircleShape,
+            placeholder = tr("搜索备注、日期或来源…", "Search notes, dates or sources…"),
             modifier = Modifier.weight(1f),
         )
-        Box {
-            Surface(
-                onClick = { expanded = true },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.height(MileNoteDimens.TouchTarget),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = filterPillLabel(period = period, category = category, ledger = ledger),
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 150.dp),
-                    )
-                    Icon(
-                        imageVector = MileNoteIcons.ChevronDown,
-                        contentDescription = tr("筛选记录", "Filter records"),
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                FilterMenuGroupLabel(text = tr("时间", "Date"))
-                Period.entries.forEach { item ->
-                    DropdownMenuItem(
-                        text = { Text(item.filterLabel()) },
-                        trailingIcon = filterCheckIcon(item == period),
-                        onClick = {
-                            onSelectPeriod(item)
-                            expanded = false
-                        },
-                    )
-                }
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                FilterMenuGroupLabel(text = tr("分类", "Category"))
+        FilterPill(
+            label = filterPillLabel(period = period, category = category, ledger = ledger),
+            expanded = expanded,
+            onToggle = { expanded = true },
+            onDismiss = { expanded = false },
+            contentDescription = tr("筛选记录", "Filter records"),
+        ) {
+            FilterMenuGroupLabel(text = tr("时间", "Date"))
+            Period.entries.forEach { item ->
                 DropdownMenuItem(
-                    text = { Text(tr("全部分类", "All categories")) },
-                    trailingIcon = filterCheckIcon(category == null),
+                    text = { Text(item.filterLabel()) },
+                    trailingIcon = FilterMenuCheckIcon(item == period),
                     onClick = {
-                        onSelectCategory(null)
-                        expanded = false
-                    },
-                )
-                categories.forEach { name ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(DataLabels.categoryFor(ledger, name, ledger.vehicle.energyProfile))
-                        },
-                        trailingIcon = filterCheckIcon(category == name),
-                        onClick = {
-                            onSelectCategory(name)
-                            expanded = false
-                        },
-                    )
-                }
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                DropdownMenuItem(
-                    text = { Text(tr("重置筛选", "Reset filters")) },
-                    onClick = {
-                        onReset()
+                        onSelectPeriod(item)
                         expanded = false
                     },
                 )
             }
-        }
-    }
-}
-
-/** 下拉菜单分组标题（时间 / 分类）。 */
-@Composable
-private fun FilterMenuGroupLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp),
-    )
-}
-
-/** 菜单选中勾。 */
-@Composable
-private fun filterCheckIcon(selected: Boolean): (@Composable () -> Unit)? =
-    if (!selected) {
-        null
-    } else {
-        {
-            Icon(
-                imageVector = MileNoteIcons.Check,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
+            FilterMenuDivider()
+            FilterMenuGroupLabel(text = tr("分类", "Category"))
+            DropdownMenuItem(
+                text = { Text(tr("全部分类", "All categories")) },
+                trailingIcon = FilterMenuCheckIcon(category == null),
+                onClick = {
+                    onSelectCategory(null)
+                    expanded = false
+                },
+            )
+            categories.forEach { name ->
+                DropdownMenuItem(
+                    text = {
+                        Text(DataLabels.categoryFor(ledger, name, ledger.vehicle.energyProfile))
+                    },
+                    trailingIcon = FilterMenuCheckIcon(category == name),
+                    onClick = {
+                        onSelectCategory(name)
+                        expanded = false
+                    },
+                )
+            }
+            FilterMenuDivider()
+            DropdownMenuItem(
+                text = { Text(tr("重置筛选", "Reset filters")) },
+                onClick = {
+                    onReset()
+                    expanded = false
+                },
             )
         }
     }
+}
 
 /** 筛选胶囊文案：无筛选「筛选」；否则「本月」「油费/电费」「本月 · 油费/电费」。 */
 private fun filterPillLabel(period: Period, category: String?, ledger: Ledger): String {
@@ -546,8 +488,8 @@ private fun RecordRow(
 }
 
 /**
- * 记录行：左侧分类色竖轨 + 圆形分类图标（12% 分类色底）+ 分类名/备注，
- * 右侧强调金额 + 里程/来源小字；服务类记录补充项目/地点一行。
+ * 记录行：左侧分类色竖轨 + 圆形分类图标（12% 分类色底）+ 分类名/备注两行，
+ * 右侧强调金额 + 里程/来源小字。
  */
 @Composable
 private fun RecordRowCard(
@@ -606,15 +548,6 @@ private fun RecordRowCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                recordSupporting(record, ledger)?.let { supporting ->
-                    Text(
-                        text = supporting,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
             Column(
                 horizontalAlignment = Alignment.End,
@@ -671,20 +604,6 @@ private fun recordSubtitle(record: Record): String {
     val date = Format.dateDots(record.date)
     val note = record.note.trim()
     return if (note.isNotEmpty()) "$date · $note" else date
-}
-
-/** 记录行第三行：项目 / 地点（服务类记录才有）。项目显示名走 `DataLabels.projectFor`。 */
-private fun recordSupporting(record: Record, ledger: Ledger): String? {
-    val parts = buildList {
-        val projects = record.projects.orEmpty()
-        if (projects.isNotBlank()) {
-            val separator = tr("、", ", ")
-            add(splitProjects(projects).joinToString(separator) { DataLabels.projectFor(ledger, it) })
-        }
-        val location = record.location.orEmpty()
-        if (location.isNotBlank()) add(location)
-    }
-    return parts.joinToString(" · ").ifBlank { null }
 }
 
 /** 搜索 / 分类 / 期间三重筛选，并按日期倒序、同日里程倒序排列。 */
