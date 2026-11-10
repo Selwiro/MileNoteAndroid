@@ -179,7 +179,7 @@ WebDAV 连接密码使用 Android Keystore 与 AES-256-GCM 加密保存在设备
 
 ## 下载与安装
 
-当前发布版本为 **v0.37.0 Beta（versionCode 95）**。项目仍处于测试和持续完善阶段。
+当前发布版本为 **v0.37.1 Beta（versionCode 96）**。项目仍处于测试和持续完善阶段。
 
 可通过以下渠道下载：
 
