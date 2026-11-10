@@ -12,29 +12,55 @@ import org.junit.Test
 /** 油价多源解析、回退顺序与缓存周期策略（全部纯 JVM，不联网）。 */
 class FuelPriceParsingTest {
 
-    // ---------------- qiyoujiage HTML ----------------
+    // ---------------- 每日静态 JSON 数据集 ----------------
 
     @Test
-    fun `parses qiyoujiage html prices`() {
-        val html = """
-            <dl><dt>92#汽油</dt><dd>7.45 元/升</dd></dl>
-            <dl><dt>95#汽油</dt><dd>7.93 元/升</dd></dl>
-            <dl><dt>98#汽油</dt><dd>8.66 元/升</dd></dl>
-            <dl><dt>0#柴油</dt><dd>7.11 元/升</dd></dl>
-            <span>预计上调 120 元/吨</span>
+    fun `parses oil-price dataset prices and downward trend`() {
+        val body = """
+            {
+              "next": {"date":"2026-11-13","direction":"预计下调","reason":"本轮原油均价低于上一轮"},
+              "provinces_data": {
+                "北京": {
+                  "92": [7.85, 7.82, 8.89],
+                  "95": [8.35, 8.31, 9.46],
+                  "98": [9.85, 9.80, 10.96],
+                  "0":  [7.55, 7.50, 8.65]
+                }
+              }
+            }
         """.trimIndent()
-        val info = FuelPriceRepository.parseQiyoujiage("北京", html)!!
-        assertEquals(7.45, info.price92!!, 1e-9)
-        assertEquals(7.93, info.price95!!, 1e-9)
-        assertEquals(8.66, info.price98!!, 1e-9)
-        assertEquals(7.11, info.price0!!, 1e-9)
-        assertEquals("上调", info.trend)
-        assertFalse(info.isFallback)
+        val info = FuelPriceRepository.parseOilPriceJson("北京", "北京", body)!!
+        assertEquals(8.89, info.price92!!, 1e-9)
+        assertEquals(9.46, info.price95!!, 1e-9)
+        assertEquals(10.96, info.price98!!, 1e-9)
+        assertEquals(8.65, info.price0!!, 1e-9)
+        assertEquals("下调", info.trend)
+        assertEquals("11 月 13 日", info.nextAdjustmentText)
     }
 
     @Test
-    fun `qiyoujiage without prices returns null`() {
-        assertNull(FuelPriceRepository.parseQiyoujiage("北京", "<html><body>维护中</body></html>"))
+    fun `oil-price dataset for other province returns null`() {
+        val body = """{"next":{},"provinces_data":{"上海":{"92":[8.0]}}}"""
+        assertNull(FuelPriceRepository.parseOilPriceJson("北京", "北京", body))
+    }
+
+    @Test
+    fun `parses oilpulse dataset`() {
+        val body = """
+            {"updated_at":"2026-11-10T07:12:28+08:00",
+             "provinces":{"北京":{"province":"北京","t0":"8.65","t89":"8.26","t92":"8.89","t95":"9.46","t98":"10.96"}}}
+        """.trimIndent()
+        val info = FuelPriceRepository.parseOilPulseJson("北京", "北京", body)!!
+        assertEquals(8.89, info.price92!!, 1e-9)
+        assertEquals(10.96, info.price98!!, 1e-9)
+        assertEquals(8.65, info.price0!!, 1e-9)
+        assertNull(info.trend)
+    }
+
+    @Test
+    fun `static datasets reject garbage`() {
+        assertNull(FuelPriceRepository.parseOilPriceJson("北京", "北京", "<html>502</html>"))
+        assertNull(FuelPriceRepository.parseOilPulseJson("北京", "北京", "{}"))
     }
 
     // ---------------- 通用 JSON 解析（三种常见 schema） ----------------
@@ -139,6 +165,7 @@ class FuelPriceParsingTest {
         val cached = CachedFuelPrice(
             info = FuelPriceInfo("北京", price92 = 7.45, nextAdjustmentText = "11 月 12 日 24 时", trend = "上调"),
             fetchedAtMillis = 1_700_000_000_000L,
+            version = FuelPriceCache.CACHE_VERSION,
         )
         val decoded = FuelPriceCache.decode(FuelPriceCache.encode(cached))
         assertNotNull(decoded)
@@ -150,5 +177,12 @@ class FuelPriceParsingTest {
     @Test
     fun `cache decode tolerates garbage`() {
         assertNull(FuelPriceCache.decode("not json"))
+    }
+
+    @Test
+    fun `legacy cache without version is rejected so upgrades refetch`() {
+        // 0.36.0 及更早版本没有 version 字段（旧数据源 qiyoujiage）：升级后必须视为失效。
+        val legacy = """{"info":{"regionName":"北京","price92":8.89},"fetchedAtMillis":1794279667005}"""
+        assertNull(FuelPriceCache.decode(legacy))
     }
 }

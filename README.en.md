@@ -165,7 +165,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 | System integration | System share intake, SAF file picking and in-app update checks |
 | Demo ledger | Two virtual vehicles with sample records; exiting the demo restores your real ledger automatically |
 
-Today's fuel price is only available for fuel vehicles in the Chinese interface. It is fetched in order from a public fuel-price site → free HTTPS JSON APIs → the local cache, and is reference data only. A successful fetch is cached on the device, not re-requested on the same day, refreshed automatically the next day, and can be refreshed manually from the card.
+Today's fuel price is only available for fuel vehicles in the Chinese interface. It is fetched in order from daily-updated public fuel-price datasets → free HTTPS JSON APIs → the local cache, and is reference data only. A successful fetch is cached on the device, not re-requested on the same day, refreshed automatically the next day, and can be refreshed manually from the card.
 
 The app currently uses a portrait phone layout; tablet and landscape two-pane layouts are not available yet.
 
@@ -215,7 +215,7 @@ The app requests only network and coarse location. Coarse location is used only 
 
 The default ledger is never uploaded to a developer server; online features such as today's fuel price, update checks and your own WebDAV still talk to the corresponding external services.
 
-Fuel-price fetching sends only the province name — no ledger data, images or location coordinates. qiyoujiage.com currently offers HTTP only, so release builds allow cleartext for that domain alone; every other online feature still requires HTTPS.
+Fuel-price fetching uses HTTPS only and sends just the province name — no ledger data, images or location coordinates.
 
 ### Backups
 
@@ -348,7 +348,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **286 domain unit tests** and **149 app unit tests**.
+The suite currently contains **286 domain unit tests** and **152 app unit tests**.
 
 ### Building a release APK
 

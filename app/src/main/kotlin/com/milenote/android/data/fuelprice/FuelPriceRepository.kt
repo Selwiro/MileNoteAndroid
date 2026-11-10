@@ -35,7 +35,7 @@ data class FuelPriceInfo(
     val hasPrice: Boolean get() = price92 != null || price95 != null || price98 != null || price0 != null
 }
 
-/** 32 个省市：站点 slug + 中文名（与 qiyoujiage.com 导航一致）。 */
+/** 32 个省市：稳定 slug（用作缓存键）+ 中文名（匹配数据源里的省名）。 */
 data class FuelRegion(val slug: String, val name: String)
 
 /** 记住的油价地区：省份 + 可选的市（如 云南 + 红河哈尼族彝族自治州）。 */
@@ -123,10 +123,13 @@ interface FuelPriceSource {
  * 多数据源油价仓库：按顺序尝试，命中即返回；全部失败返回 null（由调用方决定显示缓存还是参考价）。
  *
  * 数据源（增加顺序即回退顺序）：
- * 1. `qiyoujiage-html`：qiyoujiage.com 省级/城市 HTML（最稳、有「下次调价」，但站点只有 HTTP，
- *    release 靠 network-security-config 单独放行该域名）；
- * 2. `vvhan-json` / `oioweb-json` / `tenapi-json`：免费 HTTPS 公共 API（格式各异，用通用 JSON 解析）；
- * 3. 参考价由 [referenceInfo] 提供（只有无本地缓存且全部失败时才会用到）。
+ * 1. `oil-price-json`：每日更新的 31 省零售价 + 当前调价窗口方向（东方财富零售价 + 原油模型预测，
+ *    上游 GitHub Actions 每天发布静态 JSON，经 jsDelivr 读取；全部 HTTPS）；
+ * 2. `oilpulse-json`：另一份每日快照（31 省价格，无调价方向，作价格兜底）；
+ * 3. `vvhan-json` / `oioweb-json` / `tenapi-json`：免费 HTTPS 公共 API（格式各异，用通用 JSON 解析）；
+ * 4. 参考价由 [referenceInfo] 提供（只有无本地缓存且全部失败时才会用到）。
+ *
+ * 不再抓 qiyoujiage.com：该站只有 HTTP（release 默认禁明文），且调价方向曾明显滞后/错误。
  *
  * 缓存与刷新周期不在这里：见 [FuelPriceCache]（同一天内只自动刷新一次，手动刷新不受限）。
  */
@@ -182,78 +185,50 @@ class FuelPriceRepository(
         }
     }
 
-    /** qiyoujiage.com：省级页面（`/yunnan.shtml`）含地级市链接（`/yunnan/honghe.shtml`）。 */
-    private class QiyoujiageHtmlSource(client: OkHttpClient) : HttpSource(client) {
-        override val id: String = "qiyoujiage-html"
-
+    /** 静态 JSON 数据集：同一份数据配多个 CDN URL（jsDelivr 优先，GitHub raw 兜底）。 */
+    private abstract class StaticJsonSource(
+        client: OkHttpClient,
+        override val id: String,
+        private val urls: List<String>,
+    ) : HttpSource(client) {
         override suspend fun fetch(location: FuelLocation): FuelPriceInfo? = withContext(Dispatchers.IO) {
-            val provinceHtml = runCatching { getText(baseUrl(location.province.slug)) }.getOrNull()
-                ?: return@withContext null
-            val citySlug = location.cityName
-                ?.takeIf { location.province.slug !in FuelRegions.municipalities }
-                ?.let { findCitySlug(provinceHtml, location.province.slug, it) }
-            val html = if (citySlug != null) {
-                runCatching { getText(baseUrl("${location.province.slug}/$citySlug")) }.getOrDefault(provinceHtml)
-            } else {
-                provinceHtml
-            }
-            parseQiyoujiage(DataLabels.region(location.displayName), html)
+            val regionName = DataLabels.region(location.displayName)
+            val body = urls.firstNotNullOfOrNull { url ->
+                runCatching { getText(url) }.getOrNull()
+            } ?: return@withContext null
+            parse(location.province.name, regionName, body)
         }
 
-        private fun baseUrl(path: String): String =
-            "http://www.qiyoujiage.com/$path.shtml"
+        protected abstract fun parse(provinceName: String, regionName: String, body: String): FuelPriceInfo?
+    }
 
-        /** 从省级页面里找城市链接：href 形如 `yunnan/honghe.shtml`，文本如“红河”。 */
-        private fun findCitySlug(html: String, provinceSlug: String, cityName: String): String? {
-            val normalizedCity = normalizeCity(cityName)
-            if (normalizedCity.isBlank()) return null
-            var best: Pair<Int, String>? = null
-            ANCHOR_RE.findAll(html).forEach { match ->
-                val href = match.groupValues[1]
-                val label = stripTags(match.groupValues[2]).trim()
-                val path = href.substringAfter("qiyoujiage.com/", href).trimStart('/')
-                val clean = path.substringBefore('?').removeSuffix(".shtml")
-                val segments = clean.split('/').filter { it.isNotBlank() }
-                if (segments.size != 2 || segments[0] != provinceSlug) return@forEach
-                if (label.isBlank()) return@forEach
-                val normalizedLabel = normalizeCity(label)
-                if (normalizedLabel.isBlank()) return@forEach
-                val score = when {
-                    normalizedLabel == normalizedCity -> 3
-                    normalizedCity.contains(normalizedLabel) -> 2
-                    normalizedLabel.contains(normalizedCity) -> 1
-                    else -> 0
-                }
-                if (score > 0 && (best == null || score > best!!.first)) {
-                    best = score to segments[1]
-                }
-            }
-            return best?.second
-        }
+    /**
+     * 每日聚合数据（东方财富国内零售价 + 原油模型预测方向），31 省 92/95/89/0#。
+     * 数据每天由上游 GitHub Actions 更新；`next.direction` 是当前调价窗口的方向（如「预计下调」）。
+     */
+    private class OilPriceJsonSource(client: OkHttpClient) : StaticJsonSource(
+        client,
+        id = "oil-price-json",
+        urls = listOf(
+            "https://cdn.jsdelivr.net/gh/wangzhaolong616-byte/oil-price@main/docs/prices.json",
+            "https://raw.githubusercontent.com/wangzhaolong616-byte/oil-price/main/docs/prices.json",
+        ),
+    ) {
+        override fun parse(provinceName: String, regionName: String, body: String): FuelPriceInfo? =
+            parseOilPriceJson(regionName, provinceName, body)
+    }
 
-        private fun normalizeCity(name: String): String =
-            name.replace(" ", "")
-                .replace("今日油价", "")
-                .replace("汽油价格", "")
-                .replace("柴油价格", "")
-                .replace("油价", "")
-                .replace("加油站查询", "")
-                .removeSuffix("市")
-                .removeSuffix("地区")
-                .removeSuffix("自治州")
-                .removeSuffix("哈尼族彝族自治州")
-                .removeSuffix("傣族景颇族自治州")
-                .removeSuffix("壮族苗族自治州")
-                .removeSuffix("彝族回族自治州")
-                .removeSuffix("白族自治州")
-                .removeSuffix("藏族自治州")
-                .removeSuffix("傈僳族自治州")
-                .removeSuffix("蒙古族藏族自治州")
-                .removeSuffix("回族土族自治州")
-                .removeSuffix("柯尔克孜自治州")
-                .removeSuffix("蒙古自治州")
-                .removeSuffix("哈萨克自治州")
-                .take(4)
+    /** 另一份每日快照（31 省，字段 t0/t89/t92/t95/t98）；只有价格，没有调价方向。 */
+    private class OilPulseJsonSource(client: OkHttpClient) : StaticJsonSource(
+        client,
+        id = "oilpulse-json",
+        urls = listOf(
+            "https://cdn.jsdelivr.net/gh/ZhangHowie/oilpulse-cn@main/data/latest.json",
+            "https://raw.githubusercontent.com/ZhangHowie/oilpulse-cn/main/data/latest.json",
+        ),
+    ) {
+        override fun parse(provinceName: String, regionName: String, body: String): FuelPriceInfo? =
+            parseOilPulseJson(regionName, provinceName, body)
     }
 
     /** 通用 JSON 数据源：把响应丢给 [parseJsonFuelPrice]，字段名按常见写法匹配。 */
@@ -286,11 +261,12 @@ class FuelPriceRepository(
             .readTimeout(8, TimeUnit.SECONDS)
             .build()
 
-        /** 默认回退顺序：HTML 站点（含调价信息）→ 三个免费 HTTPS JSON API。 */
+        /** 默认回退顺序：两个每日更新的静态 JSON 数据集 → 三个免费 HTTPS JSON API。 */
         fun defaultSources(): List<FuelPriceSource> {
             val client = defaultClient()
             return listOf(
-                QiyoujiageHtmlSource(client),
+                OilPriceJsonSource(client),
+                OilPulseJsonSource(client),
                 JsonApiSource(client, "vvhan-json") { province ->
                     "https://api.vvhan.com/api/oil?province=${urlEncode(province)}"
                 },
@@ -306,68 +282,78 @@ class FuelPriceRepository(
         private fun urlEncode(value: String): String =
             java.net.URLEncoder.encode(value, Charsets.UTF_8.name())
 
-        private val ANCHOR_RE = Regex(
-            "<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>",
-            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
-        )
-        private val DL_RE = Regex("<dl[^>]*>(.*?)</dl>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-        private val DT_RE = Regex("<dt[^>]*>(.*?)</dt>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-        private val DD_RE = Regex("<dd[^>]*>(.*?)</dd>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-        private val TAG_RE = Regex("<[^>]+>")
-        private val BR_RE = Regex("<br\\s*/?>", RegexOption.IGNORE_CASE)
-        private val OIL_NO_RE = Regex("(\\d{1,2})\\s*#")
-        private val PRICE_RE = Regex("\\d+(?:\\.\\d+)?")
-        private val ADJUST_RE = Regex("下次?油价\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日\\s*24\\s*时(?:前后)?调整")
-        private val SPAN_RE = Regex("<span[^>]*>(.*?)</span>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
         private val TREND_UP_RE = Regex("上调|上涨|涨幅")
         private val TREND_DOWN_RE = Regex("下调|下跌|跌幅")
 
-        internal fun stripTags(text: String): String =
-            TAG_RE.replace(BR_RE.replace(text, " "), " ").replace("&nbsp;", " ").trim()
+        /** 解析「全国油价趋势看板」prices.json：provinces_data[省][标号] 是按 dates 对齐的价格数组。 */
+        internal fun parseOilPriceJson(regionName: String, provinceName: String, body: String): FuelPriceInfo? {
+            val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+            val data = root["provinces_data"] as? JsonObject ?: return null
+            val entry = data[provinceName] as? JsonObject ?: return null
 
-        /** 解析 qiyoujiage 页面；解析不到价格返回 null（不要用异常打断回退链）。 */
-        internal fun parseQiyoujiage(regionName: String, html: String): FuelPriceInfo? {
-            val prices = mutableMapOf<String, Double>()
-            DL_RE.findAll(html).forEach { dl ->
-                val dt = DT_RE.find(dl.groupValues[1])?.groupValues?.get(1)?.let(::stripTags) ?: return@forEach
-                val dd = DD_RE.find(dl.groupValues[1])?.groupValues?.get(1)?.let(::stripTags) ?: return@forEach
-                val oil = OIL_NO_RE.find(dt)?.groupValues?.get(1) ?: return@forEach
-                val price = PRICE_RE.find(dd)?.value?.toDoubleOrNull() ?: return@forEach
-                prices[oil] = price
-            }
-            if (prices.isEmpty()) return null
-            val forecast = parseForecast(html)
+            fun latest(grade: String): Double? =
+                (entry[grade] as? JsonArray)
+                    ?.mapNotNull { element -> (element as? JsonPrimitive)?.content?.toDoubleOrNull() }
+                    ?.lastOrNull()
+                    ?.takeIf { it in 2.0..20.0 }
+
+            val price92 = latest("92")
+            val price95 = latest("95")
+            val price98 = latest("98")
+            val price0 = latest("0")
+            if (price92 == null && price95 == null && price98 == null && price0 == null) return null
+
+            val next = root["next"] as? JsonObject
+            val direction = next?.get("direction")?.let { (it as? JsonPrimitive)?.content }
             val trend = when {
-                forecast == null -> null
-                TREND_UP_RE.containsMatchIn(forecast) -> "上调"
-                TREND_DOWN_RE.containsMatchIn(forecast) -> "下调"
+                direction == null -> null
+                direction.contains("下") -> "下调"
+                direction.contains("上") -> "上调"
                 else -> "搁浅"
             }
+            val adjustment = next?.get("date")?.let { (it as? JsonPrimitive)?.content }?.let(::isoAdjustmentLabel)
             return FuelPriceInfo(
                 regionName = regionName,
-                price92 = prices["92"],
-                price95 = prices["95"],
-                price98 = prices["98"],
-                price0 = prices["0"],
-                nextAdjustmentText = parseNextAdjustment(html),
+                price92 = price92,
+                price95 = price95,
+                price98 = price98,
+                price0 = price0,
+                nextAdjustmentText = adjustment,
                 trend = trend,
-                forecast = forecast,
+                forecast = next?.get("reason")?.let { (it as? JsonPrimitive)?.content },
             )
         }
 
-        private fun parseNextAdjustment(html: String): String? {
-            val match = ADJUST_RE.find(html) ?: return null
-            val month = match.groupValues[1].toIntOrNull() ?: return null
-            val day = match.groupValues[2].toIntOrNull() ?: return null
-            return nextAdjustmentLabel(month, day, LocalDate.now(ZoneId.of("Asia/Shanghai")))
+        /** 解析 oilpulse-cn 的 latest.json：provinces[省] = { t0, t89, t92, t95, t98 }。 */
+        internal fun parseOilPulseJson(regionName: String, provinceName: String, body: String): FuelPriceInfo? {
+            val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+            val provinces = root["provinces"] as? JsonObject ?: return null
+            val entry = provinces[provinceName] as? JsonObject ?: return null
+
+            fun price(key: String): Double? =
+                (entry[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it in 2.0..20.0 }
+
+            val info = FuelPriceInfo(
+                regionName = regionName,
+                price92 = price("t92"),
+                price95 = price("t95"),
+                price98 = price("t98"),
+                price0 = price("t0"),
+            )
+            return info.takeIf { it.hasPrice }
         }
 
-        private fun parseForecast(html: String): String? {
-            SPAN_RE.findAll(html).forEach { span ->
-                val text = stripTags(span.groupValues[1]).trim()
-                if (TREND_UP_RE.containsMatchIn(text) || TREND_DOWN_RE.containsMatchIn(text)) return text
-            }
-            return null
+        /**
+         * "2026-11-13" → 「11 月 13 日」。
+         *
+         * 上游 `next.date` 是**生效日期**（13 日 0 时生效 = 12 日 24 时），所以这里不再追加「24 时」，
+         * 避免显示成「13 日 24 时」而晚一天。离今天太远/非法返回 null。
+         */
+        private fun isoAdjustmentLabel(isoDate: String): String? {
+            val target = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return null
+            val today = LocalDate.now(ZoneId.of("Asia/Shanghai"))
+            if (target.isBefore(today.minusDays(1)) || target.isAfter(today.plusDays(31))) return null
+            return "${target.monthValue} 月 ${target.dayOfMonth} 日"
         }
 
         /**

@@ -6,11 +6,17 @@ import java.time.ZoneId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** 一次成功抓取的快照（含抓取时间），持久化到本机。 */
+/**
+ * 一次成功抓取的快照（含抓取时间），持久化到本机。
+ *
+ * [version] 是缓存结构/数据源版本：更换油价数据源或改变字段口径时 +1，
+ * 旧版本的缓存会被当作不存在（升级后立即重新抓取，避免展示旧源的过期文案/方向）。
+ */
 @Serializable
 data class CachedFuelPrice(
     val info: FuelPriceInfo,
     val fetchedAtMillis: Long,
+    val version: Int = 0, // 0 = 旧版本缓存（无版本字段），load 时会被丢弃
 )
 
 /**
@@ -34,12 +40,16 @@ class FuelPriceCache(context: Context) {
 
     fun save(location: FuelLocation, info: FuelPriceInfo, fetchedAtMillis: Long) {
         runCatching {
-            prefs.edit().putString(key(location), encode(CachedFuelPrice(info, fetchedAtMillis))).apply()
+            prefs.edit().putString(key(location), encode(CachedFuelPrice(info, fetchedAtMillis, CACHE_VERSION))).apply()
         }
     }
 
     companion object {
         private const val PREFS_NAME = "milenote-fuel-price-cache"
+
+        /** 数据源/文案口径版本；2026-11-10 从 qiyoujiage 换成每日静态 JSON 时 +1。 */
+        const val CACHE_VERSION = 2
+
         private val json = Json { ignoreUnknownKeys = true }
 
         /** 同一地区（省 + 市）共用一个缓存键。 */
@@ -65,5 +75,6 @@ class FuelPriceCache(context: Context) {
 
         internal fun decode(raw: String): CachedFuelPrice? =
             runCatching { json.decodeFromString(CachedFuelPrice.serializer(), raw) }.getOrNull()
+                ?.takeIf { it.version == CACHE_VERSION }
     }
 }
