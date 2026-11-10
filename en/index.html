@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MileNote · A local-first car ledger for Android</title>
-  <meta name="description" content="MileNote is a local-first, multi-car vehicle ledger: nine expense categories, full-tank fuel economy, 12 service plans, receipt scanning and complete data export. No account — the ledger stays on your phone. Native Android app, Material 3 Expressive.">
-  <meta name="keywords" content="MileNote,car ledger,vehicle ledger,car expense tracker,fuel log,full-tank method,maintenance reminder,Android,local-first,privacy">
+  <title>MileNote · A car-expense ledger for Android</title>
+  <meta name="description" content="MileNote is a simple, practical car-expense app for Android: several vehicles, everyday costs, fuel and electricity analysis, maintenance planning and running-cost summaries. No account — your ledger stays on your device by default, with optional WebDAV sync between your own devices.">
+  <meta name="keywords" content="MileNote,car ledger,car expense tracker,fuel log,full-tank method,maintenance reminder,Android,local-first">
   <meta name="author" content="MileNote">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="https://selwiro.github.io/MileNoteAndroid/en/">
@@ -15,23 +15,23 @@
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="MileNote">
-  <meta property="og:title" content="MileNote · One car, one ledger">
-  <meta property="og:description" content="A local-first multi-car ledger: nine expense categories, full-tank fuel economy, 12 service plans. No account, no cloud — the ledger stays on your device.">
+  <meta property="og:title" content="MileNote · A car-expense ledger for Android">
+  <meta property="og:description" content="Several vehicles, everyday costs, fuel and electricity analysis, maintenance planning and running-cost summaries. No account — the ledger stays on your device.">
   <meta property="og:url" content="https://selwiro.github.io/MileNoteAndroid/en/">
   <meta property="og:image" content="https://selwiro.github.io/MileNoteAndroid/assets/og-en.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="MileNote: one car, one ledger. A local-first car ledger for Android.">
+  <meta property="og:image:alt" content="MileNote: a car-expense ledger for Android">
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="zh_CN">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="MileNote · One car, one ledger">
-  <meta name="twitter:description" content="A local-first multi-car ledger: nine expense categories, full-tank fuel economy, 12 service plans. No account, no cloud — the ledger stays on your device.">
+  <meta name="twitter:title" content="MileNote · A car-expense ledger for Android">
+  <meta name="twitter:description" content="Several vehicles, everyday costs, fuel and electricity analysis, maintenance planning and running-cost summaries. No account — the ledger stays on your device.">
   <meta name="twitter:image" content="https://selwiro.github.io/MileNoteAndroid/assets/og-en.png">
-  <meta name="twitter:image:alt" content="MileNote: one car, one ledger. A local-first car ledger for Android.">
+  <meta name="twitter:image:alt" content="MileNote: a car-expense ledger for Android">
 
-  <meta name="theme-color" content="#F7FAFB" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0E1316" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f7fafb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1316" media="(prefers-color-scheme: dark)">
 
   <script>
     /* Set the theme before styles load, so dark mode never flashes white */
@@ -42,10 +42,8 @@
           ? stored
           : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.dataset.theme = theme;
-        document.documentElement.classList.add('js');
       } catch (e) {
         document.documentElement.dataset.theme = 'light';
-        document.documentElement.classList.add('js');
       }
     })();
   </script>
@@ -54,24 +52,8 @@
   <link rel="icon" href="../assets/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
   <link rel="manifest" href="../site.webmanifest">
-  <link rel="sitemap" type="application/xml" href="../sitemap.xml">
-  <style>
-    /* 英文截图由另一条流水线生成；万一缺失，隐藏破图与溢出的 alt 文本，版面不变形 */
-    .phone img.is-missing { visibility: hidden; }
-  </style>
-
-  <script>
-    /* 捕获阶段监听，图片加载失败时给手机内的图加标记 */
-    document.addEventListener('error', function (event) {
-      var node = event.target;
-      if (node && node.tagName === 'IMG' && node.closest && node.closest('.phone')) {
-        node.classList.add('is-missing');
-      }
-    }, true);
-  </script>
-
   <link rel="preload" as="image" href="../assets/screens-en/dashboard.webp">
-  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/style.css?v=20261110">
 
   <script type="application/ld+json">
   {
@@ -81,534 +63,263 @@
     "alternateName": "里程志",
     "applicationCategory": "FinanceApplication",
     "operatingSystem": "Android 8.0+",
-    "softwareVersion": "0.32.0",
     "inLanguage": "en",
     "url": "https://selwiro.github.io/MileNoteAndroid/en/",
-    "downloadUrl": "https://github.com/Selwiro/MileNoteAndroid/releases/download/v0.32.0/milenote-0.32.0-android.apk",
-    "description": "A local-first, multi-car vehicle ledger: nine expense categories, full-tank fuel economy, 12 service plans, receipt scanning and complete data export. No account; the ledger stays on your device.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "description": "A local-first car-expense app for Android: several vehicles, everyday costs, fuel and electricity analysis, maintenance planning and running-cost summaries.",
     "screenshot": "https://selwiro.github.io/MileNoteAndroid/assets/screens-en/dashboard.webp"
   }
   </script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to main content</a>
+  <a class="skip-link" href="#main">Skip to content</a>
 
   <header class="site-header" id="top">
     <div class="container header-inner">
-      <a class="brand" href="#top" aria-label="MileNote, back to top">
-        <img src="../assets/img/brand-tile.png" width="42" height="42" alt="" class="brand-icon">
-        <span class="brand-text"><strong>MileNote</strong><span>Mileage ledger</span></span>
+      <a class="brand" href="../">
+        <img src="../assets/img/brand-tile.png" width="30" height="30" alt="">
+        <span class="brand-name">MileNote</span>
+        <span class="brand-latin" lang="zh-CN">里程志</span>
       </a>
 
-      <nav class="nav-links" aria-label="Main navigation">
-        <a href="#screenshots">Screens</a>
-        <a href="#capabilities">Features</a>
+      <nav class="nav" aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#screens">Screens</a>
         <a href="#privacy">Privacy</a>
         <a href="#download">Download</a>
-        <a href="#faq">FAQ</a>
       </nav>
 
-      <div class="nav-actions">
-        <a class="lang-switch" href="../" hreflang="zh-CN" lang="zh-CN">中文<span class="sr-only"> Chinese</span></a>
-        <a class="icon-btn nav-github" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener" aria-label="MileNote source on GitHub">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3Z" fill="currentColor" stroke="none"/></svg>
-        </a>
-        <a class="btn btn-primary btn-sm nav-download" href="https://github.com/Selwiro/MileNoteAndroid/releases/download/v0.32.0/milenote-0.32.0-android.apk" data-release-link aria-label="Download the APK">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-          <span class="btn-label">Download APK</span>
-        </a>
-        <button class="theme-toggle" type="button" aria-label="Dark mode" aria-pressed="false">
-          <svg class="ico ico-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
-          <svg class="ico ico-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg>
+      <div class="header-actions">
+        <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle light or dark mode" aria-pressed="false">
+          <svg class="ico-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>
+          <svg class="ico-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"/></svg>
         </button>
-        <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <a class="lang-switch" href="../" hreflang="zh-CN" lang="zh-CN">中文</a>
+        <a class="btn btn-primary btn-sm" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>Download</a>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu" aria-label="Open menu">
+          <svg class="ico-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          <svg class="ico-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
     </div>
 
     <div class="mobile-menu" id="mobile-menu" hidden>
-      <nav aria-label="Mobile navigation">
-        <a href="#screenshots">Screens</a>
-        <a href="#capabilities">Features</a>
+      <div class="container">
+        <a href="#features">Features</a>
+        <a href="#screens">Screens</a>
         <a href="#privacy">Privacy</a>
         <a href="#download">Download</a>
-        <a href="#faq">FAQ</a>
-        <a href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub source</a>
-        <a href="../" hreflang="zh-CN" lang="zh-CN">中文版</a>
-      </nav>
+        <a href="#opensource">Open source</a>
+        <a href="../" hreflang="zh-CN" lang="zh-CN">简体中文</a>
+        <a class="mobile-menu-cta" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>Download for Android</a>
+      </div>
     </div>
   </header>
 
   <main id="main">
-    <!-- ================= Hero ================= -->
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-bg" aria-hidden="true">
-        <span class="blob blob-a"></span>
-        <span class="blob blob-b"></span>
-        <span class="hero-grid-lines"></span>
-      </div>
+
+    <!-- ================= hero ================= -->
+    <section class="hero">
       <div class="container hero-grid">
         <div class="hero-copy">
-          <p class="hero-badge reveal"><span class="pulse-dot"></span>Native Android · Material 3 Expressive</p>
-          <h1 id="hero-title" class="reveal" data-delay="1">One car,<br><span class="hl">one ledger</span>.</h1>
-          <p class="lede reveal" data-delay="2">Turn fuel, maintenance and every kilometre into a ledger you can actually read. Nine expense categories, full-tank fuel economy, 12 service plans — and the ledger lives on your phone by default.</p>
-          <div class="hero-actions reveal" data-delay="2">
-            <a class="btn btn-primary btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases/download/v0.32.0/milenote-0.32.0-android.apk" data-release-link>
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-              Download APK
+          <span class="eyebrow">Native Android · Free and open source · Local-first</span>
+          <h1>MileNote<span class="latin" lang="zh-CN">里程志</span></h1>
+          <p class="lede">A simple, practical app for keeping a car's books on Android. Manage several vehicles, log everyday costs, analyse fuel and electricity use, plan maintenance, and see what running the car really costs.</p>
+          <p class="lede">No account to create. The ledger is stored on your device by default, and can sync between your own devices over WebDAV.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>
+              Download for Android
             </a>
-            <a class="btn btn-quiet btn-lg" href="#screenshots">
-              See the screens
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5"/></svg>
+            <a class="btn btn-quiet btn-lg" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18c-4.5 1.4-4.5-2.2-6.3-2.7M15 21v-3.2a2.8 2.8 0 0 0-.8-2.3c2.7-.3 5.3-1.4 5.3-6a4.7 4.7 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.3s-1-.3-3.3 1.3a11 11 0 0 0-5.8 0C6.7 1.7 5.7 2 5.7 2a4.3 4.3 0 0 0-.1 3.3A4.7 4.7 0 0 0 4.3 8.5c0 4.6 2.6 5.7 5.3 6a2.8 2.8 0 0 0-.8 2.3V21"/></svg>
+              View source
             </a>
           </div>
-          <ul class="hero-meta reveal" data-delay="3">
-            <li>Android 8.0+</li>
-            <li data-release-size>About 23 MB</li>
-            <li>English</li>
-            <li>No account</li>
-          </ul>
-          <p class="hero-note reveal" data-delay="3"><span data-release-tag>v0.32.0 beta</span> · <span>versionCode <b data-release-code>74</b></span> · <a data-release-notes href="https://github.com/Selwiro/MileNoteAndroid/releases" target="_blank" rel="noopener">Release notes</a></p>
+          <p class="hero-meta">Requires Android 8.0 or later<span class="dot">·</span>Free<span class="dot">·</span>No account</p>
         </div>
 
         <div class="hero-visual">
-          <div class="hero-dial" aria-hidden="true"><span class="dial-ring"></span></div>
-          <div class="phone phone-hero">
-            <img decoding="async" src="../assets/screens-en/dashboard.webp" width="720" height="1600" alt="MileNote Android vehicle overview: vehicle card, days together and four running stats" fetchpriority="high">
-          </div>
-          <div class="float-card float-a">
-            <span class="float-label">Fuel economy</span>
-            <strong>6.25 <small>L/100km</small></strong>
-          </div>
-          <div class="float-card float-b">
-            <span class="float-label">Per km</span>
-            <strong>0.25 <small>CNY</small></strong>
-          </div>
-          <div class="float-card float-c">
-            <span class="float-label">Together</span>
-            <strong>763 <small>days</small></strong>
-          </div>
+          <figure class="phone">
+            <img src="../assets/screens-en/dashboard.webp" width="720" height="1600" alt="MileNote overview screen with running costs, average fuel economy and maintenance reminders">
+          </figure>
         </div>
       </div>
     </section>
 
-    <!-- ================= Data conventions ================= -->
-    <section class="pact" aria-labelledby="pact-title">
+    <!-- ================= features ================= -->
+    <section class="section" id="features">
       <div class="container">
-        <div class="pact-card reveal">
-          <h2 class="sr-only" id="pact-title">Data conventions</h2>
-          <div class="pact-head">
-            <p class="eyebrow" aria-hidden="true"><b>01</b><span>Data conventions</span></p>
-            <p class="pact-lead">Four promises, written on this page and enforced in the code.</p>
-          </div>
-          <div class="pact-grid">
-            <article class="pact-item">
-              <span class="pact-no" aria-hidden="true">01</span>
-              <span class="pact-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg></span>
-              <h3>Local-first storage</h3>
-              <p>Your ledger is a single JSON file in the app's private storage, written atomically. It never passes through a developer server.</p>
-            </article>
-            <article class="pact-item">
-              <span class="pact-no" aria-hidden="true">02</span>
-              <span class="pact-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20c.7-3.6 3.6-5.6 7.2-5.6s6.5 2 7.2 5.6"/><path d="m16.6 4.7 1.8 1.4"/></svg></span>
-              <h3>No account needed</h3>
-              <p>No phone number, no email, no third-party login. Open the app and go. No subscriptions, no ads either.</p>
-            </article>
-            <article class="pact-item">
-              <span class="pact-no" aria-hidden="true">03</span>
-              <span class="pact-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16"/><path d="m7 15 3.6-3.6 2.8 1.9L19 6.5"/><circle cx="19" cy="6.5" r="1.4"/></svg></span>
-              <h3>Transparent full-tank method</h3>
-              <p>Only the distance between two full tanks counts, and a missed fill-up resets the baseline. Overall economy is weighted by distance — never guessed, never padded.</p>
-            </article>
-            <article class="pact-item">
-              <span class="pact-no" aria-hidden="true">04</span>
-              <span class="pact-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 17v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
-              <h3>All data travels with you</h3>
-              <p>A complete JSON backup holds every vehicle and custom item, in a format shared with the web version; expenses export to CSV.</p>
-            </article>
-          </div>
+        <div class="section-head">
+          <h2>What it does</h2>
         </div>
+        <ul class="feature-grid">
+          <li class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5H8L19 8.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16v3.5Z"/><path d="M14 6.5 17.5 10"/></svg></span>
+            <h3>Everyday entries, made easy</h3>
+            <p>Log fuel, charging, parking, insurance and repairs. Custom categories, search and filters, plus receipt scanning, keep routine bookkeeping quick.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 17v-3.6l1.7-3.3a2 2 0 0 1 1.8-1.1h5.4a2 2 0 0 1 1.8 1.1l1.7 3.3V17"/><path d="M3.8 13.4h12.6"/><circle cx="6.6" cy="17" r="1.3"/><circle cx="14" cy="17" r="1.3"/></svg></span>
+            <h3>Several vehicles, kept apart</h3>
+            <p>Add more than one vehicle and manage its costs, energy use and service history separately. Data never mixes, and switching vehicles takes one tap.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l3.6-5.6"/><circle cx="12" cy="17" r="1.3"/><path d="M5.6 11.6l1 .9M12 8.4v1.2M18.4 11.6l-1 .9"/></svg></span>
+            <h3>Fuel and electricity, clearly measured</h3>
+            <p>Petrol cars use the full-tank method to work out real fuel economy; EVs use the full-charge method for energy use. See average consumption, energy cost per kilometre and how it changes over time.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19v-6M11 19V9M17 19v-4"/><path d="M3.5 19h17"/></svg></span>
+            <h3>Costs at a glance</h3>
+            <p>Expenses are summarised automatically, with monthly trends and a breakdown by category, so long-term running costs are easy to follow.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2.5"/><path d="M4 10h16M8 4v3M16 4v3"/><path d="M9 14.5l2 2 4-4"/></svg></span>
+            <h3>Maintenance that shows up in time</h3>
+            <p>Service items are tracked by date and mileage; whichever comes first puts the item on your to-do list. Completing a service schedules the next one.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5v11M7.5 15.5l3-3M7.5 15.5l-3-3"/><path d="M16.5 19.5v-11M16.5 8.5l3 3M16.5 8.5l-3 3"/></svg></span>
+            <h3>Your data comes and goes with you</h3>
+            <p>Import records from apps such as 小熊油耗 and 钱迹, export CSV, keep a complete JSON backup, or sync over your own WebDAV.</p>
+          </li>
+        </ul>
       </div>
     </section>
 
-    <!-- ================= Why ================= -->
-    <section class="section why" id="why" aria-labelledby="why-title">
-      <div class="container why-grid">
-        <div class="why-head">
-          <p class="eyebrow reveal"><b>02</b><span>Why MileNote</span></p>
-          <h2 id="why-title" class="reveal" data-delay="1">Not another expense tracker —<br>a ledger for one car.</h2>
-          <p class="sec-lede reveal" data-delay="2">Only car-related spending, with every rule spelled out: when a figure can't be computed it shows “—” instead of a guess.</p>
-          <p class="why-foot reveal" data-delay="3">A ledger should look like a ledger: categories, totals, and a clear trail.</p>
-        </div>
-
-        <div class="why-list">
-          <article class="why-item reveal">
-            <span class="why-no">01</span>
-            <div class="why-body">
-              <h3>One car, one ledger</h3>
-              <p>Add as many vehicles as you like; expenses, fuel economy and maintenance stay separated per vehicle. With two family cars, fuel and service costs never blur together.</p>
-              <p class="why-note">A complete JSON backup still covers every vehicle.</p>
-            </div>
-          </article>
-          <article class="why-item reveal" data-delay="1">
-            <span class="why-no">02</span>
-            <div class="why-body">
-              <h3>Full-tank fuel economy</h3>
-              <p>The first full tank sets the baseline, partial fills carry over to the next settlement, and marking a missed fill-up resets the baseline. Overall economy is weighted by distance, not a simple average.</p>
-              <p class="why-note">Records with a decreasing or missing odometer are skipped.</p>
-            </div>
-          </article>
-          <article class="why-item reveal" data-delay="2">
-            <span class="why-no">03</span>
-            <div class="why-body">
-              <h3>Service due, whichever comes first</h3>
-              <p>12 default service plans move to your to-do list when either the distance or the date falls due. Completing one records it and schedules the next round; after the first service, dates and mileage are recalculated from the actual entry.</p>
-              <p class="why-note">Due items only show up in the app — there are no system notifications.</p>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= Screen tour ================= -->
-    <section class="section tour" id="screenshots" aria-labelledby="tour-title">
+    <!-- ================= screens ================= -->
+    <section class="section section-soft" id="screens">
       <div class="container">
-        <div class="tour-grid">
-          <div class="tour-head">
-            <p class="eyebrow reveal"><b>03</b><span>Screen tour</span></p>
-            <h2 id="tour-title" class="reveal" data-delay="1">From the first entry<br>to the full picture.</h2>
-            <p class="sec-lede reveal" data-delay="2">Screenshots come from the demo ledger built into Android 0.27.0; all data is synthetic. Pick an item on the left, or tap the phone for a full-size view.</p>
-          </div>
+        <div class="section-head section-head-center">
+          <span class="eyebrow">Screens</span>
+          <h2>A calm, uncluttered interface</h2>
+          <p class="lede">Built with Material 3 Expressive, with five colour schemes, light and dark themes, and a Chinese or English interface.</p>
+        </div>
 
-          <div class="tour-stage reveal" data-delay="1">
-            <div class="stage-glow" aria-hidden="true"></div>
-            <button class="stage-btn" type="button" aria-label="View the current screen at full size">
-              <span class="phone phone-stage">
-                <span class="stage-screens">
-                  <img decoding="async" src="../assets/screens-en/editor.webp" width="720" height="1600" alt="Add entry screen: fuel form with a category grid, amount paid, date, fuel volume and a full-tank toggle" class="stage-img is-active" data-key="editor" fetchpriority="high">
-                  <img decoding="async" src="../assets/screens-en/records.webp" width="720" height="1600" alt="Records screen: entries grouped by month with a filter bar" class="stage-img" data-key="records">
-                  <img decoding="async" src="../assets/screens-en/analytics.webp" width="720" height="1600" alt="Analytics screen: spending trend bars and an expense-composition donut" class="stage-img" data-key="analytics">
-                  <img decoding="async" src="../assets/screens-en/fuel.webp" width="720" height="1600" alt="Fuel economy screen: today's fuel price, economy overview metrics and trend" class="stage-img" data-key="fuel">
-                  <img decoding="async" src="../assets/screens-en/maintenance.webp" width="720" height="1600" alt="Maintenance screen: a table of 12 service plans and their status" class="stage-img" data-key="maintenance">
-                  <img decoding="async" src="../assets/screens-en/settings.webp" width="720" height="1600" alt="Settings and appearance screen: five theme choices and light/dark switching" class="stage-img" data-key="settings">
-                </span>
-              </span>
-            </button>
-            <p class="stage-caption" aria-live="polite">Add entry (fuel): the category icon grid sits on top, and amount, date, odometer and fuel fields fit on one screen; the amount field can scan a receipt right away.</p>
-            <p class="stage-hint">Tap a screenshot for a larger view · use ← → inside it to move between screens</p>
-          </div>
+        <div class="screen-tabs" role="tablist" aria-label="App screenshots">
+          <button class="screen-tab" type="button" role="tab" aria-selected="true" data-screen="0">Overview</button>
+          <button class="screen-tab" type="button" role="tab" aria-selected="false" data-screen="1">Quick entry</button>
+          <button class="screen-tab" type="button" role="tab" aria-selected="false" data-screen="2">Expenses</button>
+          <button class="screen-tab" type="button" role="tab" aria-selected="false" data-screen="3">Maintenance</button>
+        </div>
 
-          <div class="tour-tabs" role="group" aria-label="Screen list">
-            <button class="tour-tab is-active" type="button" data-key="editor" data-caption="Add entry (fuel): the category icon grid sits on top, and amount, date, odometer and fuel fields fit on one screen; the amount field can scan a receipt right away." aria-pressed="true">
-              <span class="tab-no">01</span>
-              <span class="tab-body"><strong>Add entry</strong><span class="tab-sub">Category · amount · km · fuel</span></span>
-            </button>
-            <button class="tour-tab" type="button" data-key="records" data-caption="Records: grouped by month with the record count and a filtered total, search plus date and category filters, and CSV export." aria-pressed="false">
-              <span class="tab-no">02</span>
-              <span class="tab-body"><strong>Records</strong><span class="tab-sub">Grouped by month · search &amp; filters</span></span>
-            </button>
-            <button class="tour-tab" type="button" data-key="analytics" data-caption="Analytics · charts: stacked monthly bars show spending trends, a donut shows cost composition, and the share of all nine expense categories is clear at a glance." aria-pressed="false">
-              <span class="tab-no">03</span>
-              <span class="tab-body"><strong>Analytics</strong><span class="tab-sub">Trend bars · cost breakdown</span></span>
-            </button>
-            <button class="tour-tab" type="button" data-key="fuel" data-caption="Fuel economy: full-tank average, average fuel cost, economy trend and today's fuel price, including the next price adjustment date." aria-pressed="false">
-              <span class="tab-no">04</span>
-              <span class="tab-body"><strong>Fuel economy</strong><span class="tab-sub">Average · trend · prices</span></span>
-            </button>
-            <button class="tour-tab" type="button" data-key="maintenance" data-caption="Maintenance: 12 plans laid out as a table, date on top and mileage below, sorted by how soon they fall due; tap a row to complete it and record the entry." aria-pressed="false">
-              <span class="tab-no">05</span>
-              <span class="tab-body"><strong>Maintenance</strong><span class="tab-sub">12 plans · due first</span></span>
-            </button>
-            <button class="tour-tab" type="button" data-key="settings" data-caption="Settings · Appearance: five themes × System, Light or Dark, with a live preview of the current theme." aria-pressed="false">
-              <span class="tab-no">06</span>
-              <span class="tab-body"><strong>Settings &amp; appearance</strong><span class="tab-sub">5 themes · light / dark</span></span>
-            </button>
-          </div>
+        <div class="screen-stage" role="tabpanel" aria-live="polite">
+          <button class="screen-arrow" type="button" data-screen-prev aria-label="Previous screenshot">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <figure class="screen-figure">
+            <div class="phone">
+              <img data-screen-img data-screen-base="../assets/screens-en/" src="../assets/screens-en/dashboard.webp" width="720" height="1600" alt="Overview screen">
+            </div>
+            <figcaption data-screen-cap>Overview</figcaption>
+          </figure>
+          <button class="screen-arrow" type="button" data-screen-next aria-label="Next screenshot">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
         </div>
       </div>
     </section>
 
-    <!-- ================= Appearance ================= -->
-    <section class="section skins" id="skins" aria-labelledby="skins-title">
-      <div class="container skins-grid">
-        <div class="skins-visual reveal">
-          <div class="skins-glow" aria-hidden="true"></div>
-          <div class="phone phone-sm rotate-l"><img decoding="async" src="../assets/screens-en/skin-forest.webp" width="720" height="1600" loading="lazy" alt="Vehicle overview with the Forest green theme"></div>
-          <div class="phone phone-sm rotate-r"><img decoding="async" src="../assets/screens-en/dark.webp" width="720" height="1600" loading="lazy" alt="Vehicle overview in dark mode"></div>
+    <!-- ================= privacy ================= -->
+    <section class="section" id="privacy">
+      <div class="container privacy-grid">
+        <div class="section-head">
+          <span class="eyebrow">Privacy and data</span>
+          <h2>Your data stays on your device by default</h2>
+          <p class="privacy-note">No ads, no subscriptions, no analytics.</p>
+          <p class="privacy-note">WebDAV sync needs your own storage service; the remote ledger is stored as plain JSON.</p>
         </div>
-        <div class="skins-copy reveal" data-delay="1">
-          <p class="eyebrow"><b>04</b><span>Appearance</span></p>
-          <h2 id="skins-title">Five themes,<br>complete in light and dark.</h2>
-          <p>Mile Blue, Forest Green, Lilac, Warm Amber and Graphite — each with a matching light and dark Material 3 palette, following the system or switched by hand.</p>
-          <ul class="skin-list">
-            <li><span class="swatch" style="--c:#55758B"></span>Mile Blue</li>
-            <li><span class="swatch" style="--c:#50846C"></span>Forest Green</li>
-            <li><span class="swatch" style="--c:#8B72B2"></span>Lilac</li>
-            <li><span class="swatch" style="--c:#BA7F4C"></span>Warm Amber</li>
-            <li><span class="swatch" style="--c:#697F8E"></span>Graphite</li>
+        <div>
+          <ul class="privacy-list">
+            <li>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
+              <div><b>No account</b><span>Nothing to register or sign in to.</span></div>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
+              <div><b>Stored locally</b><span>The ledger lives only on your phone by default.</span></div>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
+              <div><b>On-device processing</b><span>Receipt scanning and file parsing happen on the device.</span></div>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
+              <div><b>Your own backups</b><span>Export the complete ledger at any time — no developer server involved.</span></div>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
+              <div><b>Optional sync</b><span>Use your own WebDAV service to move data between devices.</span></div>
+            </li>
           </ul>
-          <p class="small-note">Built with native Kotlin and Jetpack Compose — not a WebView wrapper. Supports large text, edge-to-edge and predictive back.</p>
         </div>
       </div>
     </section>
 
-    <!-- ================= Feature list ================= -->
-    <section class="section caps" id="capabilities" aria-labelledby="cap-title">
+    <!-- ================= download ================= -->
+    <section class="section section-soft" id="download">
       <div class="container">
-        <header class="sec-head reveal">
-          <p class="eyebrow"><b>05</b><span>Feature list</span></p>
-          <h2 id="cap-title">Everything one car's books need</h2>
-          <p class="sec-lede">It has what it should, and sends nothing it shouldn't — all calculations and scanning happen on device.</p>
-        </header>
-
-        <div class="caps-grid">
-          <article class="cap reveal">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-10Z"/><path d="M4 8.5 7 4h10l3 4.5M15.5 13.5h2.5"/></svg></span>
-            <h3>Nine categories + custom ones</h3>
-            <p>Fuel, insurance, maintenance, repairs, detailing, tolls, parking, fines and car supplies; add your own categories and they join filters, charts and import matching.</p>
-          </article>
-          <article class="cap reveal" data-delay="1">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 9v6M9 12h6"/></svg></span>
-            <h3>Add entry</h3>
-            <p>The category icon grid sits on top; amount, date, odometer and fuel fields fit on one screen. The amount field can scan a receipt, and you confirm before saving.</p>
-          </article>
-          <article class="cap reveal" data-delay="2">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h3l1.5-2h7L17 8.5h3v10a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-10Z"/><circle cx="12" cy="13.5" r="3.2"/></svg></span>
-            <h3>Receipt scanning</h3>
-            <p>Take a photo with CameraX or pick one from the gallery; on-device ML Kit reads the amount paid, fuel volume and date. Parsing stays conservative — discounts and unit prices never become expenses.</p>
-          </article>
-          <article class="cap reveal">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 3.5-3.5M12 13 8.5 9.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
-            <h3>Four import paths</h3>
-            <p>Bear (XLS/XLSX), Qianji, a maintenance log and JSON backups; with field mapping, row-by-row preview and automatic duplicate skipping, plus importing straight from the system share sheet.</p>
-          </article>
-          <article class="cap reveal" data-delay="1">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16"/><rect x="7" y="11" width="3" height="5" rx="1"/><rect x="12" y="8" width="3" height="8" rx="1"/><rect x="17" y="5" width="3" height="11" rx="1"/></svg></span>
-            <h3>Analytics</h3>
-            <p>Stacked monthly bars show spending trends and a donut shows cost composition; tap a bar segment or slice for the category, amount and share. Charts and records live on two tabs.</p>
-          </article>
-          <article class="cap reveal" data-delay="2">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16"/><path d="m7 15 3.6-3.6 2.8 1.9L19 6.5"/></svg></span>
-            <h3>Fuel economy</h3>
-            <p>Measured between full tanks and weighted by distance: economy trend, average fuel cost, cost per kilometre, and today's fuel price with the next adjustment date and direction.</p>
-          </article>
-          <article class="cap reveal">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4m8-4v4M3.5 10h17"/><path d="m9.5 15 2 2 3.5-3.5"/></svg></span>
-            <h3>Service plan</h3>
-            <p>12 default plans in a table — date on top, mileage below, sorted by how soon they fall due; completing one records it, and any single reminder can be exported as an .ics calendar file.</p>
-          </article>
-          <article class="cap reveal" data-delay="1">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17.5 9a3.5 3.5 0 0 1-.5 9H7Z"/><path d="M12 12v5m0 0 2-2m-2 2-2-2"/></svg></span>
-            <h3>Backup &amp; export</h3>
-            <p>Complete JSON backup and restore, CSV export for the current vehicle, and optional WebDAV (Nutstore/Jianguoyun, Nextcloud, Synology) with the password encrypted on device; sync runs in the foreground only — upload or download by hand, or turn on foreground auto-sync.</p>
-          </article>
-          <article class="cap reveal" data-delay="2">
-            <span class="cap-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M10.5 18.5h3"/><path d="M4 8.5v7M20 8.5v7"/></svg></span>
-            <h3>Native experience</h3>
-            <p>Kotlin + Jetpack Compose + Material 3 Expressive; Photo Picker, SAF document picking, system share intake and coarse location — just four permissions.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= Data & privacy ================= -->
-    <section class="section privacy" id="privacy" aria-labelledby="privacy-title">
-      <div class="container">
-        <header class="sec-head reveal">
-          <p class="eyebrow"><b>06</b><span>Data &amp; privacy</span></p>
-          <h2 id="privacy-title">The ledger belongs to you,<br>no server required.</h2>
-          <p class="sec-lede">No account system, no cloud database, no analytics. Only a WebDAV server you configure yourself will ever sync your ledger, to a location you choose.</p>
-        </header>
-
-        <div class="privacy-grid">
-          <div class="privacy-list">
-            <article class="privacy-item reveal">
-              <h3><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10" width="15" height="10.5" rx="2.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/></svg>Local-first</h3>
-              <p>The ledger lives in a single JSON file in the app's private storage, with vehicle photos embedded as data URLs and writes done atomically. Nothing passes through a developer server.</p>
-            </article>
-            <article class="privacy-item reveal" data-delay="1">
-              <h3><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>No account</h3>
-              <p>No phone number, email or third-party login — just open the app. No subscriptions and no ads either.</p>
-            </article>
-            <article class="privacy-item reveal" data-delay="2">
-              <h3><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Take it with you</h3>
-              <p>A complete JSON backup includes every vehicle, record, reminder and custom item, in a format shared with the web version; expenses export to CSV.</p>
-            </article>
-            <article class="privacy-item reveal" data-delay="3">
-              <h3><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17.5 9a3.5 3.5 0 0 1-.5 9H7Z"/><path d="m9.5 13 1.8 1.8L15 11"/></svg>WebDAV optional</h3>
-              <p>Sync to a WebDAV server you provide; the connection password is encrypted with Android Keystore + AES-256-GCM. Sync runs in the foreground only — upload or download by hand, or turn on foreground auto-sync; leaving the app ends it.</p>
-            </article>
+        <div class="download-card">
+          <div>
+            <span class="eyebrow">Download</span>
+            <h2>A free, open-source app for Android</h2>
+            <p>MileNote is in beta and under active development.</p>
+            <p>Download the latest APK from GitHub Releases, where you'll also find release notes and file checksums.</p>
+            <p class="dl-meta">Android 8.0+<span class="dot">·</span>Free<span class="dot">·</span>No account</p>
           </div>
-
-          <div class="flow-card reveal" data-delay="1" aria-label="Data flow diagram">
-            <p class="flow-title">Data flow</p>
-            <div class="flow-node">
-              <strong>MileNote app</strong>
-              <small>Bookkeeping, calculations and scanning all on device</small>
-            </div>
-            <span class="flow-arrow" aria-hidden="true"></span>
-            <div class="flow-node is-key">
-              <strong>Phone private storage</strong>
-              <small>garage.json · atomic writes</small>
-            </div>
-            <span class="flow-arrow" aria-hidden="true"><em>Optional</em></span>
-            <div class="flow-node">
-              <strong>Your WebDAV</strong>
-              <small>Address and password set by you</small>
-            </div>
-            <div class="flow-dead">
-              <span>Developer server</span>
-              <small>Does not exist · receives no ledger</small>
-            </div>
-          </div>
-        </div>
-
-        <p class="privacy-note reveal">Receipt scan images are never written to disk, uploaded or stored in the ledger; results still need your review before saving. Before uninstalling the app or changing devices, export a complete backup.</p>
-      </div>
-    </section>
-
-    <!-- ================= Download ================= -->
-    <section class="section download" id="download" aria-labelledby="download-title">
-      <div class="container">
-        <div class="download-card reveal">
-          <div class="download-copy">
-            <p class="eyebrow light"><b>07</b><span>Download</span></p>
-            <h2 id="download-title">Install and start recording;<br>the data stays with you.</h2>
-            <p>Currently in beta (version 0.x). The APK is self-signed, so the first install needs “install unknown apps” allowed.</p>
-            <div class="download-actions">
-              <a class="btn btn-light btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases/download/v0.32.0/milenote-0.32.0-android.apk" data-release-link>
-                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-                Download APK
-              </a>
-              <a class="btn btn-outline-light btn-lg" data-release-notes href="https://github.com/Selwiro/MileNoteAndroid/releases" target="_blank" rel="noopener">Release notes</a>
-            </div>
-            <p class="sha-line">
-              <span>SHA-256</span>
-              <code id="sha-value" data-release-sha>3925ee99c06e87810e136d9cb79057d497cd6fe294fa8ee81ad35b402bff1f7f</code>
-              <button class="copy-btn" type="button" data-copy="sha-value" aria-label="Copy SHA-256">Copy</button>
-            </p>
-            <p class="release-auto">Version, package size and checksum are read automatically from GitHub Releases.</p>
-          </div>
-
-          <dl class="spec-list">
-            <div><dt>Version</dt><dd><span data-release-version>0.32.0</span> <span class="tag">beta</span></dd></div>
-            <div data-release-code-row><dt>versionCode</dt><dd data-release-code>74</dd></div>
-            <div><dt>Requirements</dt><dd>Android 8.0+ (API 26)</dd></div>
-            <div><dt>Architectures</dt><dd>arm64-v8a / armeabi-v7a</dd></div>
-            <div><dt>Package size</dt><dd data-release-size>About 23 MB</dd></div>
-            <div><dt>Package name</dt><dd>com.milenote.android</dd></div>
-          </dl>
-        </div>
-
-        <ol class="install-steps">
-          <li class="reveal"><span class="step-no">1</span><div><h3>Download and allow the install</h3><p>Open this page on your phone and download the APK; when prompted, allow your browser or file manager to install unknown apps.</p></div></li>
-          <li class="reveal" data-delay="1"><span class="step-no">2</span><div><h3>Try the demo ledger first</h3><p>On first launch you can explore the demo ledger (two vehicles with complete sample data); leaving it restores everything and never touches your real ledger.</p></div></li>
-          <li class="reveal" data-delay="2"><span class="step-no">3</span><div><h3>Create your ledger and take a backup</h3><p>Add a vehicle, record your first entry, then export a complete JSON backup from Data management — back up before switching phones or clearing data.</p></div></li>
-        </ol>
-
-        <p class="download-foot">Want to build it yourself? The source is on <a href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub</a>; run <code>./gradlew :app:assembleDebug</code> to produce an APK.</p>
-      </div>
-    </section>
-
-    <!-- ================= FAQ ================= -->
-    <section class="section faq" id="faq" aria-labelledby="faq-title">
-      <div class="container faq-wrap">
-        <header class="sec-head reveal">
-          <p class="eyebrow"><b>08</b><span>FAQ</span></p>
-          <h2 id="faq-title">Questions you might have</h2>
-        </header>
-
-        <div class="faq-grid">
-          <div class="faq-list">
-          <details class="reveal">
-            <summary>Do I need an account? Is my data uploaded?</summary>
-            <p>No. The ledger stays on your device by default and never passes through a developer server; it is only synced when you configure WebDAV in Settings, and then only to the server you enter.</p>
-          </details>
-          <details class="reveal" data-delay="1">
-            <summary>How do I move to a new phone?</summary>
-            <p>Export a complete JSON backup on the old device and restore it on the new one. The format matches the web version (version: 2) and web → Android restores have been tested; you can also upload or download manually through WebDAV.</p>
-          </details>
-          <details class="reveal" data-delay="2">
-            <summary>Why is fuel economy different from the dashboard readout?</summary>
-            <p>The full-tank method uses the actual fuel added and the distance between two full tanks, which differs from the instantaneous or long-term figures a trip computer shows; road conditions, air conditioning, load and tyre pressure all affect the result. This tool is only responsible for the data you enter.</p>
-          </details>
-          <details class="reveal">
-            <summary>Should maintenance follow mileage or time?</summary>
-            <p>Whichever comes first: when either the distance or the date falls due, the plan moves to your to-do list. Plans that only track distance never estimate a date; everything is managed in the service plan table.</p>
-          </details>
-          <details class="reveal" data-delay="1">
-            <summary>Does it support electric cars?</summary>
-            <p>You can record charging, service and insurance with custom categories; full-tank economy and today's fuel price target petrol cars, and a pure EV has no energy-consumption model.</p>
-          </details>
-          <details class="reveal" data-delay="2">
-            <summary>Why are there no system notifications?</summary>
-            <p>A deliberate trade-off: no background service and no notification permission. Due maintenance appears in the in-app car to-do list and in the service plan; when needed, export an .ics file to your system calendar.</p>
-          </details>
-            <details class="reveal">
-              <summary>Can I lose my data?</summary>
-              <p>Writes are atomic, but uninstalling clears the app's private storage — export a complete JSON backup before uninstalling, switching phones or clearing data. With WebDAV configured you can also restore from the remote copy.</p>
-            </details>
-          </div>
-
-          <aside class="faq-aside reveal" data-delay="1">
-            <p class="faq-aside-kicker">Feedback</p>
-            <h3>Didn't find your answer?</h3>
-            <p>An issue with the version number, device model and what you saw is usually the fastest route to a fix; the release notes are worth a look too.</p>
-            <a class="btn btn-primary btn-sm" href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">
-              Ask on GitHub
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
+          <div class="download-action">
+            <a class="btn btn-primary btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>
+              Download the latest version
             </a>
-            <a class="faq-aside-link" href="https://github.com/Selwiro/MileNoteAndroid/releases" target="_blank" rel="noopener">Read the release notes</a>
-          </aside>
+            <p class="dl-version" data-release-version>Latest release on GitHub Releases</p>
+          </div>
         </div>
       </div>
     </section>
+
+    <!-- ================= open source ================= -->
+    <section class="section" id="opensource">
+      <div class="container oss-grid">
+        <div class="section-head">
+          <h2>Open source</h2>
+          <p class="lede">MileNote is written in Kotlin and Jetpack Compose; the source lives on GitHub. Browse the code, open an issue, or share what you would like to see improved.</p>
+        </div>
+        <div class="oss-links">
+          <a class="btn btn-quiet" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub repository</a>
+          <a class="btn btn-quiet" href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">Issues</a>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <footer class="site-footer">
-    <div class="container footer-top">
-      <div class="footer-brand">
-        <img src="../assets/img/app-icon-512.png" width="44" height="44" alt="">
-        <div>
-          <strong>MileNote</strong>
-          <p>A local-first, multi-car vehicle ledger · native Android</p>
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img src="../assets/img/brand-tile.png" width="40" height="40" alt="">
+          <div>
+            <strong>MileNote</strong>
+            <p>A car-expense app for Android</p>
+          </div>
         </div>
-      </div>
-      <div class="footer-cols">
-        <div>
-          <h3>This site</h3>
-          <a href="#screenshots">Screen tour</a>
-          <a href="#privacy">Data &amp; privacy</a>
-          <a href="#download">Download &amp; install</a>
-        </div>
-        <div>
-          <h3>Project</h3>
-          <a href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub repository</a>
+        <nav class="footer-nav" aria-label="Footer">
+          <a href="../">Home</a>
+          <a href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">GitHub</a>
           <a href="https://github.com/Selwiro/MileNoteAndroid/releases" target="_blank" rel="noopener">Releases</a>
-          <a href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">Issue tracker</a>
-        </div>
+          <a href="https://github.com/Selwiro/MileNoteAndroid/issues" target="_blank" rel="noopener">Issues</a>
+          <a href="../" hreflang="zh-CN" lang="zh-CN">简体中文</a>
+        </nav>
       </div>
-    </div>
-    <div class="container footer-note">
-      <p>Screenshots come from the demo ledger built into the app; all data is synthetic and contains no real receipts.</p>
-      <p>© <span id="year">2026</span> MileNote · This page is hosted on GitHub Pages</p>
+      <div class="footer-bottom">
+        <p>Screenshots come from the app's built-in demo ledger; the data is synthetic.</p>
+        <p>© <span id="year">2026</span> MileNote</p>
+      </div>
     </div>
   </footer>
 
-  <!-- Full-size screenshot viewer -->
-  <dialog class="lightbox" id="lightbox" aria-label="View a larger screenshot">
-    <div class="lightbox-stage">
-      <button class="lightbox-close" type="button" aria-label="Close">×</button>
-      <button class="lightbox-nav prev" type="button" aria-label="Previous">‹</button>
-      <figure class="lightbox-figure">
-        <img id="lightbox-img" alt="">
-        <figcaption id="lightbox-cap"></figcaption>
-      </figure>
-      <button class="lightbox-nav next" type="button" aria-label="Next">›</button>
-    </div>
-  </dialog>
-
-  <script src="../assets/app.js" defer></script>
+  <script src="../assets/app.js?v=20261110" defer></script>
 </body>
 </html>

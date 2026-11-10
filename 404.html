@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>页面走丢了 · 里程志 MileNote</title>
+  <title>页面未找到 · 里程志 MileNote</title>
   <meta name="robots" content="noindex">
-  <meta name="theme-color" content="#F7FAFB" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0E1316" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f7fafb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1316" media="(prefers-color-scheme: dark)">
   <script>
     (function () {
       try {
@@ -20,46 +20,18 @@
   </script>
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="stylesheet" href="assets/style.css">
-  <style>
-    .lost {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 40px 0;
-      text-align: center;
-    }
-    .lost-inner { max-width: 560px; }
-    .lost img {
-      width: 76px;
-      height: 76px;
-      border-radius: 22px;
-      box-shadow: var(--shadow-card);
-      margin-bottom: 28px;
-    }
-    .lost h1 {
-      font-size: clamp(2rem, 5vw, 2.8rem);
-      letter-spacing: -0.02em;
-      font-weight: 800;
-      margin-bottom: 16px;
-    }
-    .lost p { color: var(--muted); font-size: 16px; line-height: 1.9; margin-bottom: 30px; }
-    .lost-en { font-size: 14.5px; margin-top: -14px; }
-    .lost-en a { color: var(--brand-strong); text-decoration: underline; text-underline-offset: 3px; }
-    .lost-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
-  </style>
+  <link rel="stylesheet" href="assets/style.css?v=20261110">
 </head>
 <body>
   <main class="lost">
     <div class="lost-inner">
-      <img src="assets/img/brand-tile.png" width="76" height="76" alt="里程志图标">
-      <h1>页面走丢了。</h1>
-      <p>这个地址没有对应的页面。你可以回到首页看看产品介绍、界面截图和 APK 下载。</p>
-      <p lang="en" class="lost-en">This page doesn't exist. Head back to the homepage for the product tour, screenshots and APK download — or visit the <a href="/MileNoteAndroid/en/">English version</a>.</p>
+      <img src="assets/img/brand-tile.png" width="72" height="72" alt="">
+      <h1>页面未找到</h1>
+      <p>这个地址没有对应的页面。首页有产品介绍、界面截图和下载入口。</p>
+      <p lang="en">This page doesn't exist. The homepage has the product overview, screenshots and download link — or visit the <a href="en/">English version</a>.</p>
       <div class="lost-actions">
-        <a class="btn btn-primary btn-lg" href="./">回到首页</a>
-        <a class="btn btn-quiet btn-lg" href="https://github.com/Selwiro/MileNoteAndroid" rel="noopener">GitHub 仓库</a>
+        <a class="btn btn-primary" href="./">返回首页</a>
+        <a class="btn btn-quiet" href="https://github.com/Selwiro/MileNoteAndroid/releases" rel="noopener">下载 Android 版</a>
       </div>
     </div>
   </main>

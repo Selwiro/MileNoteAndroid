@@ -1,18 +1,16 @@
-/* 里程志 MileNote · 站点交互（原生 JS，无依赖） */
+/* 里程志 MileNote · 站点交互（原生 JS，无依赖、无追踪） */
 (function () {
   'use strict';
 
   var root = document.documentElement;
-  var THEME_KEY = 'milenote-theme';
-  /* 站点有两套语言页面（/ 与 /en/），这里只切换少量由 JS 写入的界面文案；
-     默认中文，行为与原来一致。 */
   var EN = /^en/i.test(root.lang || '');
   function t(zh, en) { return EN ? en : zh; }
-  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+  var THEME_KEY = 'milenote-theme';
 
   /* ---------- 主题 ---------- */
   function paintThemeMeta(theme) {
-    var color = theme === 'dark' ? '#0E1316' : '#F7FAFB';
+    var color = theme === 'dark' ? '#0e1316' : '#f7fafb';
     document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
       meta.setAttribute('content', color);
     });
@@ -20,9 +18,9 @@
 
   function applyTheme(theme, persist) {
     root.dataset.theme = theme;
-    document.querySelectorAll('.theme-toggle').forEach(function (btn) {
+    document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
       btn.setAttribute('aria-pressed', String(theme === 'dark'));
-      btn.setAttribute('aria-label', t('深色模式', 'Dark mode'));
+      btn.setAttribute('aria-label', t('切换浅色或深色模式', 'Toggle light or dark mode'));
     });
     paintThemeMeta(theme);
     if (persist) {
@@ -33,371 +31,232 @@
   function initTheme() {
     var stored = null;
     try { stored = localStorage.getItem(THEME_KEY); } catch (e) { /* ignore */ }
-    applyTheme(stored === 'dark' || stored === 'light' ? stored : (darkQuery.matches ? 'dark' : 'light'), false);
+    applyTheme(
+      stored === 'dark' || stored === 'light'
+        ? stored
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+      false
+    );
 
-    document.querySelectorAll('.theme-toggle').forEach(function (btn) {
+    document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
       });
     });
 
-    var onSystemChange = function (event) {
-      var stored2 = null;
-      try { stored2 = localStorage.getItem(THEME_KEY); } catch (e) { /* ignore */ }
-      if (!stored2) applyTheme(event.matches ? 'dark' : 'light', false);
-    };
-    if (typeof darkQuery.addEventListener === 'function') darkQuery.addEventListener('change', onSystemChange);
-    else if (typeof darkQuery.addListener === 'function') darkQuery.addListener(onSystemChange);
+    if (window.matchMedia) {
+      var query = window.matchMedia('(prefers-color-scheme: dark)');
+      var onChange = function (event) {
+        var saved = null;
+        try { saved = localStorage.getItem(THEME_KEY); } catch (e) { /* ignore */ }
+        if (!saved) applyTheme(event.matches ? 'dark' : 'light', false);
+      };
+      if (typeof query.addEventListener === 'function') query.addEventListener('change', onChange);
+      else if (typeof query.addListener === 'function') query.addListener(onChange);
+    }
   }
 
-  /* ---------- 顶部导航 ---------- */
+  /* ---------- 顶栏 ---------- */
   function initHeader() {
     var header = document.querySelector('.site-header');
-    if (!header) return;
-    var onScroll = function () {
-      header.classList.toggle('is-scrolled', window.scrollY > 8);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+    if (header) {
+      var onScroll = function () {
+        header.classList.toggle('is-scrolled', window.scrollY > 6);
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    }
 
     var toggle = document.querySelector('.nav-toggle');
     var menu = document.getElementById('mobile-menu');
-    if (toggle && menu) {
-      var setOpen = function (open) {
-        menu.hidden = !open;
-        toggle.setAttribute('aria-expanded', String(open));
-        toggle.setAttribute('aria-label', open ? t('关闭菜单', 'Close menu') : t('打开菜单', 'Open menu'));
-      };
-      toggle.addEventListener('click', function () {
-        setOpen(menu.hidden);
-      });
-      menu.addEventListener('click', function (event) {
-        if (event.target.closest('a')) setOpen(false);
-      });
-      document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape' || menu.hidden) return;
-        setOpen(false);
-        toggle.focus();
-      });
-      window.addEventListener('resize', function () {
-        if (window.innerWidth > 900 && !menu.hidden) setOpen(false);
-      });
-    }
-  }
+    if (!toggle || !menu) return;
 
-  /* ---------- 滚动进场 ---------- */
-  function initReveal() {
-    var items = document.querySelectorAll('.reveal');
-    if (!items.length) return;
-    if (!('IntersectionObserver' in window)) {
-      items.forEach(function (el) { el.classList.add('is-in'); });
-      return;
-    }
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-in');
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.1, rootMargin: '0px 0px -6% 0px' });
-    items.forEach(function (el) { observer.observe(el); });
-  }
+    var setOpen = function (open) {
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open
+        ? t('关闭菜单', 'Close menu')
+        : t('打开菜单', 'Open menu'));
+    };
 
-  /* ---------- 导航高亮 ---------- */
-  function initSectionSpy() {
-    var links = Array.prototype.slice.call(document.querySelectorAll('.nav-links a[href^="#"]'));
-    if (!links.length || !('IntersectionObserver' in window)) return;
-    var map = {};
-    links.forEach(function (link) {
-      var id = link.getAttribute('href').slice(1);
-      var section = document.getElementById(id);
-      if (section) map[id] = link;
-    });
-    var spy = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        var link = map[entry.target.id];
-        if (!link) return;
-        if (entry.isIntersecting) {
-          links.forEach(function (other) { other.classList.remove('is-active'); });
-          link.classList.add('is-active');
-        }
-      });
-    }, { rootMargin: '-45% 0px -50% 0px' });
-    Object.keys(map).forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) spy.observe(el);
-    });
-  }
-
-  /* ---------- 界面巡览 ---------- */
-  var tour = { tabs: [], images: [], caption: null, stageBtn: null, current: 0 };
-
-  function showScreen(index) {
-    if (!tour.tabs.length) return;
-    tour.current = (index + tour.tabs.length) % tour.tabs.length;
-    var tab = tour.tabs[tour.current];
-    var key = tab.getAttribute('data-key');
-
-    tour.tabs.forEach(function (el) {
-      var on = el === tab;
-      el.classList.toggle('is-active', on);
-      el.setAttribute('aria-pressed', String(on));
-    });
-    tour.images.forEach(function (img) {
-      var on = img.getAttribute('data-key') === key;
-      img.classList.toggle('is-active', on);
-      if (on) img.removeAttribute('aria-hidden');
-      else img.setAttribute('aria-hidden', 'true');
-    });
-    var caption = tab.getAttribute('data-caption') || '';
-    if (tour.caption) tour.caption.textContent = caption;
-    if (tour.stageBtn) {
-      var tabTitle = tab.querySelector('strong').textContent;
-      tour.stageBtn.setAttribute('aria-label', t('查看「' + tabTitle + '」的完整截图', 'View full screenshot of “' + tabTitle + '”'));
-    }
-    return key;
-  }
-
-  function initTour() {
-    tour.tabs = Array.prototype.slice.call(document.querySelectorAll('.tour-tab'));
-    tour.images = Array.prototype.slice.call(document.querySelectorAll('.stage-img'));
-    tour.caption = document.querySelector('.stage-caption');
-    tour.stageBtn = document.querySelector('.stage-btn');
-    if (!tour.tabs.length || !tour.images.length) return;
-
-    tour.tabs.forEach(function (tab, index) {
-      tab.addEventListener('click', function () { showScreen(index); });
-    });
-    showScreen(0);
-  }
-
-  /* ---------- 截图大图 ---------- */
-  function initLightbox() {
-    var dialog = document.getElementById('lightbox');
-    if (!dialog || typeof dialog.showModal !== 'function') return;
-    var img = document.getElementById('lightbox-img');
-    var cap = document.getElementById('lightbox-cap');
-    if (!tour.tabs.length) return;
-
-    function show(index) {
-      tour.current = (index + tour.tabs.length) % tour.tabs.length;
-      var tab = tour.tabs[tour.current];
-      var key = tab.getAttribute('data-key');
-      var source = tour.images.filter(function (item) { return item.getAttribute('data-key') === key; })[0];
-      var title = tab.querySelector('strong').textContent;
-      img.src = source ? source.getAttribute('src') : 'assets/screens/' + key + '.webp';
-      img.alt = source ? source.getAttribute('alt') : title;
-      var counter = t('（' + (tour.current + 1) + ' / ' + tour.tabs.length + '）', ' (' + (tour.current + 1) + ' / ' + tour.tabs.length + ')');
-      cap.textContent = (tab.getAttribute('data-caption') || title) + counter;
-      showScreen(tour.current);
-    }
-
-    if (tour.stageBtn) {
-      tour.stageBtn.addEventListener('click', function () {
-        show(tour.current);
-        dialog.showModal();
-        document.body.classList.add('has-lightbox');
-      });
-    }
-
-    dialog.addEventListener('close', function () {
-      document.body.classList.remove('has-lightbox');
+    toggle.addEventListener('click', function () {
+      setOpen(menu.hidden);
     });
 
-    dialog.addEventListener('click', function (event) {
-      if (event.target === dialog || event.target.classList.contains('lightbox-stage')) dialog.close();
+    menu.addEventListener('click', function (event) {
+      if (event.target.closest('a')) setOpen(false);
     });
-
-    var closeBtn = dialog.querySelector('.lightbox-close');
-    if (closeBtn) closeBtn.addEventListener('click', function () { dialog.close(); });
-
-    var prev = dialog.querySelector('.lightbox-nav.prev');
-    var next = dialog.querySelector('.lightbox-nav.next');
-    if (prev) prev.addEventListener('click', function () { show(tour.current - 1); });
-    if (next) next.addEventListener('click', function () { show(tour.current + 1); });
 
     document.addEventListener('keydown', function (event) {
-      if (!dialog.open) return;
-      if (event.key === 'ArrowLeft') { event.preventDefault(); show(tour.current - 1); }
-      if (event.key === 'ArrowRight') { event.preventDefault(); show(tour.current + 1); }
+      if (event.key !== 'Escape' || menu.hidden) return;
+      setOpen(false);
+      toggle.focus();
+    });
+
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 860 && !menu.hidden) setOpen(false);
     });
   }
 
+  /* ---------- 界面预览 ---------- */
+  function initScreens() {
+    var stageImg = document.querySelector('[data-screen-img]');
+    if (!stageImg) return;
 
-  /* ---------- 版本信息：自动读取最新 GitHub Release ---------- */
-  var RELEASE_API = 'https://api.github.com/repos/Selwiro/MileNoteAndroid/releases?per_page=20';
-  var RELEASE_CACHE = 'milenote-release-cache-v1';
-  var RELEASE_TTL = 10 * 60 * 1000;
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
+    var caption = document.querySelector('[data-screen-cap]');
+    /* 资源前缀由页面给出（中文页 assets/screens/，英文页 ../assets/screens-en/） */
+    var base = stageImg.getAttribute('data-screen-base') || '';
+    var shots = EN ? [
+      { file: 'dashboard.webp', cap: 'Overview' },
+      { file: 'editor.webp', cap: 'Quick entry' },
+      { file: 'analytics.webp', cap: 'Expenses' },
+      { file: 'maintenance.webp', cap: 'Maintenance' }
+    ] : [
+      { file: 'dashboard.webp', cap: '用车总览' },
+      { file: 'editor.webp', cap: '快速记账' },
+      { file: 'analytics.webp', cap: '费用统计' },
+      { file: 'maintenance.webp', cap: '维修保养' }
+    ];
+    shots.forEach(function (shot) { shot.src = base + shot.file; });
 
-  function formatReleaseSize(bytes) {
-    if (!bytes) return '';
-    return t('约 ' + Math.round(bytes / 1048576) + ' MB', 'About ' + Math.round(bytes / 1048576) + ' MB');
+    var preloaded = {};
+    function preload(index) {
+      var shot = shots[index];
+      if (!shot || preloaded[shot.src]) return;
+      preloaded[shot.src] = true;
+      var img = new Image();
+      img.src = shot.src;
+    }
+
+    function show(index) {
+      var next = (index + shots.length) % shots.length;
+      var shot = shots[next];
+      stageImg.src = shot.src;
+      stageImg.alt = shot.cap + t('界面', ' screen');
+      if (caption) caption.textContent = shot.cap;
+      tabs.forEach(function (tab, i) {
+        tab.setAttribute('aria-selected', String(i === next));
+        tab.tabIndex = i === next ? 0 : -1;
+      });
+      preload(next + 1);
+      preload(next - 1);
+    }
+
+    var current = 0;
+
+    tabs.forEach(function (tab, i) {
+      tab.tabIndex = i === 0 ? 0 : -1;
+      tab.addEventListener('click', function () {
+        current = i;
+        show(current);
+      });
+      tab.addEventListener('keydown', function (event) {
+        var delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+        if (!delta) return;
+        event.preventDefault();
+        current = (i + delta + tabs.length) % tabs.length;
+        show(current);
+        tabs[current].focus();
+      });
+    });
+
+    var prev = document.querySelector('[data-screen-prev]');
+    var next = document.querySelector('[data-screen-next]');
+    if (prev) prev.addEventListener('click', function () { current -= 1; show(current); });
+    if (next) next.addEventListener('click', function () { current += 1; show(current); });
+
+    preload(1);
+    preload(2);
   }
 
-  function applyRelease(data) {
-    document.querySelectorAll('[data-release-link]').forEach(function (link) {
-      link.href = data.apkUrl;
-    });
-    document.querySelectorAll('[data-release-tag]').forEach(function (el) {
-      el.textContent = 'v' + data.version + ' beta';
-    });
-    document.querySelectorAll('[data-release-version]').forEach(function (el) {
-      el.textContent = data.version;
-    });
-    var sizeText = formatReleaseSize(data.size);
-    if (sizeText) {
-      document.querySelectorAll('[data-release-size]').forEach(function (el) { el.textContent = sizeText; });
-    }
-    if (data.sha) {
-      document.querySelectorAll('[data-release-sha]').forEach(function (el) { el.textContent = data.sha; });
-    }
-    if (data.versionCode) {
-      document.querySelectorAll('[data-release-code]').forEach(function (el) { el.textContent = data.versionCode; });
-    } else {
-      document.querySelectorAll('[data-release-code-row]').forEach(function (el) { el.hidden = true; });
-    }
-    if (data.notesUrl) {
-      document.querySelectorAll('[data-release-notes]').forEach(function (el) { el.href = data.notesUrl; });
-    }
-    var ld = document.querySelector('script[type="application/ld+json"]');
-    if (ld) {
-      try {
-        var json = JSON.parse(ld.textContent);
-        json.softwareVersion = data.version;
-        json.downloadUrl = data.apkUrl;
-        ld.textContent = JSON.stringify(json);
-      } catch (e) { /* 保留原 JSON-LD */ }
-    }
-  }
-
-  function parseRelease(release) {
-    if (!release || release.draft || !release.published_at) return null;
-    var apk = (release.assets || []).filter(function (asset) {
-      return /\.apk$/i.test(asset.name || '');
-    })[0];
-    if (!apk || !apk.browser_download_url) return null;
-    var version = String(release.tag_name || '').replace(/^v/i, '');
-    if (!version) return null;
-    var sha = '';
-    if (apk.digest && /^sha256:/i.test(apk.digest)) sha = apk.digest.split(':')[1];
-    var codeMatch = /(?:versionCode|vc)\s*[:：]?\s*(\d+)/i.exec(release.body || '');
-    return {
-      version: version,
-      apkUrl: apk.browser_download_url,
-      size: apk.size,
-      sha: sha,
-      versionCode: codeMatch ? codeMatch[1] : '',
-      notesUrl: release.html_url || ''
-    };
-  }
-
+  /* ---------- 版本信息：跟随最新 GitHub Release ----------
+     静态 HTML 里的下载按钮指向 Releases 页面，任何情况下都不会指向旧版本；
+     这里只在取到更新的元数据时，把按钮直接指向最新 APK，并补上版本号。
+     失败（被墙、限流、禁用 JS）就保持原样，不显示任何可能过期的版本号。 */
   function initRelease() {
-    if (!document.querySelector('[data-release-link]')) return;
+    var links = document.querySelectorAll('[data-download]');
+    if (!links.length) return;
+
+    var API = 'https://api.github.com/repos/Selwiro/MileNoteAndroid/releases?per_page=10';
+    var CACHE_KEY = 'milenote-release-v2';
+    var TTL = 5 * 60 * 1000;
+
+    function apply(data) {
+      links.forEach(function (link) { link.href = data.apkUrl; });
+
+      var sizeText = data.size ? t('约 ' + Math.round(data.size / 1048576) + ' MB',
+        'about ' + Math.round(data.size / 1048576) + ' MB') : '';
+      var versionText = t('最新版本 v', 'Latest v') + data.version + (sizeText ? ' · ' + sizeText : '');
+      document.querySelectorAll('[data-release-version]').forEach(function (el) {
+        el.textContent = versionText;
+      });
+
+      var ld = document.querySelector('script[type="application/ld+json"]');
+      if (ld) {
+        try {
+          var json = JSON.parse(ld.textContent);
+          json.softwareVersion = data.version;
+          json.downloadUrl = data.apkUrl;
+          ld.textContent = JSON.stringify(json);
+        } catch (e) { /* 保留原 JSON-LD */ }
+      }
+    }
+
+    function parse(release) {
+      if (!release || release.draft) return null;
+      var apk = (release.assets || []).filter(function (asset) {
+        return /\.apk$/i.test(asset.name || '');
+      })[0];
+      if (!apk || !apk.browser_download_url) return null;
+      var version = String(release.tag_name || '').replace(/^v/i, '');
+      if (!version) return null;
+      return { version: version, apkUrl: apk.browser_download_url, size: apk.size || 0 };
+    }
 
     var cached = null;
-    try { cached = JSON.parse(sessionStorage.getItem(RELEASE_CACHE) || 'null'); } catch (e) { /* ignore */ }
-    if (cached && cached.data && cached.at && Date.now() - cached.at < RELEASE_TTL) {
-      applyRelease(cached.data);
+    try { cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null'); } catch (e) { /* ignore */ }
+    if (cached && cached.data && cached.at && Date.now() - cached.at < TTL) {
+      apply(cached.data);
       return;
     }
+
     if (!window.fetch) return;
 
-    fetch(RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } })
+    fetch(API, { headers: { Accept: 'application/vnd.github+json' } })
       .then(function (response) {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json();
       })
       .then(function (list) {
         if (!Array.isArray(list)) return;
-        var releases = list
-          .filter(function (item) { return item && !item.draft && item.published_at; })
+        var releases = list.filter(function (item) { return item && !item.draft; })
           .sort(function (a, b) { return new Date(b.published_at) - new Date(a.published_at); });
         for (var i = 0; i < releases.length; i += 1) {
-          var data = parseRelease(releases[i]);
-          if (data) {
-            applyRelease(data);
-            try {
-              sessionStorage.setItem(RELEASE_CACHE, JSON.stringify({ at: Date.now(), data: data }));
-            } catch (e) { /* ignore */ }
-            return;
-          }
+          var data = parse(releases[i]);
+          if (!data) continue;
+          apply(data);
+          try {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data: data }));
+          } catch (e) { /* ignore */ }
+          return;
         }
       })
-      .catch(function () { /* 网络或限流失败时保留页面静态回退 */ });
-  }
-
-  /* ---------- 复制 SHA-256 ---------- */
-  function initCopy() {
-    document.querySelectorAll('[data-copy]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var target = document.getElementById(btn.getAttribute('data-copy'));
-        if (!target) return;
-        var text = target.textContent.trim();
-
-        function done() {
-          var original = btn.textContent;
-          btn.textContent = t('已复制', 'Copied');
-          btn.classList.add('is-done');
-          window.setTimeout(function () {
-            btn.textContent = original;
-            btn.classList.remove('is-done');
-          }, 1600);
-        }
-
-        function fallback() {
-          var area = document.createElement('textarea');
-          area.value = text;
-          area.setAttribute('readonly', '');
-          area.style.position = 'fixed';
-          area.style.top = '-1000px';
-          document.body.appendChild(area);
-          area.select();
-          try { document.execCommand('copy'); done(); } catch (e) { /* ignore */ }
-          document.body.removeChild(area);
-        }
-
-        if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(text).then(done, fallback);
-        } else {
-          fallback();
-        }
+      .catch(function () {
+        /* 取不到就保持 Releases 页面链接：宁可多一次跳转，也不给旧版本 */
       });
-    });
   }
 
-  /* ---------- FAQ 手风琴 ---------- */
-  function initFaq() {
-    var items = Array.prototype.slice.call(document.querySelectorAll('.faq details'));
-    items.forEach(function (item) {
-      item.addEventListener('toggle', function () {
-        if (!item.open) return;
-        items.forEach(function (other) {
-          if (other !== item) other.open = false;
-        });
-      });
-    });
-  }
-
-  /* ---------- 页脚年份 ---------- */
+  /* ---------- 年份 ---------- */
   function initYear() {
-    var el = document.getElementById('year');
-    if (el) el.textContent = String(new Date().getFullYear());
+    document.querySelectorAll('#year').forEach(function (el) {
+      el.textContent = String(new Date().getFullYear());
+    });
   }
 
-  function init() {
-    initTheme();
-    initHeader();
-    initTour();
-    initReveal();
-    initSectionSpy();
-    initLightbox();
-    initCopy();
-    initFaq();
-    initRelease();
-    initYear();
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  initTheme();
+  initHeader();
+  initScreens();
+  initRelease();
+  initYear();
 })();
