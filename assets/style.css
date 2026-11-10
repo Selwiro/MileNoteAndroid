@@ -427,7 +427,11 @@ button { font: inherit; color: inherit; }
 }
 
 .feature {
-  padding: 26px 26px 28px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 13px;
+  padding: 22px 24px 24px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -439,12 +443,13 @@ button { font: inherit; color: inherit; }
   box-shadow: var(--shadow-soft);
 }
 
+/* 图标与标题同一行（桌面端；手机上图标仍在左、标题与说明在右） */
 .feature-icon {
   display: grid;
   place-items: center;
-  width: 42px; height: 42px;
-  margin-bottom: 16px;
-  border-radius: 13px;
+  width: 40px; height: 40px;
+  margin: 0;
+  border-radius: 12px;
   background: var(--brand-soft);
   color: var(--brand-strong);
 }
@@ -458,9 +463,10 @@ button { font: inherit; color: inherit; }
   stroke-linejoin: round;
 }
 
-.feature h3 { font-size: 1.08rem; letter-spacing: -0.01em; }
+.feature h3 { grid-column: 2; font-size: 1.08rem; letter-spacing: -0.01em; }
 .feature p {
-  margin-top: 9px;
+  grid-column: 1 / -1;
+  margin-top: 11px;
   color: var(--muted);
   font-size: 0.97rem;
   line-height: 1.7;
@@ -695,11 +701,11 @@ button { font: inherit; color: inherit; }
   .slide-head h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); }
   .slide-head .lede { margin-top: 10px; font-size: 0.98rem; }
   .feature-grid { margin-top: 24px; gap: 14px; }
-  .feature { padding: 20px 20px 22px; }
-  .feature-icon { width: 36px; height: 36px; margin-bottom: 11px; border-radius: 11px; }
+  .feature { padding: 18px 20px 20px; column-gap: 11px; }
+  .feature-icon { width: 36px; height: 36px; margin: 0; border-radius: 11px; }
   .feature-icon svg { width: 19px; height: 19px; }
   .feature h3 { font-size: 1.02rem; }
-  .feature p { margin-top: 7px; font-size: 0.93rem; line-height: 1.62; }
+  .feature p { margin-top: 8px; font-size: 0.93rem; line-height: 1.62; }
   .phone-hero { --phone-h: clamp(260px, 54dvh, 480px); }
   .privacy-list li { padding: 15px 0; }
 }
@@ -735,6 +741,7 @@ button { font: inherit; color: inherit; }
   .feature {
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
     column-gap: 10px;
     row-gap: 1px;
     padding: 7px 12px 8px;
