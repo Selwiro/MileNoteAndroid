@@ -451,6 +451,12 @@ type(scope): summary
 
 Use synthetic data for all demo and test data. Never commit real ledgers, receipts, signing keys, passwords or build artifacts.
 
+## Sponsor
+
+Feed the author some tokens.
+
+<img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/donate/wechat.png" width="200" alt="WeChat reward QR code">
+
 ## Acknowledgements
 
 This app would not run without the open-source projects, public data and reference material below. Thanks to all maintainers and contributors.
