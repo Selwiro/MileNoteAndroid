@@ -509,6 +509,14 @@ The seven-segment display decoder for fuel-pump screens is our own geometric imp
 - [Material Design](https://m3.material.io/) / Material 3 Expressive guidelines for UI and motion.
 - [Android developer documentation](https://developer.android.com/docs) for Compose, DataStore, networking and platform APIs.
 
+### Product and design references
+
+The following apps informed the feature design and page layout (only information architecture and interaction ideas were referenced; no code, icons or assets were used):
+
+- [Xiaoxiong Youhao](https://www.xiaoxiongyouhao.com/app_download): information architecture for fuel-consumption statistics and vehicle expense tracking.
+- [CarNote](https://github.com/Kaiyuan/CarNote): structure and record organisation of a vehicle-log app.
+- [iCar](https://apps.apple.com/cn/app/icar-%E8%BD%A6%E8%BE%86%E8%AE%B0%E5%BD%95%E5%8A%A9%E6%89%8B-%E8%AE%B0%E6%B2%B9%E8%80%97-%E8%AE%B0%E4%BF%9D%E5%85%BB-%E8%AE%B0%E6%94%AF%E5%87%BA-%E4%BF%9D%E5%85%BB%E8%AE%A1%E6%97%B6/id6532600650): iOS-side interaction reference for vehicle records, fuel consumption and maintenance.
+
 ### Full dependency list
 
 Settings → About → Open-source licenses in the app lists every runtime dependency shipped in the APK (currently 182 artifacts) with full license texts; this section only covers direct projects and data sources. The generated component list lives in [app/src/main/assets/licenses/third-party-notices.txt](app/src/main/assets/licenses/third-party-notices.txt).

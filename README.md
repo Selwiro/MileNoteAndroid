@@ -509,6 +509,14 @@ type(范围): 摘要
 - [Material Design](https://m3.material.io/) / Material 3 Expressive 设计指南：界面与动效的参考。
 - [Android 开发者文档](https://developer.android.com/docs)：Compose、DataStore、网络与平台能力的使用参考。
 
+### 产品与设计参考
+
+以下应用在功能设计与页面布局上提供了参考（仅参考信息架构与交互思路，未使用其代码、图标或素材）：
+
+- [小熊油耗](https://www.xiaoxiongyouhao.com/app_download)：油耗统计与车辆记账的信息架构参考。
+- [CarNote](https://github.com/Kaiyuan/CarNote)：车辆记录类应用的结构与记录组织方式参考。
+- [iCar · 车辆记录助手](https://apps.apple.com/cn/app/icar-%E8%BD%A6%E8%BE%86%E8%AE%B0%E5%BD%95%E5%8A%A9%E6%89%8B-%E8%AE%B0%E6%B2%B9%E8%80%97-%E8%AE%B0%E4%BF%9D%E5%85%BB-%E8%AE%B0%E6%94%AF%E5%87%BA-%E4%BF%9D%E5%85%BB%E8%AE%A1%E6%97%B6/id6532600650)：iOS 端车辆记录、油耗与保养功能的交互参考。
+
 ### 完整依赖清单
 
 App 内「设置 → 关于 → 开源许可」列出随 APK 分发的全部运行期依赖（当前 182 项）及其许可证全文；本页只列直接使用的项目与数据来源。第三方组件清单见 [app/src/main/assets/licenses/third-party-notices.txt](app/src/main/assets/licenses/third-party-notices.txt)。
