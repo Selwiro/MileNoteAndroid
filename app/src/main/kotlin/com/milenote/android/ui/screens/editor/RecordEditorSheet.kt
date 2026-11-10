@@ -1,5 +1,9 @@
 package com.milenote.android.ui.screens.editor
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -70,7 +74,8 @@ import java.time.ZoneOffset
  * - 可滚动表单：金额 → 日期（M3 DatePicker）→ 分类 chip 网格 → 总里程 → 加油/服务/保险分组 → 备注；
  * - 固定底部操作栏：编辑态「删除」+「取消」+「保存记录」，`navigationBarsPadding` 保证不被手势条遮挡；
  * - 保存前用 domain `validateRecord` 校验，错误就地显示（金额下方 + 顶部提示条）；
- * - 油费「实付金额」尾部的相机按钮打开全屏 [OcrCaptureScreen]，识别结果按 Web 保守规则只回填空字段；
+ * - 油费「实付金额」尾部的相机按钮 / 桌面「识别小票」快捷方式：先弹系统照片选择器，选到照片后
+ *   打开全屏 [OcrCaptureScreen] 直接识别（不再先显示「选择小票照片」占位页）；结果按 Web 保守规则只回填空字段；
  * - 新增自定义分类立即写回账本（[MileNoteViewModel.addCustomCategory]），记录本身也带该分类名。
  *
  * 页面内自带 `statusBarsPadding()` / `imePadding()`；若导航层用 Scaffold `innerPadding`
@@ -95,7 +100,33 @@ fun RecordEditorScreen(
         return
     }
     val form = remember(ledger.id, target) { RecordEditorState(ledger = ledger, target = target) }
-    var showOcr by remember { mutableStateOf(target.startOcr) }
+    var showOcr by remember { mutableStateOf(false) }
+    var ocrPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // 相机按钮 / 桌面「识别小票」快捷方式：先直接调起系统照片选择器，选到照片后才打开 OCR 页面。
+    // （旧流程是先打开 OCR 页再在页内弹选择器，会先闪一下「选择小票照片」占位页。）
+    val pickReceiptPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            ocrPhotoUri = uri
+            showOcr = true
+        }
+    }
+
+    fun openReceiptPicker() {
+        runCatching {
+            pickReceiptPhoto.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
+        }.onFailure {
+            // 系统照片选择器不可用（极少数机型）：退回 OCR 页内的「从相册选择」按钮。
+            showOcr = true
+        }
+    }
+
+    // 快捷方式「识别小票」：进入编辑器即弹选择器；取消则留在记一笔表单。
+    LaunchedEffect(target) { if (target.startOcr) openReceiptPicker() }
 
     // 系统返回键 / 预测式返回手势：关闭页面（未保存内容不做二次确认，与 Web 关闭弹窗一致）。
     BackHandler(onBack = onDismiss)
@@ -114,7 +145,7 @@ fun RecordEditorScreen(
             form.original?.let(vm::deleteRecord)
             onDismiss()
         },
-        onOcrClick = { showOcr = true },
+        onOcrClick = { openReceiptPicker() },
     )
 
     if (form.showDatePicker) {
@@ -137,9 +168,12 @@ fun RecordEditorScreen(
         )
     }
     if (showOcr) {
-        // 全屏 OCR：系统照片选择器 + Tesseract 识别，图片只在内存中处理。
+        // 全屏 OCR：照片已由系统选择器选好，进来直接识别；图片只在内存中处理、不落盘。
         Dialog(
-            onDismissRequest = { showOcr = false },
+            onDismissRequest = {
+                showOcr = false
+                ocrPhotoUri = null
+            },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
                 dismissOnBackPress = true,
@@ -150,8 +184,13 @@ fun RecordEditorScreen(
                 onResult = { receipt ->
                     form.applyOcr(receipt)
                     showOcr = false
+                    ocrPhotoUri = null
                 },
-                onClose = { showOcr = false },
+                onClose = {
+                    showOcr = false
+                    ocrPhotoUri = null
+                },
+                initialImageUri = ocrPhotoUri,
                 modifier = Modifier.fillMaxSize(),
             )
         }

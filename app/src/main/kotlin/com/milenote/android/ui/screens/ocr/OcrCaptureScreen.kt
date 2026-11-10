@@ -101,16 +101,21 @@ private const val MAX_DECODE_SIDE = 2400
 private const val OCR_TIME_BUDGET_MS = 20_000L
 
 /**
- * 加油小票识别页：进入即打开系统照片选择器，选中小票/加油机照片后识别。
+ * 加油小票识别页：调用方先选好照片、经 [initialImageUri] 传入，进入即开始识别。
  *
- * 交互：系统 Photo Picker（无需相机/存储权限）→ Tesseract 中文 OCR + 七段屏几何解码
- * → [FuelReceiptParser] 解析字段 → 结果确认面板 → 通过 [onResult] 把 [FuelReceipt] 回填给编辑器。
+ * 交互：系统 Photo Picker（无需相机/存储权限，由调用方或页内「重新选择照片」调起）
+ * → Tesseract 中文 OCR + 七段屏几何解码 → [FuelReceiptParser] 解析字段 → 结果确认面板
+ * → 通过 [onResult] 把 [FuelReceipt] 回填给编辑器。
+ *
+ * 页面**不再**「进入即自动弹选择器」：那会先闪一下「选择小票照片」占位页。只有没有初始照片
+ * （如系统选择器调起失败后的兜底）才停在占位页，由用户点「从相册选择」自己选。
  *
  * 隐私：图片只在内存中处理（识别完立即 `recycle()`），**不落盘、不上传**；
  * 选中的图片只读取一次，不复制到应用目录。应用不申请相机权限、不打开相机。
  *
  * ```kotlin
  * OcrCaptureScreen(
+ *     initialImageUri = pickedUri,
  *     onResult = { receipt ->
  *         editor.prefill(receipt)   // 用 receipt.amount / liters / date / odometer
  *         showOcrScreen = false
@@ -123,6 +128,8 @@ private const val OCR_TIME_BUDGET_MS = 20_000L
  * @param onClose 关闭页面（左上角 X / 返回）。
  * @param modifier 外部布局修饰符。
  * @param recognizer 识别实现，默认 Tesseract 中文（可注入假实现做测试）。
+ * @param latinRecognizer 拉丁数字识别兜底实现。
+ * @param initialImageUri 调用方已选好的小票照片；非空时进入页面立即识别，跳过占位页。
  */
 @Composable
 fun OcrCaptureScreen(
@@ -131,6 +138,7 @@ fun OcrCaptureScreen(
     modifier: Modifier = Modifier,
     recognizer: OcrRecognizer = TesseractOcrRecognizer,
     latinRecognizer: OcrRecognizer = TesseractLatinOcrRecognizer,
+    initialImageUri: Uri? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -307,8 +315,12 @@ fun OcrCaptureScreen(
         }
     }
 
-    // 进入页面即打开系统照片选择器（Photo Picker；不申请相机/存储权限）。
-    LaunchedEffect(Unit) { pickFromGallery() }
+    // 初始照片由调用方（相机按钮 / 桌面「识别小票」快捷方式）选好后传入，进入页面直接识别；
+    // 不再「进入即弹选择器」，避免先闪一下「选择小票照片」占位页。页内「重新选择照片」仍可调起选择器。
+    LaunchedEffect(initialImageUri) {
+        val uri = initialImageUri ?: return@LaunchedEffect
+        launchRecognition { decodeImage(context, uri) to 0 }
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -324,10 +336,16 @@ fun OcrCaptureScreen(
                     .padding(horizontal = MileNoteDimens.PageHorizontal),
             ) {
                 when (stage) {
-                    OcrStage.Idle -> PickerPlaceholder(
-                        onPick = { pickFromGallery() },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    // 有初始照片时 Idle 只存在一帧（LaunchedEffect 立即转入识别），先显示识别中，
+                    // 避免占位页闪一下；只有没拿到初始照片（选择器调起失败兜底）才显示占位页。
+                    OcrStage.Idle -> if (initialImageUri != null) {
+                        RecognizingOverlay()
+                    } else {
+                        PickerPlaceholder(
+                            onPick = { pickFromGallery() },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     OcrStage.Recognizing -> RecognizingOverlay()
                     OcrStage.Result -> ResultOverlay(
                         receipt = receipt,
@@ -376,7 +394,7 @@ private fun OcrHeader(onClose: () -> Unit) {
     }
 }
 
-/** 初始占位：进入页面会自动打开系统照片选择器，这里只作等待/重新选择入口。 */
+/** 兜底占位：只有没拿到初始照片（系统选择器调起失败）时显示，点「从相册选择」重试。 */
 @Composable
 private fun PickerPlaceholder(
     onPick: () -> Unit,
