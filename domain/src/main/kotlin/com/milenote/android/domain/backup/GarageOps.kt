@@ -84,7 +84,7 @@ object GarageOps {
         }
         val cars = input.cars.map { car ->
             car.copy(
-                // 动力类型只认 "fuel"/"ev"，未知值归一为 null（语义=燃油），避免坏数据把车变成怪状态。
+                // 动力类型只认 "fuel"/"phev"/"ev"，未知值归一为 null（语义=燃油），避免坏数据把车变成怪状态。
                 vehicle = car.vehicle.copy(powertrain = normalizePowertrain(car.vehicle.powertrain)),
                 records = car.records.map { it.copy(category = Categories.normalize(it.category)) },
             )
@@ -93,10 +93,11 @@ object GarageOps {
         return input.copy(activeId = activeId, cars = cars)
     }
 
-    /** 旧版 v1 单车账本迁移为 v2 单车站（生成新车辆 id，分类归一）。 */
+    /** 旧版 v1 单车账本迁移为 v2 单车站（生成新车辆 id，分类与动力类型归一）。 */
     fun migrateLegacy(ledger: Ledger): Garage {
         val normalized = ledger.copy(
             version = 1,
+            vehicle = ledger.vehicle.copy(powertrain = normalizePowertrain(ledger.vehicle.powertrain)),
             records = ledger.records.map { it.copy(category = Categories.normalize(it.category)) },
         )
         val validated = validateLedger(normalized)

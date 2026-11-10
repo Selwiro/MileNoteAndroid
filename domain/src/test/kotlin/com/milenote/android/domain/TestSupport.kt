@@ -6,6 +6,7 @@ import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.POWERTRAIN_EV
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.blankLedger
@@ -85,6 +86,12 @@ fun evLedger(
     records: List<Record> = emptyList(),
     reminders: List<Reminder> = emptyList(),
 ): Ledger = blankLedger(POWERTRAIN_EV).copy(records = records, reminders = reminders)
+
+/** 插电混动账本（`vehicle.powertrain = "phev"`），油电双流断言用。 */
+fun phevLedger(
+    records: List<Record> = emptyList(),
+    reminders: List<Reminder> = emptyList(),
+): Ledger = blankLedger(POWERTRAIN_PHEV).copy(records = records, reminders = reminders)
 
 fun assertClose(expected: Double?, actual: Double?, delta: Double = 1e-9, message: String = "") {
     if (expected == null || actual == null) {

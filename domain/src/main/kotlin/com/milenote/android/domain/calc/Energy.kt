@@ -3,9 +3,17 @@ package com.milenote.android.domain.calc
 import com.milenote.android.domain.model.Record
 
 /**
+ * 能量种类：一条记录只能是其中一种（`liters` 或 `kwh`）。
+ *
+ * PHEV / 增程同一账本里两类记录并存，计算时必须按种类分流，
+ * **不能把"升"和"度"混进同一个分子**（量纲不同、且两条流覆盖同一段里程）。
+ */
+enum class EnergyKind { FUEL, ELECTRIC }
+
+/**
  * 一个能耗区间（燃油=满箱法，纯电=满电法；手填记录单独成区间）。
  *
- * [rate] 单位随车辆动力类型：燃油为 L/100km，纯电为 kWh/100km；
+ * [rate] 单位随 [EnergyKind]：燃油为 L/100km，纯电为 kWh/100km；
  * [amount] 为区间累计能源量（燃油 L / 纯电 kWh）。
  */
 data class EnergyInterval(
@@ -29,16 +37,17 @@ data class EnergyInterval(
  * `missed`（此前漏记）会重新建立基准；里程差 ≤ 0 的区间不产出。
  * 历史手填能耗（`kind == "manual"`）不参与本函数。
  *
- * @param ev true=纯电（读 `Record.kwh`），false=燃油（读 `Record.liters`）。
- *   只统计本动力类型的记录：切换动力类型后，另一种单位的旧记录不会串进来重算。
+ * @param kind 能量种类：读 `Record.liters`（燃油）或 `Record.kwh`（纯电）。
+ *   只统计本种类的记录：混动车切换/混排时，另一种单位的记录不会串进来重算。
  */
-fun energyIntervals(records: List<Record>, ev: Boolean = false): List<EnergyInterval> {
-    val amountOf: (Record) -> Double? = if (ev) { r -> r.kwh } else { r -> r.liters }
+fun energyIntervals(records: List<Record>, kind: EnergyKind = EnergyKind.FUEL): List<EnergyInterval> {
+    val electric = kind == EnergyKind.ELECTRIC
+    val amountOf: (Record) -> Double? = if (electric) { r -> r.kwh } else { r -> r.liters }
     val sorted = records
         .filter { Categories.isEnergy(it.category) && it.kind != "manual" && amountOf(it) != null }
         .sortedWith(compareBy<Record> { it.date }.thenBy { it.odometer ?: 0.0 })
 
-    val sourceLabel = if (ev) "满电法" else "满箱法"
+    val sourceLabel = if (electric) "满电法" else "满箱法"
     var anchor: Record? = null
     var amount = 0.0
     val result = mutableListOf<EnergyInterval>()
@@ -81,7 +90,12 @@ fun energyIntervals(records: List<Record>, ev: Boolean = false): List<EnergyInte
     return result
 }
 
-/** 手填能耗转成的加权区间（`kind == "manual"`；单位随车）。 */
+/** 旧调用点兼容：布尔版 `energyIntervals`（true=纯电）。 */
+@Deprecated("Use energyIntervals(records, kind)", ReplaceWith("energyIntervals(records, if (ev) EnergyKind.ELECTRIC else EnergyKind.FUEL)"))
+fun energyIntervals(records: List<Record>, ev: Boolean): List<EnergyInterval> =
+    energyIntervals(records, if (ev) EnergyKind.ELECTRIC else EnergyKind.FUEL)
+
+/** 手填能耗转成的加权区间（`kind == "manual"`；单位随车：历史 Web 数据按 L/100km 处理）。 */
 fun manualEnergyIntervals(records: List<Record>): List<EnergyInterval> = records
     .filter { it.kind == "manual" && (it.distance ?: 0.0) > 0 && (it.rate ?: 0.0) > 0 }
     .map {
@@ -105,14 +119,15 @@ fun manualEnergyIntervals(records: List<Record>): List<EnergyInterval> = records
  *
  * @return record.id → L/100km 或 kWh/100km
  */
-fun energyRateByRecord(records: List<Record>, ev: Boolean = false): Map<String, Double> {
+fun energyRateByRecord(records: List<Record>, kind: EnergyKind = EnergyKind.FUEL): Map<String, Double> {
+    val electric = kind == EnergyKind.ELECTRIC
     val result = LinkedHashMap<String, Double>()
     records.filter { it.kind == "manual" }
         .forEach { record ->
             val rate = record.rate ?: return@forEach
             if (rate > 0 && (record.distance ?: 0.0) > 0) result[record.id] = rate
         }
-    val amountOf: (Record) -> Double? = if (ev) { r -> r.kwh } else { r -> r.liters }
+    val amountOf: (Record) -> Double? = if (electric) { r -> r.kwh } else { r -> r.liters }
     val sorted = records
         .filter { Categories.isEnergy(it.category) && it.kind != "manual" && amountOf(it) != null }
         .sortedWith(compareBy<Record> { it.date }.thenBy { it.odometer ?: 0.0 })
@@ -148,3 +163,8 @@ fun energyRateByRecord(records: List<Record>, ev: Boolean = false): Map<String, 
     }
     return result
 }
+
+/** 旧调用点兼容：布尔版 `energyRateByRecord`（true=纯电）。 */
+@Deprecated("Use energyRateByRecord(records, kind)", ReplaceWith("energyRateByRecord(records, if (ev) EnergyKind.ELECTRIC else EnergyKind.FUEL)"))
+fun energyRateByRecord(records: List<Record>, ev: Boolean): Map<String, Double> =
+    energyRateByRecord(records, if (ev) EnergyKind.ELECTRIC else EnergyKind.FUEL)

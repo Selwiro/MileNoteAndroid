@@ -43,6 +43,13 @@ class ValidateTest {
     }
 
     @Test
+    fun `record cannot hold both liters and kwh`() {
+        // 升与度同时存在会被油/电两条流各算一遍（静默双计量），必须拒
+        val both = evRecord().copy(liters = 40.0)
+        assertEquals("一条记录只能填加油量或充电量中的一种", validateRecord(both))
+    }
+
+    @Test
     fun `ev manual consumption requires a positive rate`() {
         val manual = evRecord(amount = 0.0, kwh = 40.0, kind = "manual", distance = 100.0)
         assertEquals("请填写有效油耗/电耗", validateRecord(manual))

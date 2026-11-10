@@ -1,5 +1,6 @@
 package com.milenote.android.domain.calc
 
+import com.milenote.android.domain.evRecord
 import com.milenote.android.domain.fuelRecord
 import com.milenote.android.domain.importedItem
 import com.milenote.android.domain.model.Record
@@ -145,6 +146,20 @@ class MergeImportTest {
         assertEquals(2, result.skipped)
         assertEquals(0, result.merged)
         assertTrue(result.records[0].id == "c")
+    }
+
+    @Test
+    fun `charging records never enter fuel conflicts`() {
+        // 混动车：账本里已有小熊加油记录，再导入一条钱迹充电记录 → 不应弹「油费口径」选择
+        val existing = listOf(fuelRecord("2026-01-01", 1000.0, 40.0, source = "小熊油耗", sourceId = "b1"))
+        val charging = evRecord("2026-01-01", 1100.0, 20.0, source = "钱迹", sourceId = "q1")
+        val items = listOf(importedItem(charging))
+        assertTrue(fuelImportConflicts(existing, items).isEmpty())
+        assertNull(fuelBatchConflict(existing, items))
+
+        // 对照：真正的钱迹加油记录仍触发冲突
+        val fuelQianji = fuelRecord("2026-01-01", 1000.0, 40.0, source = "钱迹", sourceId = "q2")
+        assertTrue(fuelImportConflicts(existing, listOf(importedItem(fuelQianji))).isNotEmpty())
     }
 
     @Test

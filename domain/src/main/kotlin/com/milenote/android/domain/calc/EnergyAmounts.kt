@@ -16,12 +16,17 @@ private fun round2(value: Double): Double = round(value * 100.0) / 100.0
  * - 填了能源量 + 单价 + 实付金额：补应付金额（量 × 价）、优惠金额（应付 - 实付）；
  * - 填了能源量 + 单价（未填实付）：补应付金额 = 量 × 价，再补实付 = 应付 - 优惠；
  * - 填了实付/应付 + 单价（未填能源量）：补能源量 = 应付（或实付）/ 单价（能算就补）。
+ *
+ * @param ev 本行是否充电记录（PHEV 由「燃油标号」下拉的「充电」选项决定）；仅在两个
+ *   能源字段都为空、需要新建字段时生效，已有字段优先。
  */
 fun fillEnergyAmounts(record: Record, ev: Boolean = false): Record {
     if (record.kind == "manual" || !Categories.isEnergy(record.category)) return record
+    // 升与度同时存在属于坏数据（校验层会拒），这里不猜、不覆盖，原样返回。
+    if (record.liters != null && record.kwh != null) return record
 
-    // 纯电记录用 kwh，燃油记录用 liters；哪种字段已存在就写回哪种，
-    // 都为空时按传入的动力类型（ev）决定新建哪个字段。
+    // 纯电/充电记录用 kwh，燃油记录用 liters；哪种字段已存在就写回哪种，
+    // 都为空时按传入的 `ev`（本行是否为充电）决定新建哪个字段。
     val isKwh = when {
         record.kwh != null || record.liters != null -> record.kwh != null && record.liters == null
         else -> ev

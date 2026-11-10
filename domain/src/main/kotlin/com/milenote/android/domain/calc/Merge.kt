@@ -97,7 +97,10 @@ fun mergeImported(records: List<Record>, items: List<ImportItem>): MergeResult {
             val index = indexOfSame(result, old)
             val newEnergy = r.liters ?: r.kwh
             val oldEnergy = old.liters ?: old.kwh
-            if (Categories.isEnergy(r.category) && (newEnergy ?: 0.0) != 0.0 && (oldEnergy ?: 0.0) == 0.0) {
+            // 只允许「同量纲」补量：充电记录（kwh）不能覆盖加油记录（liters），反之亦然。
+            if (Categories.isEnergy(r.category) && (newEnergy ?: 0.0) != 0.0 && (oldEnergy ?: 0.0) == 0.0 &&
+                (r.kwh != null) == (old.kwh != null)
+            ) {
                 val oldKey = if (!old.sourceId.isNullOrEmpty()) "${old.source}:${old.sourceId}" else ""
                 if (oldKey.isNotEmpty()) keys.add(oldKey)
                 val note = listOf(old.note, r.note).filter { it.isNotEmpty() }.joinToString(" / ")
@@ -126,24 +129,30 @@ private fun indexOfSame(records: List<Record>, target: Record): Int {
  * 小熊口径下跳过钱迹油费，避免与「小熊实付」重复计成本。
  */
 fun applyImportPolicy(items: List<ImportItem>, basis: String): List<ImportItem> = items.map { item ->
-    if (basis == "bear" && item.record.source == "钱迹" && item.record.category == "油费") {
+    if (basis == "bear" && item.record.source == "钱迹" && item.record.category == "油费" &&
+        item.record.kwh == null
+    ) {
         item.copy(error = tr("按成本设置跳过钱迹油费（以小熊实付为准）", "Skipped Qianji fuel per cost setting (Bear paid amount takes precedence)"))
     } else {
         item
     }
 }
 
+/** 是否「燃油口径」记录：能源分类且没有充电量（`kwh`）。充电记录不参与小熊/钱迹口径。 */
+private fun isFuelSourceRecord(record: Record): Boolean =
+    record.category == "油费" && record.kwh == null && record.source in FUEL_SOURCES
+
 /**
  * 跨来源同日油费冲突（Web `fuelImportConflicts`）。
  *
  * 只有「待导入 / 已有」两侧同一天同时存在小熊与钱迹油费时才算冲突；
- * 拆分付款（同日多笔钱迹）按日期合计展示。
+ * 拆分付款（同日多笔钱迹）按日期合计展示。**充电记录（`kwh`）不参与**。
  */
 fun fuelImportConflicts(records: List<Record>, items: List<ImportItem>): List<FuelConflict> {
     val valid = items.filter { it.isValid }.map { it.record }
     val dates = LinkedHashSet<String>()
     for (r in valid) {
-        if (r.category == "油费" && r.source in FUEL_SOURCES &&
+        if (isFuelSourceRecord(r) &&
             duplicateOf(records.filter { it.source == r.source }, r) == null
         ) {
             dates.add(r.date)
@@ -155,7 +164,7 @@ fun fuelImportConflicts(records: List<Record>, items: List<ImportItem>): List<Fu
         for (r in valid.filter { it.date == date }) {
             if (duplicateOf(rows.filter { it.source == r.source }, r) == null) rows.add(r)
         }
-        val fuels = rows.filter { it.date == date && it.category == "油费" && it.source in FUEL_SOURCES }
+        val fuels = rows.filter { it.date == date && isFuelSourceRecord(it) }
         val hasBear = fuels.any { it.source == "小熊油耗" }
         val hasQianji = fuels.any { it.source == "钱迹" }
         if (hasBear && hasQianji) {
@@ -196,7 +205,7 @@ fun mergeWithFuelChoices(
             continue
         }
         val r = item.record
-        if (r.category == "油费" && r.source in FUEL_SOURCES) {
+        if (isFuelSourceRecord(r)) {
             val old = duplicateOf(result.filter { it.source == r.source }, r)
             if (old != null) {
                 skipped++
@@ -216,7 +225,7 @@ fun mergeWithFuelChoices(
         val choice = choices.getValue(c.date)
         for (i in result.indices) {
             val r = result[i]
-            if (r.date == c.date && r.category == "油费" && r.source in FUEL_SOURCES) {
+            if (r.date == c.date && isFuelSourceRecord(r)) {
                 val counted = choice == "both" ||
                     r.source == if (choice == "bear") "小熊油耗" else "钱迹"
                 result[i] = r.copy(fuelCounted = counted)
@@ -232,10 +241,10 @@ fun mergeWithFuelChoices(
  */
 fun fuelBatchConflict(records: List<Record>, items: List<ImportItem>): FuelBatchConflict? {
     val valid = items.filter { it.isValid }.map { it.record }
-        .filter { it.category == "油费" && it.source in FUEL_SOURCES }
+        .filter { it.category == "油费" && it.kwh == null && it.source in FUEL_SOURCES }
     val fresh = valid.filter { duplicateOf(records.filter { x -> x.source == it.source }, it) == null }
     if (fresh.isEmpty()) return null
-    val all = records.filter { it.category == "油费" } + fresh
+    val all = records.filter { it.category == "油费" && it.kwh == null } + fresh
     if (all.none { it.source == "小熊油耗" } || all.none { it.source == "钱迹" }) return null
     return FuelBatchConflict(
         bear = all.filter { it.source == "小熊油耗" }.sumOf { it.amount },
@@ -258,7 +267,7 @@ fun mergeFuelBatch(
     val result = mergeWithFuelChoices(records, items, choices)
     if (conflict != null) {
         val updated = result.records.map { r ->
-            if (r.category == "油费" && r.source in FUEL_SOURCES) {
+            if (isFuelSourceRecord(r)) {
                 val counted = basis == "both" || r.source == if (basis == "bear") "小熊油耗" else "钱迹"
                 r.copy(fuelCounted = counted)
             } else {

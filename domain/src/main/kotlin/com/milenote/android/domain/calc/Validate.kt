@@ -34,6 +34,13 @@ fun validateRecord(record: Record, customCategories: List<String> = emptyList())
             )
         }
     }
+    // 一条记录只能有一种能量量纲：升与度同时存在会被油/电两条流各算一遍（静默双计量）。
+    if (record.liters != null && record.kwh != null) {
+        return tr(
+            "一条记录只能填加油量或充电量中的一种",
+            "A record can hold either a fuel amount or a charge amount, not both",
+        )
+    }
     if (record.kind == "manual" && !((record.rate ?: 0.0) > 0)) return tr("请填写有效油耗/电耗", "Enter a valid fuel/energy economy")
     return ""
 }

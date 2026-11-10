@@ -229,6 +229,33 @@ class EnergyIntervalsTest {
         assertEquals(setOf("y"), fuelRates.keys)
     }
 
+    /** PHEV：同一账本里加油与充电记录并存，两条流各自推进、互不串单位。 */
+    @Test
+    fun `phev fuel and electric streams advance independently`() {
+        val records = listOf(
+            evRecord("2026-01-01", 1000.0, 15.0), // 电荷基准
+            fuelRecord("2026-01-10", 1450.0, 35.0), // 燃油基准
+            evRecord("2026-01-20", 1700.0, 13.0, full = false),
+            fuelRecord("2026-01-30", 2200.0, 32.0),
+            evRecord("2026-02-05", 2400.0, 16.0),
+        )
+        val fuel = energyIntervals(records, EnergyKind.FUEL)
+        assertEquals(1, fuel.size)
+        assertEquals(32.0, fuel[0].amount, 1e-9)
+        // 分母是总里程：1450 → 2200，含中间跑掉的纯电里程
+        assertEquals(750.0, fuel[0].distance, 1e-9)
+        assertEquals(4.266666666666667, fuel[0].rate, 1e-9)
+        assertEquals("满箱法", fuel[0].source)
+
+        val electric = energyIntervals(records, EnergyKind.ELECTRIC)
+        assertEquals(1, electric.size)
+        // 13（未充满）+ 16 累计到 02-05 充满
+        assertEquals(29.0, electric[0].amount, 1e-9)
+        assertEquals(1400.0, electric[0].distance, 1e-9)
+        assertEquals(2.0714285714285716, electric[0].rate, 1e-9)
+        assertEquals("满电法", electric[0].source)
+    }
+
     /** 纯电账本统计：energyRate 来自满电区间；evLedger 只是测试辅助。 */
     @Test
     fun `ev ledger stats use kwh intervals`() {

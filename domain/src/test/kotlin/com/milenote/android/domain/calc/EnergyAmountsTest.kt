@@ -119,4 +119,11 @@ class EnergyAmountsTest {
         val plain = Record(category = "油费", amount = 62.0)
         assertEquals(plain, fillEnergyAmounts(plain))
     }
+
+    @Test
+    fun `record with both liters and kwh is left untouched`() {
+        // 坏数据不猜、不覆盖，交给 validateRecord 报错；否则会把 kwh 写回 liters 变成双计量
+        val bad = Record(category = "油费", amount = 300.0, liters = 40.0, kwh = 45.0, unitPrice = 7.5)
+        assertEquals(bad, fillEnergyAmounts(bad))
+    }
 }

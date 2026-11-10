@@ -6,6 +6,7 @@ import com.milenote.android.domain.model.Garage
 import com.milenote.android.domain.model.HistoryBaseline
 import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.POWERTRAIN_FUEL
+import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.PlanBase
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
@@ -522,12 +523,22 @@ class BackupModelTest {
     fun `unknown powertrain normalizes to fuel on decode`() {
         val json = """
             {"version":2,"activeId":"a","cars":[{"version":1,"id":"a",
-             "vehicle":{"name":"怪车","currentKm":0,"powertrain":"PHEV"},
+             "vehicle":{"name":"怪车","currentKm":0,"powertrain":"hybrid"},
              "records":[],"reminders":[]}]}
         """.trimIndent()
         val garage = BackupCodec.decode(json)
         assertNull(garage.cars[0].vehicle.powertrain)
         assertFalse(garage.cars[0].isEv)
+    }
+
+    @Test
+    fun `phev powertrain survives backup round trip`() {
+        val car = blankLedger(POWERTRAIN_PHEV).copy(id = "phev-car")
+        val garage = Garage(version = 2, activeId = "phev-car", theme = "blue", cars = listOf(car))
+        val text = BackupCodec.encode(garage)
+        assertTrue(text.contains("\"powertrain\":\"phev\""))
+        assertEquals(POWERTRAIN_PHEV, BackupCodec.decode(text).cars[0].vehicle.powertrain)
+        assertEquals(POWERTRAIN_PHEV, BackupCodec.decode(text).cars[0].vehicle.powertrainKey)
     }
 
     private fun comilenotePlan() = com.milenote.android.domain.model.PlanEntry(

@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 动力类型归一与缺省语义：缺省/非法值一律按燃油处理，纯电由 `"ev"` 显式声明。 */
+/** 动力类型归一与缺省语义：缺省/非法值一律按燃油处理，纯电/插混由显式值声明。 */
 class PowertrainTest {
 
     @Test
@@ -14,12 +14,14 @@ class PowertrainTest {
         assertNull(normalizePowertrain(null))
         assertNull(normalizePowertrain(""))
         assertNull(normalizePowertrain("bev"))
-        assertNull(normalizePowertrain("phev"))
         assertNull(normalizePowertrain("hybrid"))
+        assertNull(normalizePowertrain("hev"))
         assertEquals(POWERTRAIN_FUEL, normalizePowertrain("fuel"))
         assertEquals(POWERTRAIN_FUEL, normalizePowertrain(" FUEL "))
         assertEquals(POWERTRAIN_EV, normalizePowertrain("ev"))
         assertEquals(POWERTRAIN_EV, normalizePowertrain(" EV "))
+        assertEquals(POWERTRAIN_PHEV, normalizePowertrain("phev"))
+        assertEquals(POWERTRAIN_PHEV, normalizePowertrain(" PHEV "))
     }
 
     @Test
@@ -32,6 +34,9 @@ class PowertrainTest {
         assertEquals("bear", vehicle.fuelCostSource)
         assertFalse(blankLedger().isEv)
         assertEquals(POWERTRAIN_FUEL, blankLedger().vehicle.powertrainKey)
+        assertEquals(EnergyProfile.FUEL_ONLY, vehicle.energyProfile)
+        assertTrue(vehicle.hasFuel)
+        assertFalse(vehicle.hasCharging)
     }
 
     @Test
@@ -42,6 +47,9 @@ class PowertrainTest {
         // 纯电不能带 bear/qianji 口径，否则钱迹电费会被旧逻辑判 0
         assertNull(vehicle.fuelCostSource)
         assertTrue(blankLedger(POWERTRAIN_EV).isEv)
+        assertEquals(EnergyProfile.ELECTRIC_ONLY, vehicle.energyProfile)
+        assertFalse(vehicle.hasFuel)
+        assertTrue(vehicle.hasCharging)
 
         // 非法动力类型按燃油建车
         val weird = blankVehicle("hybrid")
@@ -51,13 +59,33 @@ class PowertrainTest {
     }
 
     @Test
-    fun `normalize garage maps unknown powertrain to fuel`() {
-        val car = blankLedger().copy(id = "a", vehicle = Vehicle(name = "怪车", powertrain = "PHEV"))
+    fun `phev vehicle has both fuel and charging`() {
+        val vehicle = blankVehicle(POWERTRAIN_PHEV)
+        assertEquals(POWERTRAIN_PHEV, vehicle.powertrain)
+        assertEquals(POWERTRAIN_PHEV, vehicle.powertrainKey)
+        assertEquals(EnergyProfile.DUAL, vehicle.energyProfile)
+        assertTrue(vehicle.hasFuel)
+        assertTrue(vehicle.hasCharging)
+        assertFalse(vehicle.isEv)
+        // 插混也会跑钱迹来源的加油记录，不能沿用 bear 口径（否则被 costOf 判 0）
+        assertNull(vehicle.fuelCostSource)
+        assertEquals(EnergyProfile.DUAL, blankLedger(POWERTRAIN_PHEV).energyProfile)
+    }
+
+    @Test
+    fun `normalize garage keeps phev and maps unknown powertrain to fuel`() {
+        val phev = blankLedger(POWERTRAIN_PHEV).copy(id = "a")
         val garage = com.milenote.android.domain.backup.GarageOps.normalizeGarage(
-            Garage(version = 2, activeId = "a", theme = "blue", cars = listOf(car)),
+            Garage(version = 2, activeId = "a", theme = "blue", cars = listOf(phev)),
         )
-        assertNull(garage.cars[0].vehicle.powertrain)
-        assertFalse(garage.cars[0].isEv)
+        assertEquals(POWERTRAIN_PHEV, garage.cars[0].vehicle.powertrain)
+
+        val weird = blankLedger().copy(id = "b", vehicle = Vehicle(name = "怪车", powertrain = "hybrid"))
+        val garage2 = com.milenote.android.domain.backup.GarageOps.normalizeGarage(
+            Garage(version = 2, activeId = "b", theme = "blue", cars = listOf(weird)),
+        )
+        assertNull(garage2.cars[0].vehicle.powertrain)
+        assertFalse(garage2.cars[0].isEv)
     }
 
     @Test
@@ -79,5 +107,15 @@ class PowertrainTest {
             POWERTRAIN_EV,
             com.milenote.android.domain.backup.GarageOps.mergeLedger(empty, incomingEv).vehicle.powertrainKey,
         )
+    }
+
+    @Test
+    fun `legacy migration normalizes phev`() {
+        val legacy = blankLedger().copy(
+            vehicle = Vehicle(name = "插混", powertrain = "phev"),
+            records = emptyList(),
+        )
+        val garage = com.milenote.android.domain.backup.GarageOps.migrateLegacy(legacy)
+        assertEquals(POWERTRAIN_PHEV, garage.cars[0].vehicle.powertrain)
     }
 }

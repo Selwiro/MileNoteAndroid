@@ -5,6 +5,7 @@ import com.milenote.android.domain.model.blankLedger
 import com.milenote.android.domain.evLedger
 import com.milenote.android.domain.evRecord
 import com.milenote.android.domain.fuelRecord
+import com.milenote.android.domain.phevLedger
 
 import com.milenote.android.domain.d
 
@@ -12,6 +13,7 @@ import com.milenote.android.domain.assertClose
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.testLedger
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -178,9 +180,61 @@ class StatsTest {
         assertNull(result.energyRate)
         // 首条只作基准：(20 + 30) / 500 km * 100 = 10.0
         assertEquals(10.0, result.estimatedEnergyRate!!, 1e-9)
-        assertEquals(10.0, estimateEnergyRate(ledger.records)!!, 1e-9)
-        assertNull(estimateEnergyRate(ledger.records.take(1)))
-        assertNull(estimateEnergyRate(emptyList()))
+        assertEquals(10.0, estimateEnergyRate(ledger.records, EnergyKind.ELECTRIC)!!, 1e-9)
+        assertNull(estimateEnergyRate(ledger.records.take(1), EnergyKind.ELECTRIC))
+        assertNull(estimateEnergyRate(emptyList(), EnergyKind.ELECTRIC))
+        // 燃油流没有加油记录 → 估算为 null
+        assertNull(estimateEnergyRate(ledger.records))
+    }
+
+    @Test
+    fun `phev stats keep fuel and electric streams separate`() {
+        val ledger = phevLedger(
+            records = listOf(
+                evRecord("2026-01-01", 1000.0, 15.0),
+                fuelRecord("2026-01-10", 1450.0, 35.0),
+                evRecord("2026-01-20", 1700.0, 13.0, full = false),
+                fuelRecord("2026-01-30", 2200.0, 32.0),
+                evRecord("2026-02-05", 2400.0, 16.0),
+            ),
+        )
+        val result = stats(ledger)
+        val fuel = result.fuelEnergy!!
+        val electric = result.electricEnergy!!
+        assertEquals(4.266666666666667, fuel.rate!!, 1e-9)
+        assertEquals(2.0714285714285716, electric.rate!!, 1e-9)
+        assertEquals(1, fuel.intervals.size)
+        assertEquals(1, electric.intervals.size)
+        // 主口径（页面标题「能耗概览」）是燃油流
+        assertEquals(fuel.rate, result.energyRate)
+        assertEquals(1, result.intervals.size)
+        // 两条流各自的量/里程，不许合并成一个数
+        assertEquals(32.0, fuel.amount, 1e-9)
+        assertEquals(29.0, electric.amount, 1e-9)
+        assertEquals(750.0, fuel.distance, 1e-9)
+        assertEquals(1400.0, electric.distance, 1e-9)
+        val merged = (32.0 + 29.0) / (750.0 + 1400.0) * 100.0
+        assertFalse(kotlin.math.abs((result.energyRate ?: 0.0) - merged) < 1e-6)
+    }
+
+    @Test
+    fun `phev estimated fallback is computed per stream`() {
+        val ledger = phevLedger(
+            records = listOf(
+                fuelRecord("2026-01-01", 1000.0, 40.0),
+                fuelRecord("2026-01-10", 1500.0, 40.0),
+                // 两次都未充满 → 电荷流没有满电区间，只能回退累计估算
+                evRecord("2026-02-01", 2000.0, 20.0, full = false),
+                evRecord("2026-02-10", 2400.0, 24.0, full = false),
+            ),
+        )
+        val result = stats(ledger)
+        assertEquals(8.0, result.fuelEnergy!!.rate!!, 1e-9)
+        assertNull(result.fuelEnergy!!.estimated)
+        assertNull(result.electricEnergy!!.rate)
+        // 首条只作基准：24 / 400 km * 100 = 6.0
+        assertEquals(6.0, result.electricEnergy!!.estimated!!, 1e-9)
+        assertNull(result.estimatedEnergyRate)
     }
 
     @Test
