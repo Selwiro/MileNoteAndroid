@@ -10,6 +10,7 @@ import com.milenote.android.data.garage.GarageRepository
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.data.share.SharedImport
+import com.milenote.android.data.garage.RestoreSummary
 import com.milenote.android.data.settings.SettingsRepository
 import com.milenote.android.data.webdav.Plan
 import com.milenote.android.data.webdav.AutoSyncOutcome
@@ -66,6 +67,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -151,11 +153,30 @@ data class QuarantinedRaw(
     val savedAtMillis: Long,
 )
 
+/** 仓库加载状态快照（四条 Flow 合并成一次更新，避免中间态闪烁）。 */
+private data class LoadSnapshot(
+    val garage: Garage?,
+    val demo: Boolean,
+    val loadError: String?,
+    val blocked: Boolean,
+)
+
+/** 一次导入实际写入的结果（供导入向导展示真实数字）。 */
+data class ImportWriteResult(
+    val added: Int,
+    val merged: Int,
+    val skipped: Int,
+    val overwritten: Int,
+    val completedServices: Int,
+)
+
 /** 全局 UI 状态。 */
 data class UiState(
     val garage: Garage? = null,
     val demo: Boolean = false,
     val loadError: String? = null,
+    /** 读取失败且原始文件无法隔离：本次会话停止落盘（总览显示「已暂停保存」）。 */
+    val persistenceBlocked: Boolean = false,
     val period: Period = Period.ALL,
     val editor: EditorTarget? = null,
     val vehicleSwitcher: Boolean = false,
@@ -172,6 +193,8 @@ data class UiState(
     val customRange: DateRange? = null,
     /** 最近一次读取失败被隔离的原始账本；仅用于设置页导出入口。 */
     val quarantinedRaw: QuarantinedRaw? = null,
+    /** 最近一次整体覆盖（WebDAV 下载 / 还原）前的本地快照；非空时设置页显示回滚入口。 */
+    val replaceSnapshot: QuarantinedRaw? = null,
 ) {
     /** 总览实际使用的统计范围（自定义优先）。 */
     fun effectiveRange(today: java.time.LocalDate = Dates.today()): DateRange =
@@ -205,13 +228,19 @@ class MileNoteViewModel(
             repository.load()
         }
         viewModelScope.launch {
-            combine(repository.garage, repository.demoMode, repository.loadError) { garage, demo, loadError ->
-                Triple(garage, demo, loadError)
-            }.collect { (garage, demo, loadError) ->
+            combine(
+                repository.garage,
+                repository.demoMode,
+                repository.loadError,
+                repository.persistenceBlocked,
+            ) { garage, demo, loadError, blocked ->
+                LoadSnapshot(garage, demo, loadError, blocked)
+            }.collect { snapshot ->
                 _state.value = _state.value.copy(
-                    garage = garage,
-                    demo = demo,
-                    loadError = loadError,
+                    garage = snapshot.garage,
+                    demo = snapshot.demo,
+                    loadError = snapshot.loadError,
+                    persistenceBlocked = snapshot.blocked,
                 )
             }
         }
@@ -893,12 +922,53 @@ class MileNoteViewModel(
     ) {
         viewModelScope.launch {
             try {
-                var added = 0
-                var merged = 0
-                var skipped = 0
-                var overwritten = 0
-                var completedServices = 0
-                repository.update(syncHistory = true) { garage ->
+                val written = performImport(items, fuelBasis, overwriteDuplicates)
+                _state.value = _state.value.copy(message = importSummaryText(written))
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(message = tr("导入失败：%s", "Import failed: %s", e.message))
+            }
+        }
+    }
+
+    /**
+     * 供导入向导**等待真实写入结果**的版本。
+     *
+     * 修复前向导调用 fire-and-forget 的 [applyImport] 后立即显示「导入已提交」，
+     * 若随后写库失败，用户已经看到成功提示。
+     *
+     * @throws Exception 写入失败时抛出，由向导转为错误提示。
+     */
+    suspend fun applyImportAwait(
+        items: List<ImportItem>,
+        fuelBasis: String? = null,
+        overwriteDuplicates: Boolean = false,
+    ): ImportWriteResult = performImport(items, fuelBasis, overwriteDuplicates)
+
+    private fun importSummaryText(written: ImportWriteResult): String {
+        val extra = if (written.completedServices > 0) {
+            tr(" · 自动完成 %d 项保养", " · auto-completed %d service items", written.completedServices)
+        } else {
+            ""
+        }
+        val overwriteText = if (written.overwritten > 0) tr(" · 覆盖 %d", " · overwritten %d", written.overwritten) else ""
+        return tr(
+            "导入完成：新增 %d · 合并 %d · 跳过 %d%s%s",
+            "Import complete: %d added · %d merged · %d skipped%s%s",
+            written.added, written.merged, written.skipped, overwriteText, extra,
+        )
+    }
+
+    private suspend fun performImport(
+        items: List<ImportItem>,
+        fuelBasis: String?,
+        overwriteDuplicates: Boolean,
+    ): ImportWriteResult {
+        var added = 0
+        var merged = 0
+        var skipped = 0
+        var overwritten = 0
+        var completedServices = 0
+        repository.update(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
                         // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据作为新记录写回。
                         val baseRecords = if (overwriteDuplicates) {
@@ -936,19 +1006,13 @@ class MileNoteViewModel(
                         )
                     }
                 }
-                val extra = if (completedServices > 0) tr(" · 自动完成 %d 项保养", " · auto-completed %d service items", completedServices) else ""
-                val overwriteText = if (overwritten > 0) tr(" · 覆盖 %d", " · overwritten %d", overwritten) else ""
-                _state.value = _state.value.copy(
-                    message = tr(
-                        "导入完成：新增 %d · 合并 %d · 跳过 %d%s%s",
-                        "Import complete: %d added · %d merged · %d skipped%s%s",
-                        added, merged, skipped, overwriteText, extra,
-                    ),
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(message = tr("导入失败：%s", "Import failed: %s", e.message))
-            }
-        }
+        return ImportWriteResult(
+            added = added,
+            merged = merged,
+            skipped = skipped,
+            overwritten = overwritten,
+            completedServices = completedServices,
+        )
     }
 
     // ---------- 备份 / 演示 ----------
@@ -979,22 +1043,86 @@ class MileNoteViewModel(
         runCatching { file.readBytes() }.getOrNull()
     }
 
+    /** 读取失败后用户点「重新读取」：清缓存重新读盘；成功则退出「暂停保存」。 */
+    fun reloadLedger() {
+        viewModelScope.launch {
+            val blockedBefore = _state.value.persistenceBlocked
+            runCatching { repository.reload() }
+                .onSuccess {
+                    val stillBlocked = repository.persistenceBlocked.value
+                    _state.value = _state.value.copy(
+                        message = when {
+                            stillBlocked -> tr("仍无法读取本机账本，已继续暂停保存", "Still cannot read the local ledger — saving remains paused")
+                            blockedBefore -> tr("已重新读取本机账本", "The local ledger was re-read")
+                            else -> tr("已重新读取本机账本", "The local ledger was re-read")
+                        },
+                    )
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        message = tr("重新读取失败：%s", "Re-read failed: %s", e.message),
+                    )
+                }
+        }
+    }
+
+    /** 刷新「覆盖前快照」状态；进入备份与还原页时调用。 */
+    suspend fun refreshReplaceSnapshot() {
+        val file = repository.latestReplaceSnapshot()
+        _state.value = _state.value.copy(
+            replaceSnapshot = file?.let { QuarantinedRaw(name = it.name, savedAtMillis = it.lastModified()) },
+        )
+    }
+
+    /** 回滚到最近一次整体覆盖（WebDAV 下载 / 还原）前的本地快照，带二次确认。 */
+    fun rollbackToReplaceSnapshot() {
+        confirm(
+            PendingConfirm(
+                title = tr("回滚到上次覆盖前的账本？", "Roll back to the ledger before the last overwrite?"),
+                message = tr(
+                    "将用本机快照替换当前账本；当前内容会先另存一份快照，可再次回滚。",
+                    "The current ledger will be replaced by the local snapshot; the current content is snapshotted first, so you can roll back again.",
+                ),
+                confirmLabel = tr("回滚", "Roll back"),
+                destructive = true,
+            ) {
+                viewModelScope.launch {
+                    val ok = runCatching { repository.rollbackToLatestSnapshot() }.getOrDefault(false)
+                    _state.value = _state.value.copy(
+                        message = if (ok) {
+                            tr("已回滚到上次覆盖前的账本", "Rolled back to the ledger before the last overwrite")
+                        } else {
+                            tr("回滚失败：没有可用的本机快照", "Rollback failed: no usable local snapshot")
+                        },
+                    )
+                }
+            },
+        )
+    }
+
     fun restoreBackup(text: String) {
         viewModelScope.launch {
             try {
-                val summary = repository.restoreBackup(text)
-                _state.value = _state.value.copy(
-                    message = tr(
-                        "已恢复备份：%d 辆车 · %d 条记录 · %d 条提醒",
-                        "Backup restored: %d vehicles · %d records · %d reminders",
-                        summary.cars, summary.records, summary.reminders,
-                    ),
-                )
+                val summary = restoreBackupAwait(text)
+                _state.value = _state.value.copy(message = restoreSummaryText(summary))
             } catch (e: Exception) {
                 _state.value = _state.value.copy(message = tr("恢复失败：%s", "Restore failed: %s", e.message))
             }
         }
     }
+
+    /** 供导入向导等待真实恢复结果的版本（见 [applyImportAwait]）。 */
+    suspend fun restoreBackupAwait(text: String): RestoreSummary {
+        val summary = repository.restoreBackup(text)
+        _state.value = _state.value.copy(message = restoreSummaryText(summary))
+        return summary
+    }
+
+    private fun restoreSummaryText(summary: RestoreSummary): String = tr(
+        "已恢复备份：%d 辆车 · %d 条记录 · %d 条提醒",
+        "Backup restored: %d vehicles · %d records · %d reminders",
+        summary.cars, summary.records, summary.reminders,
+    )
 
     fun enterDemo() {
         repository.enterDemo()
@@ -1112,21 +1240,24 @@ class MileNoteViewModel(
         viewModelScope.launch {
             updateWebDav { it.copy(busy = true, error = null, lastResult = null, remoteEncrypted = null) }
             try {
-                val localJson = repository.exportBackup()
-                val localHash = webDavRepository.plainHash(localJson)
-                val meta = webDavRepository.uploadLedger(localJson, force = true)
-                val encrypted = webDavRepository.hasEncryptionPassword()
-                webDavRepository.markSynced(meta.etag, localHash, localHash)
-                updateWebDav {
-                    it.copy(
-                        busy = false,
-                        lastResult = tr("已上传并覆盖远端备份", "Uploaded and overwrote the remote backup"),
-                        remoteExists = true,
-                        remoteSize = meta.size,
-                        remoteEncrypted = encrypted,
-                        decryptPrompt = null,
-                        conflict = null,
-                    )
+                // 与自动同步共用一把锁：避免两路并发 PUT 与 markSynced 乱序。
+                webDavRepository.syncMutex.withLock {
+                    val localJson = repository.exportBackup()
+                    val localHash = webDavRepository.plainHash(localJson)
+                    val meta = webDavRepository.uploadLedger(localJson, force = true)
+                    val encrypted = webDavRepository.hasEncryptionPassword()
+                    webDavRepository.markSynced(meta.etag, localHash, localHash)
+                    updateWebDav {
+                        it.copy(
+                            busy = false,
+                            lastResult = tr("已上传并覆盖远端备份", "Uploaded and overwrote the remote backup"),
+                            remoteExists = true,
+                            remoteSize = meta.size,
+                            remoteEncrypted = encrypted,
+                            decryptPrompt = null,
+                            conflict = null,
+                        )
+                    }
                 }
             } catch (t: Throwable) {
                 updateWebDav { it.copy(busy = false, error = t.message ?: tr("上传失败", "Upload failed")) }
@@ -1143,44 +1274,47 @@ class MileNoteViewModel(
         viewModelScope.launch {
             updateWebDav { it.copy(busy = true, error = null, lastResult = null) }
             try {
-                when (val fetched = webDavRepository.fetchLedger()) {
-                    is WebDavFetchResult.NotFound -> {
-                        updateWebDav {
-                            it.copy(
-                                busy = false,
-                                error = tr("远端没有备份文件，请先上传", "No backup on the server. Upload one first."),
-                                remoteExists = false,
-                                remoteSize = null,
-                                remoteEncrypted = null,
+                // 与自动同步共用一把锁：覆盖本地前 repository.replace 会先写本地快照，可回滚。
+                webDavRepository.syncMutex.withLock {
+                    when (val fetched = webDavRepository.fetchLedger()) {
+                        is WebDavFetchResult.NotFound -> {
+                            updateWebDav {
+                                it.copy(
+                                    busy = false,
+                                    error = tr("远端没有备份文件，请先上传", "No backup on the server. Upload one first."),
+                                    remoteExists = false,
+                                    remoteSize = null,
+                                    remoteEncrypted = null,
+                                )
+                            }
+                        }
+                        is WebDavFetchResult.PasswordRequired -> {
+                            askWebDavDecryptPassword(
+                                if (mode == WebDavDownloadMode.MERGE) PendingWebDavAction.DOWNLOAD_MERGE else PendingWebDavAction.DOWNLOAD_REPLACE,
                             )
                         }
-                    }
-                    is WebDavFetchResult.PasswordRequired -> {
-                        askWebDavDecryptPassword(
-                            if (mode == WebDavDownloadMode.MERGE) PendingWebDavAction.DOWNLOAD_MERGE else PendingWebDavAction.DOWNLOAD_REPLACE,
-                        )
-                    }
-                    is WebDavFetchResult.Found -> {
-                        val text = fetched.ledger.text
-                        applyRemoteBackup(text, mode)
-                        val localJson = repository.exportBackup()
-                        val localHash = webDavRepository.plainHash(localJson)
-                        val remoteHash = webDavRepository.plainHash(text)
-                        webDavRepository.markSynced(fetched.meta.etag, localHash, remoteHash)
-                        updateWebDav {
-                            it.copy(
-                                busy = false,
-                                lastResult = if (mode == WebDavDownloadMode.MERGE) {
-                                    tr("已从远端合并备份", "Merged the remote backup")
-                                } else {
-                                    tr("已用远端备份覆盖本地", "Replaced local data with the remote backup")
-                                },
-                                remoteExists = true,
-                                remoteSize = fetched.bytes.size.toLong(),
-                                remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
-                                decryptPrompt = null,
-                                conflict = null,
-                            )
+                        is WebDavFetchResult.Found -> {
+                            val text = fetched.ledger.text
+                            applyRemoteBackup(text, mode)
+                            val localJson = repository.exportBackup()
+                            val localHash = webDavRepository.plainHash(localJson)
+                            val remoteHash = webDavRepository.plainHash(text)
+                            webDavRepository.markSynced(fetched.meta.etag, localHash, remoteHash)
+                            updateWebDav {
+                                it.copy(
+                                    busy = false,
+                                    lastResult = if (mode == WebDavDownloadMode.MERGE) {
+                                        tr("已从远端合并备份", "Merged the remote backup")
+                                    } else {
+                                        tr("已用远端备份覆盖本地（可在 备份与还原 回滚）", "Replaced local data with the remote backup (roll back in Backup & restore)")
+                                    },
+                                    remoteExists = true,
+                                    remoteSize = fetched.bytes.size.toLong(),
+                                    remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
+                                    decryptPrompt = null,
+                                    conflict = null,
+                                )
+                            }
                         }
                     }
                 }
@@ -1204,31 +1338,33 @@ class MileNoteViewModel(
                 viewModelScope.launch {
                     updateWebDav { it.copy(busy = true, error = null) }
                     try {
-                        when (val fetched = webDavRepository.fetchLedger()) {
-                            is WebDavFetchResult.NotFound -> {
-                                updateWebDav { it.copy(busy = false, error = tr("远端备份已不存在，请重新同步", "The remote backup no longer exists. Sync again.")) }
-                            }
-                            is WebDavFetchResult.PasswordRequired -> {
-                                askWebDavDecryptPassword(PendingWebDavAction.MERGE_CONFLICT)
-                            }
-                            is WebDavFetchResult.Found -> {
-                                val text = fetched.ledger.text
-                                val current = _state.value.garage ?: repository.load()
-                                val merged = BackupCodec.restore(current, text)
-                                repository.replace(merged)
-                                val mergedJson = repository.exportBackup()
-                                val mergedHash = webDavRepository.plainHash(mergedJson)
-                                val meta = webDavRepository.uploadLedger(mergedJson, force = true)
-                                webDavRepository.markSynced(meta.etag, mergedHash, mergedHash)
-                                updateWebDav {
-                                    it.copy(
-                                        busy = false,
-                                        lastResult = tr("已合并远端记录并上传合并结果", "Merged remote records and uploaded the result"),
-                                        remoteExists = true,
-                                        remoteSize = meta.size,
-                                        remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
-                                        decryptPrompt = null,
-                                    )
+                        webDavRepository.syncMutex.withLock {
+                            when (val fetched = webDavRepository.fetchLedger()) {
+                                is WebDavFetchResult.NotFound -> {
+                                    updateWebDav { it.copy(busy = false, error = tr("远端备份已不存在，请重新同步", "The remote backup no longer exists. Sync again.")) }
+                                }
+                                is WebDavFetchResult.PasswordRequired -> {
+                                    askWebDavDecryptPassword(PendingWebDavAction.MERGE_CONFLICT)
+                                }
+                                is WebDavFetchResult.Found -> {
+                                    val text = fetched.ledger.text
+                                    val current = _state.value.garage ?: repository.load()
+                                    val merged = BackupCodec.restore(current, text)
+                                    repository.replace(merged)
+                                    val mergedJson = repository.exportBackup()
+                                    val mergedHash = webDavRepository.plainHash(mergedJson)
+                                    val meta = webDavRepository.uploadLedger(mergedJson, force = true)
+                                    webDavRepository.markSynced(meta.etag, mergedHash, mergedHash)
+                                    updateWebDav {
+                                        it.copy(
+                                            busy = false,
+                                            lastResult = tr("已合并远端记录并上传合并结果", "Merged remote records and uploaded the result"),
+                                            remoteExists = true,
+                                            remoteSize = meta.size,
+                                            remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
+                                            decryptPrompt = null,
+                                        )
+                                    }
                                 }
                             }
                         }

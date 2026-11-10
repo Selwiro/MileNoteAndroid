@@ -138,7 +138,12 @@ fun DashboardScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val ledger = state.activeCar
     if (ledger == null) {
-        DashboardLoadState(state = state, onNavigate = onNavigate, modifier = modifier)
+        DashboardLoadState(
+            state = state,
+            onNavigate = onNavigate,
+            onReloadLedger = vm::reloadLedger,
+            modifier = modifier,
+        )
         return
     }
     DashboardContent(
@@ -150,6 +155,7 @@ fun DashboardScreen(
         onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
         onEnterDemo = vm::enterDemo,
         onExitDemo = vm::exitDemo,
+        onReloadLedger = vm::reloadLedger,
         modifier = modifier,
     )
 }
@@ -164,6 +170,7 @@ private fun DashboardContent(
     onSelectCustomRange: (String, String) -> Unit,
     onEnterDemo: () -> Unit,
     onExitDemo: () -> Unit,
+    onReloadLedger: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = remember { Dates.today() }
@@ -192,7 +199,17 @@ private fun DashboardContent(
             item(key = "load-error") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MessageBar(
-                        message = tr("本地账本读取异常，已暂停保存。请先导出原始数据检查。", "The local ledger could not be read, so saving is paused. Export the raw data and check it first."),
+                        message = if (state.persistenceBlocked) {
+                            tr(
+                                "本地账本读取异常，已暂停保存（不会覆盖原文件）。请先导出原始数据检查，修好后可重新读取。",
+                                "The local ledger could not be read, so saving is paused (the original file is left untouched). Export the raw data first; once fixed you can re-read it.",
+                            )
+                        } else {
+                            tr(
+                                "本地账本读取异常，原始数据已另存。当前为空账本，可继续使用或重新读取。",
+                                "The local ledger could not be read and a copy of the original was saved. You are on an empty ledger — keep using it or re-read the original.",
+                            )
+                        },
                         kind = MessageKind.ERROR,
                     )
                     Text(
@@ -200,6 +217,9 @@ private fun DashboardContent(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    TextButton(onClick = onReloadLedger) {
+                        Text(tr("重新读取账本", "Re-read the ledger"))
+                    }
                 }
             }
         }
@@ -265,6 +285,7 @@ private fun DashboardContent(
 private fun DashboardLoadState(
     state: UiState,
     onNavigate: (String) -> Unit,
+    onReloadLedger: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val error = state.loadError
@@ -284,7 +305,17 @@ private fun DashboardLoadState(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         MessageBar(
-            message = tr("本地账本暂时无法读取或迁移。原记录仍保留，请导出原始数据检查；已暂停保存。", "The local ledger cannot be read or migrated right now. Your records are intact — export the raw data and check it; saving is paused."),
+            message = if (state.persistenceBlocked) {
+                tr(
+                    "本地账本暂时无法读取或迁移，已停止写入以保护原文件。原记录仍保留，请先导出原始数据检查。",
+                    "The local ledger cannot be read or migrated right now. Writing is disabled to protect the original file — export the raw data and check it first.",
+                )
+            } else {
+                tr(
+                    "本地账本暂时无法读取或迁移，原始数据已另存。原记录仍保留，请导出原始数据检查。",
+                    "The local ledger cannot be read or migrated right now. A copy of the original was saved; export the raw data and check it.",
+                )
+            },
             kind = MessageKind.ERROR,
         )
         Text(
@@ -294,6 +325,9 @@ private fun DashboardLoadState(
         )
         TextButton(onClick = { onNavigate(Routes.SETTINGS) }) {
             Text(tr("前往设置导出原始数据", "Go to Settings to export raw data"))
+        }
+        TextButton(onClick = onReloadLedger) {
+            Text(tr("重新读取账本", "Re-read the ledger"))
         }
     }
 }

@@ -615,22 +615,22 @@ internal class ImportWizardState(
                         val text = backupText
                             ?: throw ImportFileException(tr("请先选择备份文件", "Select a backup file first"))
                         val preview = backupPreview
-                        vm.restoreBackup(text)
+                        val restored = vm.restoreBackupAwait(text)
                         result = WizardResult(
                             title = tr("备份已恢复", "Backup restored"),
                             lines = buildList {
                                 if (preview != null) {
                                     add(tr("备份版本：version %d", "Backup version: %d", preview.version))
-                                    add(
-                                        tr(
-                                            "车辆 %d 辆 · 记录 %d 条 · 提醒 %d 条",
-                                            "%d vehicles · %d records · %d reminders",
-                                            preview.cars,
-                                            preview.records,
-                                            preview.reminders,
-                                        ),
-                                    )
                                 }
+                                add(
+                                    tr(
+                                        "已合并：车辆 %d 辆 · 记录 %d 条 · 提醒 %d 条",
+                                        "Merged: %d vehicles · %d records · %d reminders",
+                                        restored.cars,
+                                        restored.records,
+                                        restored.reminders,
+                                    ),
+                                )
                             },
                             note = tr(
                                 "按车辆编号合并：已有记录保留，新增记录追加；旧版单车备份合并到当前车辆。",
@@ -655,33 +655,30 @@ internal class ImportWizardState(
                         // 插混有油箱：加油行照常走油费口径，充电行（有 kwh、无 liters）由
                         // domain 的 `isFuelSourceRecord` 排除，不会被写 fuelCounted。
                         val withFuelTank = hasFuelTank
-                        val merge = withContext(Dispatchers.Default) {
-                            if (withFuelTank) {
-                                mergeFuelBatch(currentLedger?.records.orEmpty(), items, fuelBasis)
-                            } else {
-                                mergeImported(currentLedger?.records.orEmpty(), items)
-                            }
-                        }
-                        vm.applyImport(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
+                        // 等待真实写库结果再展示成功：修复「先报成功、后写库失败」。
+                        val written = vm.applyImportAwait(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
                         result = WizardResult(
                             title = if (overwriteDuplicates) {
-                                tr("导入已提交（覆盖重复）", "Import submitted (duplicates overwritten)")
+                                tr("导入完成（已覆盖重复）", "Import complete (duplicates overwritten)")
                             } else {
-                                tr("导入已提交", "Import submitted")
+                                tr("导入完成", "Import complete")
                             },
-                            lines = if (overwriteDuplicates) {
-                                listOf(
+                            lines = buildList {
+                                add(
                                     tr(
-                                        "重复记录已按覆盖方式替换原记录",
-                                        "Duplicate records were replaced by the imported ones",
+                                        "新增 %d 条 · 合并 %d 条 · 跳过 %d 条",
+                                        "%d added · %d merged · %d skipped",
+                                        written.added,
+                                        written.merged,
+                                        written.skipped,
                                     ),
                                 )
-                            } else {
-                                listOf(
-                                    tr("新增 %d 条", "%d added", merge.added),
-                                    tr("合并 %d 条", "%d merged", merge.merged),
-                                    tr("跳过 %d 条", "%d skipped", merge.skipped),
-                                )
+                                if (written.overwritten > 0) {
+                                    add(tr("覆盖重复 %d 条", "%d duplicates overwritten", written.overwritten))
+                                }
+                                if (written.completedServices > 0) {
+                                    add(tr("自动完成 %d 项保养", "%d service items auto-completed", written.completedServices))
+                                }
                             },
                             note = tr(
                                 "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",

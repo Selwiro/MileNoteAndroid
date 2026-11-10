@@ -314,7 +314,7 @@ internal fun VehicleEditorDialog(
                     item("name") {
                         FormField(
                             value = name,
-                            onValueChange = { name = it },
+                            onValueChange = { name = it.take(50) },
                             label = tr("车辆昵称 *", "Vehicle name *"),
                             placeholder = tr("例如：小蓝", "e.g. Blue"),
                             isError = error != null && name.isBlank(),

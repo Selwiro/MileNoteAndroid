@@ -233,7 +233,15 @@ class OkHttpWebDavClient(
             val request = baseRequest(credentials).get().build()
             http.newCall(request).execute().use { response ->
                 when (response.code) {
-                    200 -> WebDavContent(bytes = response.body.bytes(), meta = metaFrom(response))
+                    200 -> {
+                        // 先看 Content-Length，再分批读取并在超限时中止：避免把超大备份整个读进内存导致 OOM。
+                        val declared = response.body.contentLength()
+                        if (declared > MAX_REMOTE_LEDGER_BYTES) throw oversizedLedger(declared)
+                        WebDavContent(
+                            bytes = readCappedBytes(response.body.byteStream(), MAX_REMOTE_LEDGER_BYTES),
+                            meta = metaFrom(response),
+                        )
+                    }
                     404, 410 -> null
                     else -> throw statusException(response.code)
                 }
@@ -412,6 +420,14 @@ class OkHttpWebDavClient(
         "$operation ${tr("失败：$zh", "failed: $en")}"
 
     /** HTTP 状态码 → 中文异常。 */
+    private fun oversizedLedger(size: Long): WebDavException = WebDavException(
+        tr(
+            "远端备份过大（超过 %d MB），已停止下载；请清理服务器上的文件或改用更小的备份",
+            "The remote backup is too large (over %d MB) — download aborted; clean up the file on the server or use a smaller backup",
+            (MAX_REMOTE_LEDGER_BYTES / (1024 * 1024)).toInt(),
+        ),
+    )
+
     private fun statusException(code: Int): WebDavException = when {
         code == 401 || code == 403 -> WebDavHttpException(
             code,
@@ -473,6 +489,9 @@ class OkHttpWebDavClient(
 
         private val JSON_MEDIA_TYPE: MediaType = "application/json; charset=utf-8".toMediaType()
 
+        /** 远端账本下载上限：32 MB（远超含图片的正常账本，同时挡住误放的大文件）。 */
+        const val MAX_REMOTE_LEDGER_BYTES: Long = 32L * 1024 * 1024
+
         /** 默认 OkHttp 客户端：connect 15s / read 20s / write 20s。 */
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -481,4 +500,29 @@ class OkHttpWebDavClient(
             .retryOnConnectionFailure(true)
             .build()
     }
+}
+
+/**
+ * 分块读取响应体，超过 [max] 字节立即抛错（不继续读、不把超大内容留在内存里）。
+ *
+ * 抽成顶层函数便于单测：WebDAV 客户端本身依赖网络，无法在 JVM 测试里直接构造超大响应。
+ */
+internal fun readCappedBytes(input: java.io.InputStream, max: Long): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    val chunk = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        val read = input.read(chunk)
+        if (read < 0) break
+        total += read
+        if (total > max) throw WebDavException(
+            tr(
+                "远端备份过大（超过 %d MB），已停止下载",
+                "The remote backup is too large (over %d MB) — download aborted",
+                (max / (1024 * 1024)).toInt(),
+            ),
+        )
+        out.write(chunk, 0, read)
+    }
+    return out.toByteArray()
 }

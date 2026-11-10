@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * WebDAV 同步门面：配置（密码加密存储）+ 同步状态 + 远端账本读写。
@@ -36,6 +37,14 @@ class WebDavRepository(
     private val configStore = WebDavConfigStore(appContext)
     private val syncStateStore = WebDavSyncStateStore(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * 同步互斥：手动「立即同步 / 上传 / 下载 / 冲突合并」与前台自动同步**共用同一把锁**。
+     *
+     * 修复前手动路径没有锁，可能与自动同步并发 PUT/GET，`markSynced` 也会乱序 →
+     * 远端可能被旧状态覆盖。所有真正读写远端的流程都应包在 `syncMutex.withLock { }` 里。
+     */
+    val syncMutex = Mutex()
 
     /**
      * 最近一次 fetch 到的「加密信封」原始字节（内存缓存，不落库）。

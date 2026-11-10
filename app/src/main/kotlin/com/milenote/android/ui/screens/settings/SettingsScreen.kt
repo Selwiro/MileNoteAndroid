@@ -733,12 +733,15 @@ fun SettingsScreen(
                         demo = state.demo,
                         loadError = state.loadError,
                         quarantinedRaw = state.quarantinedRaw,
+                        replaceSnapshot = state.replaceSnapshot,
                         busy = busy,
                         message = message,
                         onExportBackup = { exportBackupFile() },
                         onExportCsv = { exportCsvFile() },
                         onExportRaw = { exportRawFile() },
                         onRefreshQuarantinedRaw = { vm.refreshQuarantinedRaw() },
+                        onRefreshReplaceSnapshot = { vm.refreshReplaceSnapshot() },
+                        onRollbackReplaceSnapshot = { vm.rollbackToReplaceSnapshot() },
                         onImportBackup = {
                             openBackup.launch(
                                 arrayOf("application/json", "application/octet-stream", "text/plain"),
@@ -1397,19 +1400,25 @@ private fun BackupRestorePage(
     demo: Boolean,
     loadError: String?,
     quarantinedRaw: QuarantinedRaw?,
+    replaceSnapshot: QuarantinedRaw?,
     busy: Boolean,
     message: SettingsMessage?,
     onExportBackup: () -> Unit,
     onExportCsv: () -> Unit,
     onExportRaw: () -> Unit,
     onRefreshQuarantinedRaw: suspend () -> Unit,
+    onRefreshReplaceSnapshot: suspend () -> Unit,
+    onRollbackReplaceSnapshot: () -> Unit,
     onImportBackup: () -> Unit,
     onDeleteAll: () -> Unit,
     onExitDemo: () -> Unit,
     onDismissMessage: () -> Unit,
 ) {
-    // 每次进入本页都重新检查是否有被隔离的损坏账本（读取失败时自动隔离）。
-    LaunchedEffect(Unit) { onRefreshQuarantinedRaw() }
+    // 每次进入本页都重新检查：被隔离的损坏账本、以及可回滚的「覆盖前快照」。
+    LaunchedEffect(Unit) {
+        onRefreshQuarantinedRaw()
+        onRefreshReplaceSnapshot()
+    }
     SettingsPageList {
         if (loadError != null || demo || message != null) {
             item("messages") {
@@ -1499,6 +1508,20 @@ private fun BackupRestorePage(
                     enabled = !busy,
                     onClick = onImportBackup,
                 )
+                if (replaceSnapshot != null) {
+                    SectionDivider()
+                    SettingsActionRow(
+                        icon = MileNoteIcons.Refresh,
+                        title = tr("回滚到上次覆盖前", "Roll back to before the last overwrite"),
+                        subtitle = tr(
+                            "快照：%s（WebDAV 下载或还原前的本机账本）",
+                            "Snapshot: %s (local ledger before a WebDAV download or restore)",
+                            formatBackupAt(replaceSnapshot.savedAtMillis),
+                        ),
+                        enabled = !busy,
+                        onClick = onRollbackReplaceSnapshot,
+                    )
+                }
             }
         }
 

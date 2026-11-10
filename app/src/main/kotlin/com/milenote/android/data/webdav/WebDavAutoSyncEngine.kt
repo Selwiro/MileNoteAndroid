@@ -3,7 +3,6 @@ package com.milenote.android.data.webdav
 import com.milenote.android.data.garage.GarageRepository
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.i18n.tr
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** 自动同步结果。 */
@@ -40,9 +39,35 @@ class WebDavAutoSyncEngine(
     private val garage: GarageRepository,
     private val webDav: WebDavRepository,
 ) {
-    private val mutex = Mutex()
+    /** 连续失败次数与下次允许重试的时间（进程内退避，避免每次编辑都重试失败的网络请求）。 */
+    private var consecutiveFailures = 0
+    private var nextAttemptAtMillis = 0L
 
-    suspend fun sync(recordAutoResult: Boolean = true): AutoSyncOutcome = mutex.withLock {
+    /** 退避时长：30s 起逐次翻倍，上限 15 分钟。 */
+    private fun backoffMillis(failures: Int): Long =
+        minOf(30_000L shl (failures - 1).coerceIn(0, 5), 15L * 60_000L)
+
+    suspend fun sync(recordAutoResult: Boolean = true): AutoSyncOutcome = webDav.syncMutex.withLock {
+        if (garage.persistenceBlocked.value) {
+            return@withLock AutoSyncOutcome(
+                AutoSyncOutcome.Kind.SKIPPED,
+                tr(
+                    "本机账本读取异常，已暂停同步以保护数据",
+                    "Local ledger could not be read — sync paused to protect your data",
+                ),
+            )
+        }
+        val waitMillis = nextAttemptAtMillis - System.currentTimeMillis()
+        if (consecutiveFailures > 0 && waitMillis > 0) {
+            return@withLock AutoSyncOutcome(
+                AutoSyncOutcome.Kind.SKIPPED,
+                tr(
+                    "上次同步失败，%d 秒后自动重试",
+                    "Last sync failed — retrying in %d s",
+                    (waitMillis / 1000).coerceAtLeast(1),
+                ),
+            )
+        }
         if (!webDav.canSync()) {
             return@withLock AutoSyncOutcome(
                 AutoSyncOutcome.Kind.SKIPPED,
@@ -131,9 +156,13 @@ class WebDavAutoSyncEngine(
                     }
                 }
             }
+            consecutiveFailures = 0
+            nextAttemptAtMillis = 0L
             if (recordAutoResult) webDav.markAutoSyncResult(outcome.message)
             outcome
         } catch (t: Throwable) {
+            consecutiveFailures += 1
+            nextAttemptAtMillis = System.currentTimeMillis() + backoffMillis(consecutiveFailures)
             val message = tr(
                 "自动同步失败：%s",
                 "Auto sync failed: %s",
