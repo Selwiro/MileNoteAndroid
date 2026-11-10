@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -28,11 +27,11 @@ import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -53,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,7 +109,7 @@ import java.time.ZoneOffset
  *
  * 结构（自上→下，三块内容统一为 SectionCard 卡片风格，卡内只有标题、无副标题）：
  * 1. 「油耗/能耗概览」卡：右上角时间筛选（全部 / 本月 / 今年 / 自定义 DateRangePicker）+ 卡内 2×2 纯文字指标
- *    （平均油耗/能耗 / 油费·电费支出 / 每公里平均油费·电费 / 行驶里程）；
+ *    （平均油耗/能耗 / 油费·电费支出 / 平均油费·电费 / 行驶里程）；
  * 2. 「油耗/能耗走势」卡：右上角独立时间筛选（只控制走势区间）+ 平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
  * - 顶部「统计 / 明细」两个固定页签；
  * - 统计：今日油价（仅燃油）+ 概览 + 走势；
@@ -658,36 +658,23 @@ private fun FuelPriceCard(
     SectionCard(
         title = tr("今日油价", "Today's fuel price"),
         action = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onRefresh,
-                    enabled = !loading,
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        imageVector = MileNoteIcons.Refresh,
-                        contentDescription = tr("刷新油价", "Refresh fuel prices"),
-                        modifier = Modifier.size(17.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TextButton(
-                    onClick = onGetCurrentCityPrice,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Icon(
-                        imageVector = MileNoteIcons.Location,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = locationLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+            // 刷新按钮移到卡片底部「更新于」前面，右上角只留定位 / 城市切换。
+            TextButton(
+                onClick = onGetCurrentCityPrice,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Icon(
+                    imageVector = MileNoteIcons.Location,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = locationLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         },
     ) {
@@ -701,11 +688,14 @@ private fun FuelPriceCard(
                     Text(tr("正在获取当地油价…", "Getting local fuel prices…"), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
             }
-            info == null -> Text(
-                text = tr("暂时无法获取油价，请检查网络后刷新", "Fuel prices are unavailable. Check your connection and refresh."),
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.error,
-            )
+            info == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                FuelPriceRefreshButton(onClick = onRefresh, enabled = !loading)
+                Text(
+                    text = tr("暂时无法获取油价，请检查网络后刷新", "Fuel prices are unavailable. Check your connection and refresh."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.error,
+                )
+            }
             else -> {
                 val requestedGrade = fuelGrade?.takeIf { it in setOf("92#", "95#", "98#", "0#") } ?: "92#"
                 val gradePrice = when (requestedGrade) {
@@ -716,107 +706,138 @@ private fun FuelPriceCard(
                 }
                 val shownGrade = if (gradePrice == null) "92#" else requestedGrade
                 val shownPrice = gradePrice ?: info.price92
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.Bottom) {
+                val statusError: Pair<String, Color>? = when {
+                    info.isFallback -> tr(
+                        "实时油价获取失败，当前显示参考价（联网后会自动重试）",
+                        "Live fuel prices unavailable — showing reference prices (will retry when online)",
+                    ) to scheme.error
+                    stale -> tr(
+                        "网络暂不可用，显示上次获取的油价（%s）",
+                        "Network unavailable — showing the last fetched prices (%s)",
+                        lastUpdatedMillis?.let(::formatFuelPriceTime) ?: "—",
+                    ) to scheme.error
+                    else -> null
+                }
+                val updatedText = if (statusError == null) {
+                    lastUpdatedMillis?.let { tr("更新于 %s", "Updated %s", formatFuelPriceTime(it)) }
+                } else {
+                    null
+                }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 上排：左侧「标号 + 油价 + 单位」，右侧「下次调价」。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
                             Text(
                                 text = shownGrade,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 color = scheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 5.dp),
+                                modifier = Modifier
+                                    .alignByBaseline()
+                                    .padding(end = 8.dp),
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = shownPrice?.let { Format.money(it) } ?: "—",
                                 style = MaterialTheme.typography.headlineLarge,
                                 color = scheme.onSurface,
+                                modifier = Modifier.alignByBaseline(),
                             )
                             Text(
                                 text = tr(" 元/升", " CNY/L"),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = scheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp),
+                                modifier = Modifier
+                                    .alignByBaseline()
+                                    .padding(start = 4.dp),
                             )
                         }
+                        Text(
+                            text = info.nextAdjustmentText?.let { raw ->
+                                // 仓库层已按语言生成日期，只有中文文案里的空格需要去掉。
+                                val clean = if (com.milenote.android.i18n.I18n.english) raw else raw.replace(" ", "")
+                                tr("下次调价：%s", "Next price change: %s", clean)
+                            } ?: tr("下次调价：时间待公布", "Next price change: date to be announced"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
+                            maxLines = 2,
+                        )
                     }
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        modifier = Modifier.widthIn(min = 150.dp, max = 190.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        thickness = 1.dp,
+                        color = scheme.outlineVariant.copy(alpha = 0.4f),
+                    )
+                    // 底排：左「刷新 + 更新于」，右「预计涨跌」，两段文字按基线对齐成一条线。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        FuelPriceRefreshButton(onClick = onRefresh, enabled = !loading)
+                        val bottomText = updatedText ?: statusError?.first
+                        val bottomColor = if (updatedText != null) {
+                            scheme.onSurfaceVariant
+                        } else {
+                            statusError?.second ?: scheme.onSurfaceVariant
+                        }
+                        if (bottomText != null) {
                             Text(
-                                text = info.nextAdjustmentText?.let { raw ->
-                                    // 仓库层已按语言生成日期，只有中文文案里的空格需要去掉。
-                                    val clean = if (com.milenote.android.i18n.I18n.english) raw else raw.replace(" ", "")
-                                    tr("下次调价：%s", "Next price change: %s", clean)
-                                } ?: tr("下次调价：时间待公布", "Next price change: date to be announced"),
+                                text = bottomText,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = scheme.onSurfaceVariant,
-                                maxLines = 1,
+                                color = bottomColor,
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .alignByBaseline(),
                             )
-                            info.trend?.let { trend ->
-                                val up = trend.contains("上")
-                                val trendColor = if (up) scheme.error else Color(0xFF2E7D32)
-                                val trendLabel = when {
-                                    trend.contains("上") -> tr("上调", "up")
-                                    trend.contains("下") -> tr("下调", "down")
-                                    else -> tr("搁浅", "unchanged")
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                    modifier = Modifier.padding(top = 2.dp),
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .background(trendColor, CircleShape),
-                                    )
-                                    Text(
-                                        text = tr("预计%s", "Expected: %s", trendLabel),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = trendColor,
-                                    )
-                                }
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        info.trend?.let { trend ->
+                            val up = trend.contains("上")
+                            val trendColor = if (up) scheme.error else Color(0xFF2E7D32)
+                            val trendLabel = when {
+                                trend.contains("上") -> tr("上调", "up")
+                                trend.contains("下") -> tr("下调", "down")
+                                else -> tr("搁浅", "unchanged")
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(trendColor, CircleShape),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = tr("预计%s", "Expected: %s", trendLabel),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = trendColor,
+                                modifier = Modifier.alignByBaseline(),
+                            )
                         }
                     }
-                }
-                when {
-                    info.isFallback -> Text(
-                        text = tr(
-                            "实时油价获取失败，当前显示参考价（联网后会自动重试）",
-                            "Live fuel prices unavailable — showing reference prices (will retry when online)",
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    stale -> Text(
-                        text = tr(
-                            "网络暂不可用，显示上次获取的油价（%s）",
-                            "Network unavailable — showing the last fetched prices (%s)",
-                            lastUpdatedMillis?.let(::formatFuelPriceTime) ?: "—",
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    lastUpdatedMillis != null -> Text(
-                        text = tr(
-                            "更新于 %s",
-                            "Updated %s",
-                            formatFuelPriceTime(lastUpdatedMillis),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
                 }
             }
         }
+    }
+}
+
+/** 今日油价卡的刷新按钮：小号 tonal 圆形按钮，位于卡片左下角「更新于」前面。 */
+@Composable
+private fun FuelPriceRefreshButton(onClick: () -> Unit, enabled: Boolean) {
+    FilledTonalIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(28.dp),
+    ) {
+        Icon(
+            imageVector = MileNoteIcons.Refresh,
+            contentDescription = tr("刷新油价", "Refresh fuel prices"),
+            modifier = Modifier.size(15.dp),
+        )
     }
 }
 
@@ -859,9 +880,9 @@ private fun FuelMetrics(
         ) {
             StatCell(
                 label = if (ev) {
-                    tr("每%s平均电费", "Cost per %s", Units.distanceUnit)
+                    tr("平均电费", "Average charging cost")
                 } else {
-                    tr("每%s平均油费", "Cost per %s", Units.distanceUnit)
+                    tr("平均油费", "Average fuel cost")
                 },
                 value = perKmEnergy?.let { Format.money(it) } ?: "—",
                 unit = if (perKmEnergy != null) Units.costPerDistance else null,
