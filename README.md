@@ -451,6 +451,69 @@ type(范围): 摘要
 
 所有演示和测试数据应使用合成数据。请勿提交真实账本、小票、签名密钥、密码或构建产物。
 
+## 致谢
+
+这个应用能跑起来，靠的是很多开源项目、公开数据与参考资料。感谢所有维护者和贡献者。
+
+### 核心运行库
+
+| 项目 | 许可证 | 用途 |
+|---|---|---|
+| [Kotlin](https://kotlinlang.org/) / [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) / [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) | Apache-2.0 | 开发语言、协程与 JSON 序列化 |
+| [AndroidX](https://developer.android.com/jetpack/androidx)（Core / Activity / Lifecycle / Navigation / DataStore / SplashScreen） | Apache-2.0 | 应用基础能力、页面导航、设置持久化、启动画面 |
+| [Jetpack Compose](https://developer.android.com/jetpack/compose)（UI / Foundation / Material 3） | Apache-2.0 | 声明式界面与 Material 3 Expressive 主题 |
+| [Material Icons](https://fonts.google.com/icons) | Apache-2.0 | 界面图标 |
+| [Coil 3](https://coil-kt.github.io/coil/) | Apache-2.0 | 车辆图片等图片加载与缓存 |
+| [OkHttp](https://square.github.io/okhttp/) / [Okio](https://square.github.io/okio/) | Apache-2.0 | 网络请求（WebDAV、更新检查、油价） |
+
+### OCR 与文字识别
+
+| 项目 | 许可证 | 用途 |
+|---|---|---|
+| [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android) | Apache-2.0 | Android 上的 Tesseract 封装（JNI） |
+| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) | Apache-2.0 | 中英文文字识别引擎 |
+| [Leptonica](https://github.com/DanBloomberg/leptonica) | BSD-2-Clause | 图像处理（Tesseract 依赖） |
+| libjpeg / libpng | IJG 许可证 / libpng 许可证 | 图片编解码（随 Tesseract4Android 内置） |
+| [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) | Apache-2.0 | 内置 `chi_sim` / `eng` 语言模型 |
+
+七段数码管（加油机屏幕）的几何解码是自研代码，按公开的 a–g 七段排布实现，没有使用第三方 OCR 模型或代码。
+
+### 开发、构建与测试
+
+| 项目 | 许可证 | 用途 |
+|---|---|---|
+| [Gradle](https://gradle.org/) / [Android Gradle Plugin](https://developer.android.com/build) | Apache-2.0 | 构建系统 |
+| Kotlin Gradle Plugin / Compose Compiler / Serialization Plugin | Apache-2.0 | 编译与代码生成 |
+| [OpenJDK](https://openjdk.org/) | GPLv2 + Classpath Exception | 构建与运行 JDK |
+| [JUnit 4](https://junit.org/junit4/) | Eclipse Public License 1.0 | 单元测试 |
+| [kotlinx-coroutines-test](https://github.com/Kotlin/kotlinx.coroutines) | Apache-2.0 | 协程测试 |
+| [Android SDK / Build Tools](https://developer.android.com/studio) | Android SDK 许可（非开源） | Android 平台与构建工具 |
+
+### 数据与信息服务
+
+| 来源 | 许可证/性质 | 用途 |
+|---|---|---|
+| [fanzbus/oil-price](https://github.com/fanzbus/oil-price) | MIT | 31 省油价、10 个非统一价省 124 城城市级价格、调价方向预测（公开静态 JSON） |
+| [wangzhaolong616-byte/oil-price](https://github.com/wangzhaolong616-byte/oil-price) | MIT | 省级油价 + 调价方向的备用数据集 |
+| [ZhangHowie/oilpulse-cn](https://github.com/ZhangHowie/oilpulse-cn) | MIT | 省级油价快照的备用数据集 |
+| [jsDelivr](https://www.jsdelivr.com/) | CDN 服务 | 分发上述公开静态 JSON（请求不携带任何参数） |
+| vvhan / oioweb / tenapi 公共接口 | 免费公开接口（条款以各站为准） | 油价兜底查询（仅发送省份名） |
+| 各数据集的上游公开油价站点（如汽油价格网、东方财富等） | 公开数据 | 数据集的价格来源；应用只读取价格数字与调价方向 |
+| [国家发展改革委](https://www.ndrc.gov.cn/) 成品油定价机制与调价公告 | 官方公开信息 | 调价窗口与涨跌规则的参考（最终以官方公告为准） |
+| Android 系统 Geocoder | 系统服务 | 把粗略坐标换成省市名（不保存坐标） |
+
+### 参考与规范
+
+- [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) 官方文本。
+- [Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/)：外部贡献的签署约定。
+- [Material Design](https://m3.material.io/) / Material 3 Expressive 设计指南：界面与动效的参考。
+- [Android 开发者文档](https://developer.android.com/docs)：Compose、DataStore、网络与平台能力的使用参考。
+- 本项目的 Web 端（已冻结）与微信小程序端：作为历史行为基线、数据格式与跨端经验的参考（同作者实现）。
+
+### 完整依赖清单
+
+App 内「设置 → 关于 → 开源许可」列出随 APK 分发的全部运行期依赖（当前 182 项）及其许可证全文；本页只列直接使用的项目与数据来源。第三方组件清单见 [app/src/main/assets/licenses/third-party-notices.txt](app/src/main/assets/licenses/third-party-notices.txt)。
+
 ## 许可与贡献
 
 - **源码许可**：本仓库源代码以 [Apache License 2.0](LICENSE) 授权，版权行见 [NOTICE](NOTICE)。你可以阅读、修改、自行构建并再分发（包括免费再分发），只需保留版权与许可声明，并遵守 Apache-2.0 的条款。

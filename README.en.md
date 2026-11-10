@@ -451,6 +451,69 @@ type(scope): summary
 
 Use synthetic data for all demo and test data. Never commit real ledgers, receipts, signing keys, passwords or build artifacts.
 
+## Acknowledgements
+
+This app would not run without the open-source projects, public data and reference material below. Thanks to all maintainers and contributors.
+
+### Core runtime libraries
+
+| Project | License | Purpose |
+|---|---|---|
+| [Kotlin](https://kotlinlang.org/) / [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) / [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) | Apache-2.0 | Language, coroutines and JSON serialization |
+| [AndroidX](https://developer.android.com/jetpack/androidx) (Core / Activity / Lifecycle / Navigation / DataStore / SplashScreen) | Apache-2.0 | App fundamentals, navigation, settings storage, splash screen |
+| [Jetpack Compose](https://developer.android.com/jetpack/compose) (UI / Foundation / Material 3) | Apache-2.0 | Declarative UI and Material 3 Expressive theming |
+| [Material Icons](https://fonts.google.com/icons) | Apache-2.0 | UI icons |
+| [Coil 3](https://coil-kt.github.io/coil/) | Apache-2.0 | Image loading and caching (vehicle images) |
+| [OkHttp](https://square.github.io/okhttp/) / [Okio](https://square.github.io/okio/) | Apache-2.0 | Networking (WebDAV, update checks, fuel prices) |
+
+### OCR and text recognition
+
+| Project | License | Purpose |
+|---|---|---|
+| [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android) | Apache-2.0 | Tesseract wrapper for Android (JNI) |
+| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) | Apache-2.0 | Chinese/English text recognition engine |
+| [Leptonica](https://github.com/DanBloomberg/leptonica) | BSD-2-Clause | Image processing (Tesseract dependency) |
+| libjpeg / libpng | IJG License / libpng License | Image codecs bundled with Tesseract4Android |
+| [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) | Apache-2.0 | Bundled `chi_sim` / `eng` language models |
+
+The seven-segment display decoder for fuel-pump screens is our own geometric implementation based on the public a–g segment layout; it does not use a third-party OCR model or code.
+
+### Development, build and test
+
+| Project | License | Purpose |
+|---|---|---|
+| [Gradle](https://gradle.org/) / [Android Gradle Plugin](https://developer.android.com/build) | Apache-2.0 | Build system |
+| Kotlin Gradle Plugin / Compose Compiler / Serialization Plugin | Apache-2.0 | Compilation and code generation |
+| [OpenJDK](https://openjdk.org/) | GPLv2 + Classpath Exception | Build/runtime JDK |
+| [JUnit 4](https://junit.org/junit4/) | Eclipse Public License 1.0 | Unit tests |
+| [kotlinx-coroutines-test](https://github.com/Kotlin/kotlinx.coroutines) | Apache-2.0 | Coroutine tests |
+| [Android SDK / Build Tools](https://developer.android.com/studio) | Android SDK License (proprietary) | Android platform and build tools |
+
+### Data and information services
+
+| Source | License / nature | Purpose |
+|---|---|---|
+| [fanzbus/oil-price](https://github.com/fanzbus/oil-price) | MIT | Province prices, city-level prices for 124 cities in 10 non-uniform provinces, adjustment forecast (public static JSON) |
+| [wangzhaolong616-byte/oil-price](https://github.com/wangzhaolong616-byte/oil-price) | MIT | Fallback dataset: province prices + adjustment direction |
+| [ZhangHowie/oilpulse-cn](https://github.com/ZhangHowie/oilpulse-cn) | MIT | Fallback dataset: province price snapshots |
+| [jsDelivr](https://www.jsdelivr.com/) | CDN service | Serves the public static JSON above (requests carry no parameters) |
+| vvhan / oioweb / tenapi public APIs | Free public APIs (terms per site) | Last-resort fuel price lookup (province name only) |
+| Upstream public fuel-price sites of those datasets (e.g. qiyoujiage, Eastmoney) | Public data | Price origin of the datasets; the app only reads price numbers and adjustment direction |
+| [NDRC](https://www.ndrc.gov.cn/) refined-oil pricing mechanism and adjustment notices | Official public information | Reference for adjustment windows and rules (official notices prevail) |
+| Android system Geocoder | System service | Turns coarse coordinates into province/city names (coordinates are not stored) |
+
+### References and standards
+
+- The official [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) text.
+- [Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/) for external contributions.
+- [Material Design](https://m3.material.io/) / Material 3 Expressive guidelines for UI and motion.
+- [Android developer documentation](https://developer.android.com/docs) for Compose, DataStore, networking and platform APIs.
+- The project's frozen Web app and WeChat Mini Program: historical behaviour baseline, data format and cross-platform experience (same author).
+
+### Full dependency list
+
+Settings → About → Open-source licenses in the app lists every runtime dependency shipped in the APK (currently 182 artifacts) with full license texts; this section only covers direct projects and data sources. The generated component list lives in [app/src/main/assets/licenses/third-party-notices.txt](app/src/main/assets/licenses/third-party-notices.txt).
+
 ## License and contributions
 
 - **Source license**: this repository is licensed under the [Apache License 2.0](LICENSE); copyright notices are in [NOTICE](NOTICE). You may read, modify, build and redistribute it, including for free, provided you keep the copyright and license notices and comply with Apache-2.0.
