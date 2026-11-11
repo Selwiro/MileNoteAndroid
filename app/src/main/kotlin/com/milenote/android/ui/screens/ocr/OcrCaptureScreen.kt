@@ -196,7 +196,10 @@ fun OcrCaptureScreen(
                 val pumpImage = prepared
                 if (pumpImage != null && (bestParsed.amount == null || bestParsed.liters == null)) {
                     val reading = withContext(Dispatchers.IO) { PumpDisplayReader.read(pumpImage) }
-                    if (reading != null && (reading.amount != null || reading.liters != null)) {
+                    // 允许部分回填：只读出单价也算命中（金额/升数由用户手填或快速手填补）。
+                    if (reading != null &&
+                        (reading.amount != null || reading.liters != null || reading.unitPrice != null)
+                    ) {
                         pumpReadingsDetected = true
                         bestParsed = bestParsed.copy(
                             amount = bestParsed.amount ?: reading.amount,

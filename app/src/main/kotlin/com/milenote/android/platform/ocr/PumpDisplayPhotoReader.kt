@@ -84,32 +84,39 @@ internal object PumpDisplayPhotoReader {
     /**
      * 从 ARGB 像素读加油机读数；读不出返回 null。
      */
+    /**
+     * 从 ARGB 像素读加油机读数；读不出返回 null。
+     *
+     * 允许只回填能确定的字段：三项读出两项时按 `金额 = 升数 × 单价` 精确补第三项；
+     * 只确定一项时按量级/位数判断大致角色后只填这一项（详见 [assemble]）。
+     */
     fun read(pixels: IntArray, width: Int, height: Int, trace: StringBuilder? = null): PumpReadings? {
         if (width <= 0 || height <= 0) return null
         if (pixels.size.toLong() != width.toLong() * height.toLong()) return null
         val allRows = ArrayList<RowValue>()
-        // 小图（手机相册里常只有几百像素）会被上层放大到 1400+，掩膜会糊；同时用原尺度和
-        // 降采样后再跑一遍，多尺度结果一起做一致性校验。
         for (scale in PHOTO_SCALES) {
             val sw = (width * scale).roundToInt().coerceAtLeast(32)
             val sh = (height * scale).roundToInt().coerceAtLeast(32)
             val scaled = if (scale == 1f) pixels else downsample(pixels, width, height, sw, sh)
             allRows += readRows(scaled, sw, sh, trace)
         }
-        // 跨阈值复现 ≥2 次的读数更可信（同一数字在不同掩膜下都读成一样）；先用它做严格校验，
-        // 不行再退回全部候选。
-        val repeated = allRows
-            .groupBy { it.text }
-            .filterValues { it.size >= 2 }
-            .values
-            .flatten()
-        // 宁可不填、不写错值：只接受「跨阈值复现 + 常见油价区间 + 行序」都通过的结果。
-        val readings = assemble(repeated)
+        // 跨阈值/跨尺度复现 ≥2 次的读数更可信（同一数字在不同掩膜下都读成一样）。
+        val counts = HashMap<String, Int>()
+        for (row in allRows) counts[row.text] = (counts[row.text] ?: 0) + 1
+        val repeated = allRows.filter { (counts[it.text] ?: 0) >= 2 }
+        val readings = assemble(repeated, counts, height)
+        trace?.appendLine(
+            "photo counts=" + counts.entries.sortedByDescending { it.value }.take(24)
+                .joinToString { "${it.key}x${it.value}" },
+        )
         trace?.appendLine("photo assemble=$readings rows=${allRows.size} repeated=${repeated.size}")
         return readings
     }
 
-    /** 逐尺度：亮度 → 局部对比度掩膜 → 连通域候选区域 → 行带 → 数字候选。 */
+    /**
+     * 逐尺度：亮度 → 大字/小字两种局部均值窗口的多阈值掩膜 → 连通域候选区域 → 行带 → 数字候选。
+     * 每个候选区域都用「大字窗口」和「小字窗口」两份掩膜各解一遍（单价小窗常只有小窗口掩膜清楚）。
+     */
     private fun readRows(pixels: IntArray, width: Int, height: Int, trace: StringBuilder?): List<RowValue> {
         val lum = IntArray(pixels.size)
         for (index in pixels.indices) {
@@ -119,21 +126,90 @@ internal object PumpDisplayPhotoReader {
             val b = color and 0xFF
             lum[index] = (r * 299 + g * 587 + b * 114) / 1000
         }
-        val radius = (min(width, height) * MEAN_RADIUS_RATIO).roundToInt()
+        val majorRadius = (min(width, height) * MEAN_RADIUS_RATIO).roundToInt()
             .coerceIn(MIN_MEAN_RADIUS, MAX_MEAN_RADIUS)
-        val mean = boxMean(lum, width, height, radius)
+        val smallRadius = (min(width, height) / 40).coerceIn(MIN_MEAN_RADIUS, 24)
+        val radii = if (smallRadius == majorRadius) listOf(majorRadius) else listOf(majorRadius, smallRadius)
+        val means = radii.map { boxMean(lum, width, height, it) }
+        val scanBudget = intArrayOf(900)
         val allRows = ArrayList<RowValue>()
-        for (delta in DARK_DELTAS) {
-            val rows = readWithMask(lum, mean, width, height, dark = true, delta = delta, trace = trace)
-            trace?.appendLine("photo ${width}x$height dark delta=$delta rows=${rows.joinToString { "${it.text}@${it.top}" }}")
-            allRows += rows
-        }
-        for (delta in LIGHT_DELTAS) {
-            val rows = readWithMask(lum, mean, width, height, dark = false, delta = delta, trace = trace)
-            trace?.appendLine("photo ${width}x$height light delta=$delta rows=${rows.joinToString { "${it.text}@${it.top}" }}")
-            allRows += rows
+        for (dark in booleanArrayOf(true, false)) {
+            val deltas = if (dark) DARK_DELTAS else LIGHT_DELTAS
+            for (delta in deltas) {
+                val masks = means.map { buildContrastMask(lum, it, dark, delta) }
+                val rects = ArrayList<IntArray>()
+                for (mask in masks) rects += regionRects(mask, width, height)
+                val regions = dedupeRegions(rects)
+                if (regions.isEmpty()) continue
+                for (rect in regions) {
+                    for (mask in masks) {
+                        allRows += readRegion(mask, width, rect[0], rect[1], rect[2], rect[3], trace, scanBudget)
+                    }
+                }
+                trace?.appendLine(
+                    "photo ${width}x$height ${if (dark) "dark" else "light"} delta=$delta " +
+                        "regions=${regions.size} rows=${allRows.size}",
+                )
+            }
         }
         return allRows
+    }
+
+    /** 局部对比度掩膜（比周围明显更亮/更暗的像素）。 */
+    private fun buildContrastMask(lum: IntArray, mean: IntArray, dark: Boolean, delta: Int): BooleanArray {
+        val mask = BooleanArray(lum.size)
+        for (index in lum.indices) {
+            val hit = if (dark) lum[index] < mean[index] - delta else lum[index] > mean[index] + delta
+            if (hit) mask[index] = true
+        }
+        return mask
+    }
+
+    /** 连通域里「大而空的框」当作显示屏/小窗候选，返回往里收过边距的区域矩形。 */
+    private fun regionRects(mask: BooleanArray, width: Int, height: Int): List<IntArray> {
+        var ink = 0
+        for (value in mask) if (value) ink++
+        val fraction = ink.toFloat() / mask.size
+        if (fraction < 0.004f || fraction > 0.45f) return emptyList()
+        val components = components(mask, width, height)
+        val candidates = components
+            .filter { component ->
+                component.width >= width * MIN_REGION_WIDTH_RATIO &&
+                    component.height >= height * MIN_REGION_HEIGHT_RATIO &&
+                    component.width.toLong() * component.height.toLong() <=
+                    (width.toLong() * height.toLong() * MAX_REGION_AREA_RATIO).toLong() &&
+                    component.area.toFloat() / (component.width * component.height) <= MAX_REGION_FILL &&
+                    component.width.toFloat() / component.height in MIN_REGION_ASPECT..MAX_REGION_ASPECT
+            }
+            .sortedByDescending { it.width.toLong() * it.height.toLong() }
+            .take(MAX_REGIONS)
+        val rects = ArrayList<IntArray>(candidates.size)
+        for (component in candidates) {
+            val margin = (min(component.width, component.height) * REGION_MARGIN_RATIO)
+                .roundToInt()
+                .coerceIn(MIN_REGION_MARGIN, MAX_REGION_MARGIN)
+            val left = component.left + margin
+            val top = component.top + margin
+            val right = component.right - margin
+            val bottom = component.bottom - margin
+            if (right - left < 24 || bottom - top < 16) continue
+            rects.add(intArrayOf(left, top, right, bottom))
+        }
+        return rects
+    }
+
+    /** 两种掩膜给出的区域会高度重叠：按坐标相近合并去重，最多保留 8 个。 */
+    private fun dedupeRegions(rects: List<IntArray>): List<IntArray> {
+        val unique = ArrayList<IntArray>()
+        for (rect in rects.sortedByDescending { (it[2] - it[0]).toLong() * (it[3] - it[1]) }) {
+            val duplicate = unique.any {
+                abs(it[0] - rect[0]) <= 10 && abs(it[1] - rect[1]) <= 10 &&
+                    abs(it[2] - rect[2]) <= 10 && abs(it[3] - rect[3]) <= 10
+            }
+            if (!duplicate) unique.add(rect)
+            if (unique.size >= 5) break
+        }
+        return unique
     }
 
     /** 最近邻降采样（只用于多尺度重试，保边比插值更利于七段数字）。 */
@@ -149,60 +225,6 @@ internal object PumpDisplayPhotoReader {
         return output
     }
 
-    private fun readWithMask(
-        lum: IntArray,
-        mean: IntArray,
-        width: Int,
-        height: Int,
-        dark: Boolean,
-        delta: Int,
-        trace: StringBuilder? = null,
-    ): List<RowValue> {
-        val mask = BooleanArray(pixelsCount(width, height))
-        var ink = 0
-        for (index in lum.indices) {
-            val hit = if (dark) lum[index] < mean[index] - delta else lum[index] > mean[index] + delta
-            if (hit) {
-                mask[index] = true
-                ink++
-            }
-        }
-        val fraction = ink.toFloat() / mask.size
-        if (fraction < 0.005f || fraction > 0.45f) return emptyList()
-
-        val components = components(mask, width, height)
-        val candidates = components
-            .filter { component ->
-                component.width >= width * MIN_REGION_WIDTH_RATIO &&
-                    component.height >= height * MIN_REGION_HEIGHT_RATIO &&
-                    component.width.toLong() * component.height.toLong() <=
-                    (width.toLong() * height.toLong() * MAX_REGION_AREA_RATIO).toLong() &&
-                    component.area.toFloat() / (component.width * component.height) <= MAX_REGION_FILL &&
-                    component.width.toFloat() / component.height in MIN_REGION_ASPECT..MAX_REGION_ASPECT
-            }
-            .sortedByDescending { it.width.toLong() * it.height.toLong() }
-            .take(MAX_REGIONS)
-
-        val rows = ArrayList<RowValue>()
-        trace?.appendLine("  fraction=$fraction components=${components.size} candidates=${candidates.size} " +
-            candidates.joinToString { "(${it.left},${it.top},${it.width}x${it.height},fill=${"%.2f".format(it.area.toFloat() / (it.width * it.height))})" })
-        for (component in candidates) {
-            val margin = (min(component.width, component.height) * REGION_MARGIN_RATIO)
-                .roundToInt()
-                .coerceIn(MIN_REGION_MARGIN, MAX_REGION_MARGIN)
-            val left = component.left + margin
-            val top = component.top + margin
-            val right = component.right - margin
-            val bottom = component.bottom - margin
-            if (right - left < 24 || bottom - top < 16) continue
-            trace?.appendLine("    region x$left..$right y$top..$bottom")
-            val regionRows = readRegion(mask, width, left, top, right, bottom, trace)
-            trace?.appendLine("      rows=${regionRows.joinToString { "${it.text}@${it.top}" }}")
-            rows += regionRows
-        }
-        return mergeRows(rows)
-    }
-
     /** 在一个候选区域内做行投影 → 行带 → 逐行数字解码。 */
     private fun readRegion(
         mask: BooleanArray,
@@ -212,6 +234,7 @@ internal object PumpDisplayPhotoReader {
         right: Int,
         bottom: Int,
         trace: StringBuilder? = null,
+        scanBudget: IntArray? = null,
     ): List<RowValue> {
         val regionWidth = right - left + 1
         val regionHeight = bottom - top + 1
@@ -241,6 +264,26 @@ internal object PumpDisplayPhotoReader {
         }
         if (start >= 0) rawBands.add(intArrayOf(start, last))
 
+        // 小字（单价窗）在低清图里常被行投影切成几条细带：把相邻「细带」合并回一条，
+        // 否则窗口扫描拿不到完整数字行；大带（金额/升数）不参与合并。
+        val thinLimit = max(MIN_BAND_HEIGHT + 1, (regionHeight * 0.07f).roundToInt())
+        val mergeGap = max(4, (regionHeight * 0.04f).roundToInt())
+        val bands = ArrayList<IntArray>(rawBands.size)
+        for (band in rawBands) {
+            if (bands.isNotEmpty()) {
+                val previous = bands.last()
+                val previousHeight = previous[1] - previous[0] + 1
+                val currentHeight = band[1] - band[0] + 1
+                if (previousHeight < thinLimit && currentHeight < thinLimit &&
+                    band[0] - previous[1] - 1 <= mergeGap
+                ) {
+                    bands[bands.size - 1] = intArrayOf(previous[0], band[1])
+                    continue
+                }
+            }
+            bands.add(band)
+        }
+
         val rows = ArrayList<RowValue>()
         // 行首可能粘着屏框/反光碎片（如 `68000` 实为 `80.00`）：同时保留去掉 1–2 位前导字符的
         // 变体，交给一致性校验挑出正确读数。
@@ -253,8 +296,8 @@ internal object PumpDisplayPhotoReader {
                 rows.add(RowValue(value, row.top, row.bottom, text))
             }
         }
-        for (band in rawBands) {
-            val decodedRows = decodeBand(mask, stride, left, top, right, regionWidth, band[0], band[1], trace)
+        for (band in bands) {
+            val decodedRows = decodeBand(mask, stride, left, top, right, regionWidth, band[0], band[1], trace, scanBudget)
             if (decodedRows.isNotEmpty()) {
                 decodedRows.forEach { addVariants(it) }
                 continue
@@ -263,7 +306,7 @@ internal object PumpDisplayPhotoReader {
             val bandHeight = band[1] - band[0] + 1
             if (bandHeight <= max(MIN_BAND_HEIGHT, (regionHeight * 0.35f).toInt())) continue
             for ((bandTop, bandBottom) in splitBand(rowInk, band[0], band[1], regionHeight)) {
-                decodeBand(mask, stride, left, top, right, regionWidth, bandTop, bandBottom, trace)?.let { rows += it }
+                decodeBand(mask, stride, left, top, right, regionWidth, bandTop, bandBottom, trace, scanBudget)?.let { rows += it }
             }
         }
         return rows
@@ -280,6 +323,7 @@ internal object PumpDisplayPhotoReader {
         bandTop: Int,
         bandBottom: Int,
         trace: StringBuilder? = null,
+        scanBudget: IntArray? = null,
     ): List<RowValue> {
         val bandHeight = bandBottom - bandTop + 1
         if (bandHeight < MIN_BAND_HEIGHT) return emptyList()
@@ -302,7 +346,7 @@ internal object PumpDisplayPhotoReader {
             }
         }
         // 行带可能横跨整屏（含边框/反光残影）：按「高列」聚成若干数字簇，逐簇解码。
-        val texts = decodeBandCandidates(rowMask, regionWidth, bandHeight, trace)
+        val texts = decodeBandCandidates(rowMask, regionWidth, bandHeight, trace, scanBudget)
         trace?.appendLine("      band y${regionTop + bandTop}..${regionTop + bandBottom} h${bandHeight} texts=${texts.joinToString()}")
         val values = texts.mapNotNull { toValue(it) }
         return values.mapIndexed { index, value -> RowValue(value, regionTop + bandTop, regionTop + bandBottom, texts[index]) }
@@ -374,6 +418,7 @@ internal object PumpDisplayPhotoReader {
         width: Int,
         bandHeight: Int,
         trace: StringBuilder? = null,
+        scanBudget: IntArray? = null,
     ): List<String> {
         val texts = LinkedHashSet<String>()
         decodeDigits(mask, width, bandHeight, trace)?.let { texts.add(it) }
@@ -392,7 +437,91 @@ internal object PumpDisplayPhotoReader {
                         for (x in 0 until width) if (mask[sourceBase + x]) subMask[targetBase + x] = true
                     }
                     decodeDigits(subMask, width, height, null)?.let { texts.add(it) }
-                    if (texts.size >= 5) return texts.toList()
+                    if (texts.size >= 40) return texts.toList()
+                }
+            }
+        }
+        // 行带里数字只占一段、且上下可能夹着屏框/反光：按列墨量挑「最像数字」的 x 窗口，
+        // 在窗口内按几个数字行高度比例 + 细偏移滑扫，逐窗解码。预算控制避免拖慢整条 OCR。
+        if (scanBudget != null && scanBudget[0] > 0) {
+            val columnInk = IntArray(width)
+            for (y in 0 until bandHeight) {
+                val base = y * width
+                for (x in 0 until width) if (mask[base + x]) columnInk[x]++
+            }
+            class Window(val left: Int, val winWidth: Int, val score: Long)
+            val windows = ArrayList<Window>(64)
+            for (widthRatio in floatArrayOf(0.30f, 0.40f, 0.50f, 0.60f, 0.70f)) {
+                val winWidth = (width * widthRatio).roundToInt().coerceAtLeast(48)
+                if (winWidth >= width) continue
+                val step = max(6, winWidth / 5)
+                var left = 0
+                while (left + winWidth <= width) {
+                    var score = 0L
+                    for (x in left until left + winWidth) score += columnInk[x]
+                    windows.add(Window(left, winWidth, score))
+                    left += step
+                }
+            }
+            windows.sortByDescending { it.score }
+            // 每个窗口内先按行投影找出「连续墨量最高的行带」（数字行比屏框横线更厚），
+            // 再在行带上下微调裁切后解码：这样不同阈值下都能对齐到同一行数字。
+            for (window in windows.take(12)) {
+                if (scanBudget[0] <= 0) return texts.toList()
+                scanBudget[0]--
+                val subMask = BooleanArray(window.winWidth * bandHeight)
+                for (y in 0 until bandHeight) {
+                    val sourceBase = y * width + window.left
+                    val targetBase = y * window.winWidth
+                    for (x in 0 until window.winWidth) {
+                        if (mask[sourceBase + x]) subMask[targetBase + x] = true
+                    }
+                }
+                val rowInk = IntArray(bandHeight)
+                for (y in 0 until bandHeight) {
+                    var count = 0
+                    val base = y * window.winWidth
+                    for (x in 0 until window.winWidth) if (subMask[base + x]) count++
+                    rowInk[y] = count
+                }
+                val peak = rowInk.maxOrNull() ?: 0
+                if (peak <= 0) continue
+                val seed = max(2, (peak * 0.30f).toInt())
+                var bestStart = -1
+                var bestEnd = -1
+                var bestLength = 0
+                var start = -1
+                var last = -1
+                for (y in 0..bandHeight) {
+                    val inside = y < bandHeight && rowInk[y] >= seed
+                    if (inside) {
+                        if (start < 0) start = y
+                        last = y
+                    } else if (start >= 0) {
+                        if (last - start + 1 > bestLength) {
+                            bestLength = last - start + 1
+                            bestStart = start
+                            bestEnd = last
+                        }
+                        start = -1
+                    }
+                }
+                if (bestStart < 0) continue
+                for (pad in intArrayOf(0, 2, -2)) {
+                    val top = (bestStart - pad).coerceAtLeast(0)
+                    val bottom = (bestEnd + pad).coerceAtMost(bandHeight - 1)
+                    val height = bottom - top + 1
+                    if (height < MIN_BAND_HEIGHT) continue
+                    val crop = BooleanArray(window.winWidth * height)
+                    for (y in 0 until height) {
+                        val sourceBase = (y + top) * window.winWidth
+                        val targetBase = y * window.winWidth
+                        for (x in 0 until window.winWidth) {
+                            if (subMask[sourceBase + x]) crop[targetBase + x] = true
+                        }
+                    }
+                    decodeDigits(crop, window.winWidth, height, null)?.let { texts.add(it) }
+                    if (texts.size >= 40) return texts.toList()
                 }
             }
         }
@@ -635,6 +764,8 @@ internal object PumpDisplayPhotoReader {
     private fun toValue(text: String): Double? {
         if (text.length < MIN_DIGITS || text.length > MAX_DIGITS) return null
         if (text.any { it !in '0'..'9' }) return null
+        // 全同数字（88888 / 11111）是掩膜饱和时的典型噪声，真实读数不会这样。
+        if (text.toSet().size <= 1 && text.length >= 4) return null
         val digits = text.toLongOrNull() ?: return null
         val value = digits / DECIMALS
         if (value <= 0.0) return null
@@ -662,55 +793,87 @@ internal object PumpDisplayPhotoReader {
      * 行顺序不固定（有的机型金额在上、有的在中），先试三行组合，再退回两行 + 常见油价区间
      * 反推单价（七段屏单价小窗常因反光读不出）。
      */
-    private fun assemble(rows: List<RowValue>): PumpReadings? {
+    /**
+     * 把候选行组装成读数，允许部分回填：
+     * 1) 三行（金额/升数/单价）齐全且 `金额 ≈ 升数 × 单价` → 三项都填；
+     * 2) 只读出两行 → 用 `金额 = 升数 × 单价` 精确算出第三项（用户约定：油量×单价必定是金额）；
+     * 3) 只读出一行 → 按量级/位数判断角色，只填这一项（其余留空，交给手填）。
+     *
+     * 所有候选必须先通过「跨阈值复现 ≥2 次」（见 [read]），宁可不填、不写错值。
+     */
+    private fun assemble(rows: List<RowValue>, counts: Map<String, Int> = emptyMap(), imageHeight: Int = 0): PumpReadings? {
         if (rows.isEmpty()) return null
         // 同一行会带多个候选变体（662240 / 62240 / 2240）：按 y 归为一条线，
-        // 每条线在一次一致性校验里只能贡献一个值。
+        // 每条线在一次组合里只能贡献一个值。
         val lines = ArrayList<MutableList<RowValue>>()
         for (row in rows.sortedBy { it.top }) {
             val line = lines.firstOrNull { abs(it.first().top - row.top) <= 4 }
             if (line == null) lines.add(mutableListOf(row)) else line.add(row)
         }
-        // 七段屏读数有结构约束：金额行在升数行上方；单价窗通常在它们下方（本机照片也都如此）。
-        // 先用严格油价区间（国内常见 5–10 元/L）+ 行序挑分最高的一组，再放宽兜底。
-        strictPriceRange(rows = lines)?.let { return it }
-        return bestEffort(rows = lines, priceRange = TYPICAL_PRICE_RANGE)
+        // 屏上最高的「数字行」高度：只统计位数像读数（4–6 位）且复现足够的行，
+        // 避免被反光/边框形成的超高大带把真正的金额/升数行比下去。
+        val maxRowHeight = rows
+            .filter { it.text.length in 4..6 && (counts[it.text] ?: 0) >= 5 && digitHeightPlausible(it, imageHeight) }
+            .maxOfOrNull { rowHeight(it) }
+            ?: rows.filter { digitHeightPlausible(it, imageHeight) }.maxOfOrNull { rowHeight(it) }
+            ?: 0
+        bestTriple(lines, counts, imageHeight, maxRowHeight)?.let { return it }
+        bestPair(lines, counts, imageHeight, maxRowHeight)?.let { return it }
+        return bestSingle(lines, counts, maxRowHeight)
     }
 
-    /** 严格油价区间的三行/两行组合；必须满足金额行在升数行上方。 */
-    private fun strictPriceRange(rows: List<MutableList<RowValue>>): PumpReadings? =
-        bestEffort(rows, priceRange = 5.0..9.99, strict = true)
+    private fun rowHeight(row: RowValue): Int = (row.bottom - row.top + 1).coerceAtLeast(1)
 
-    private fun bestEffort(
-        rows: List<MutableList<RowValue>>,
-        priceRange: ClosedFloatingPointRange<Double>,
-        strict: Boolean = false,
+    /** 大数字行（金额/升数）字高占图高的比例是否合理（太低是噪声小带，太高是整块掩膜）。 */
+    private fun digitHeightPlausible(row: RowValue, imageHeight: Int): Boolean {
+        if (imageHeight <= 0) return true
+        val ratio = rowHeight(row).toFloat() / imageHeight
+        return ratio in 0.055f..0.24f
+    }
+
+    /** 单价小窗字高通常是大字的一半左右。 */
+    private fun smallDigitHeightPlausible(row: RowValue, imageHeight: Int): Boolean {
+        if (imageHeight <= 0) return true
+        val ratio = rowHeight(row).toFloat() / imageHeight
+        return ratio in 0.025f..0.14f
+    }
+
+    /** 结构约束：同屏的两条大数字行字高接近；单价小窗在它们下方且字高更小。 */
+    private fun layoutLooksLikePump(amountRow: RowValue, litersRow: RowValue, priceRow: RowValue?): Boolean {
+        val amountHeight = rowHeight(amountRow)
+        if (litersRow.top <= amountRow.top) return false
+        val heightRatio = rowHeight(litersRow).toFloat() / amountHeight
+        if (heightRatio !in 0.65f..1.45f) return false
+        val verticalGap = litersRow.top - amountRow.top
+        if (verticalGap < 0.5f * amountHeight || verticalGap > 2.2f * amountHeight) return false
+        if (priceRow != null) {
+            if (priceRow.top - litersRow.top < 0.6f * amountHeight) return false
+            val priceRatio = rowHeight(priceRow).toFloat() / amountHeight
+            if (priceRatio !in 0.35f..1.2f) return false
+        }
+        return true
+    }
+
+    /** 三行齐全：金额行在升数行上方、单价行在升数行下方，且满足乘式。 */
+    private fun bestTriple(
+        lines: List<MutableList<RowValue>>,
+        counts: Map<String, Int>,
+        imageHeight: Int,
+        maxRowHeight: Int,
     ): PumpReadings? {
         var best: PumpReadings? = null
         var bestScore = Int.MIN_VALUE
-        fun consider(candidate: PumpReadings?, score: Int) {
-            if (candidate == null) return
-            if (score > bestScore) {
-                bestScore = score
-                best = candidate
-            }
-        }
-        val lines = rows
-        // 三行组合：金额 / 升数 / 单价 的角色排列。
-        for (i in 0 until lines.size) {
-            for (j in i + 1 until lines.size) {
-                for (k in j + 1 until lines.size) {
-                    val lineTriples = listOf(i to j to k)
-                    for (triple in lineTriples) {
-                        val firstLine = lines[i]
-                        val secondLine = lines[j]
-                        val thirdLine = lines[k]
-                        val lineList = listOf(firstLine, secondLine, thirdLine)
+        for (priceRange in listOf(5.0..9.99, 3.0..15.0)) {
+            for (i in 0 until lines.size) {
+                for (j in i + 1 until lines.size) {
+                    for (k in j + 1 until lines.size) {
+                        val lineList = listOf(lines[i], lines[j], lines[k])
                         for (amountLine in lineList) {
                             for (litersLine in lineList) {
                                 if (litersLine === amountLine) continue
                                 val priceLine = lineList.first { it !== amountLine && it !== litersLine }
                                 if (amountLine.first().top >= litersLine.first().top) continue
+                                if (priceLine.first().top < litersLine.first().top) continue
                                 for (amountRow in amountLine) {
                                     for (litersRow in litersLine) {
                                         for (priceRow in priceLine) {
@@ -720,7 +883,22 @@ internal object PumpDisplayPhotoReader {
                                             if (amount !in 10.0..100_000.0) continue
                                             if (liters !in 3.0..2000.0) continue
                                             if (price !in priceRange) continue
-                                            if (priceRow.top < litersLine.first().top) continue
+                                            // 位数约束：金额 4–6 位、升数 3–4 位、单价 3 位（2 位小数）。
+                                            if (amountRow.text.length !in 4..6) continue
+                                            if (litersRow.text.length !in 3..4) continue
+                                            if (priceRow.text.length != 3) continue
+                                            if (!layoutLooksLikePump(amountRow, litersRow, priceRow)) continue
+                                            if ((counts[amountRow.text] ?: 0) < 3) continue
+                                            if ((counts[litersRow.text] ?: 0) < 3) continue
+                                            if ((counts[priceRow.text] ?: 0) < 3) continue
+                                            if (!digitHeightPlausible(amountRow, imageHeight)) continue
+                                            if (!digitHeightPlausible(litersRow, imageHeight)) continue
+                                            if (!smallDigitHeightPlausible(priceRow, imageHeight)) continue
+                                            // 金额/升数是屏上最高的两行：明显矮于最高行带的多半是反光噪声。
+                                            if (maxRowHeight > 0) {
+                                                if (rowHeight(amountRow) < 0.80f * maxRowHeight) continue
+                                                if (rowHeight(litersRow) < 0.80f * maxRowHeight) continue
+                                            }
                                             val tolerance = maxOf(0.05, amount * 0.003, liters * 0.006)
                                             if (abs(amount - liters * price) > tolerance) continue
                                             val readings = PumpReadings(
@@ -728,7 +906,13 @@ internal object PumpDisplayPhotoReader {
                                                 liters = round2(liters),
                                                 unitPrice = round2(price),
                                             )
-                                            consider(readings, scoreOf(amountRow, litersRow, priceRow, hasPrice = true))
+                                            var score = scoreOf(amountRow, litersRow, priceRow, counts)
+                                            // 真实加油机读数两项乘积与金额只差几分钱（2 位小数四舍五入/截断）。
+                                            if (abs(amount - liters * price) <= 0.03) score += 8
+                                            if (score > bestScore) {
+                                                bestScore = score
+                                                best = readings
+                                            }
                                         }
                                     }
                                 }
@@ -737,32 +921,118 @@ internal object PumpDisplayPhotoReader {
                     }
                 }
             }
+            if (best != null) return best
         }
-        // 两行兜底：单价窗读不出时用「金额 ÷ 升数」补（仍要求金额行在升数行上方）。
-        for (i in lines.indices) {
+        return null
+    }
+
+    /**
+     * 两行 → 精确补第三（用户约定：油量 × 单价 = 金额）：
+     *
+     * 当前只启用「B) 金额 + 升数 → 单价」：两条大数字行都读对才会走到这里。
+     * 「金额 + 单价 → 升数」暂不启用——单价小窗最容易受反光影响，实测会读出高频假值（如 8.x），
+     * 反推升数会把错误成倍放大；等单价识别稳定后再打开。
+     */
+    private fun bestPair(
+        lines: List<MutableList<RowValue>>,
+        counts: Map<String, Int>,
+        imageHeight: Int,
+        maxRowHeight: Int,
+    ): PumpReadings? {
+        var best: PumpReadings? = null
+        var bestScore = Int.MIN_VALUE
+        for (i in 0 until lines.size) {
             for (j in i + 1 until lines.size) {
                 val upper = lines[i]
                 val lower = lines[j]
-                for (amountRow in upper) {
-                    for (litersRow in lower) {
-                        if (amountRow.text.length < 4 || litersRow.text.length < 4) continue
-                        val amount = amountRow.value
-                        val liters = litersRow.value
-                        if (amount !in 10.0..100_000.0) continue
-                        if (liters !in 3.0..2000.0) continue
-                        val price = amount / liters
-                        if (price !in priceRange) continue
-                        val readings = PumpReadings(amount = round2(amount), liters = round2(liters), unitPrice = round2(price))
-                        consider(readings, scoreOf(amountRow, litersRow, null, hasPrice = false))
+                for (upperRow in upper) {
+                    for (lowerRow in lower) {
+                        // A) 金额 + 单价 → 升数：单价小窗实测辨识度不足（反光区域会读出 8.x 这类
+                        // 高频假值），反推升数会把错误成倍放大，因此暂不启用；只保留 B)。
+                        considerPairB(upperRow, lowerRow, counts, imageHeight, maxRowHeight)?.let { candidate ->
+                            val score = pairScore(upperRow, lowerRow, counts)
+                            if (score > bestScore) {
+                                bestScore = score
+                                best = candidate
+                            }
+                        }
                     }
                 }
             }
         }
-        if (strict) {
-            // 严格区间也允许返回（分数会偏向真实读数）；分数过低视为不可信。
-            return best?.takeIf { bestScore >= 8 }
+        return best?.takeIf { bestScore >= 12 }
+    }
+
+    /** B) 金额 + 升数 → 单价（两条大数字行）。 */
+    private fun considerPairB(
+        amountRow: RowValue,
+        litersRow: RowValue,
+        counts: Map<String, Int>,
+        imageHeight: Int,
+        maxRowHeight: Int,
+    ): PumpReadings? {
+        val amount = amountRow.value
+        val liters = litersRow.value
+        if (amount !in 50.0..10_000.0) return null
+        if (liters !in 10.0..200.0) return null
+        if (amountRow.text.length !in 4..6) return null
+        if (litersRow.text.length !in 3..4) return null
+        val amountCount = counts[amountRow.text] ?: 0
+        val litersCount = counts[litersRow.text] ?: 0
+        if (amountCount < 8 || litersCount < 8) return null
+        if (!digitHeightPlausible(amountRow, imageHeight)) return null
+        if (!digitHeightPlausible(litersRow, imageHeight)) return null
+        if (maxRowHeight > 0) {
+            if (rowHeight(amountRow) < 0.80f * maxRowHeight) return null
+            if (rowHeight(litersRow) < 0.80f * maxRowHeight) return null
         }
-        return best?.takeIf { bestScore >= 13 }
+        val verticalGapRatio = (litersRow.top - amountRow.top).toFloat() / rowHeight(amountRow)
+        if (verticalGapRatio < 0.5f || verticalGapRatio > 2.2f) return null
+        val price = amount / liters
+        if (price !in 5.0..9.99) return null
+        return PumpReadings(amount = round2(amount), liters = round2(liters), unitPrice = round2(price))
+    }
+
+    /**
+     * 只确定一行：只回填「金额」。
+     *
+     * 判定条件：5 位以上数字、金额量级（≥100 元）、跨阈值复现 ≥4 次、且来自屏上最高的数字行。
+     * 单价单行（3 位数 5–9.99）实测会被反光区域的 8.x 高频假值污染，升数单行与小额金额在位数上
+     * 无法区分，两者都不单独回填——宁可留空给用户手填。
+     */
+    private fun bestSingle(
+        lines: List<MutableList<RowValue>>,
+        counts: Map<String, Int>,
+        maxRowHeight: Int,
+    ): PumpReadings? {
+        var bestAmount: RowValue? = null
+        var bestScore = -1
+        for (line in lines) {
+            for (row in line) {
+                val occurrences = counts[row.text] ?: 0
+                val text = row.text
+                val value = row.value
+                if (text.length < 5) continue
+                if (value !in 100.0..5000.0) continue
+                if (occurrences < 4) continue
+                if (maxRowHeight > 0 && rowHeight(row) < 0.75f * maxRowHeight) continue
+                if (occurrences > bestScore) {
+                    bestScore = occurrences
+                    bestAmount = row
+                }
+            }
+        }
+        return bestAmount?.let { PumpReadings(amount = round2(it.value)) }
+    }
+
+    private fun pairScore(first: RowValue, second: RowValue, counts: Map<String, Int>): Int {
+        var score = 0
+        score += (counts[first.text] ?: 0).coerceAtMost(6)
+        score += (counts[second.text] ?: 0).coerceAtMost(6)
+        if (first.value in 20.0..3000.0) score += 2
+        if (second.value in 5.0..9.99) score += 3
+        score += (first.text.length - 3).coerceIn(0, 2)
+        return score
     }
 
     /** 候选读数打分：真实加油机读数通常金额 4–5 位、升数 3–4 位、单价 3 位且落在 5–10。 */
@@ -770,7 +1040,7 @@ internal object PumpDisplayPhotoReader {
         amountRow: RowValue,
         litersRow: RowValue,
         priceRow: RowValue?,
-        hasPrice: Boolean,
+        counts: Map<String, Int> = emptyMap(),
     ): Int {
         var score = 0
         val amount = amountRow.value
@@ -779,14 +1049,15 @@ internal object PumpDisplayPhotoReader {
         if (amount in 20.0..3000.0) score += 2
         if (liters in 8.0..150.0) score += 2
         if (price != null) {
-            if (price in 5.0..10.0) score += 5
+            if (price in 5.0..9.99) score += 5
             if (price in 3.0..15.0) score += 2
-            score += ((priceRow?.text?.length ?: 0) - 2).coerceIn(0, 1)
+            score += (priceRow?.text?.length ?: 0).coerceIn(0, 4).let { if (it == 3) 1 else 0 }
         }
-        // 加油机位数有限：金额 4–5 位、升数 3–4 位；过长的「读数」多半是噪声拼出来的。
         score += (amountRow.text.length - 3).coerceIn(0, 2)
         score += (litersRow.text.length - 3).coerceIn(0, 2)
-        if (!hasPrice) score -= 1
+        score += (counts[amountRow.text] ?: 0).coerceAtMost(6)
+        score += (counts[litersRow.text] ?: 0).coerceAtMost(6)
+        if (priceRow != null) score += (counts[priceRow.text] ?: 0).coerceAtMost(6)
         return score
     }
 
