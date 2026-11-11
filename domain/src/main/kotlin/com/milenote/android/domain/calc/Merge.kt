@@ -73,6 +73,20 @@ fun duplicateOf(records: List<Record>, record: Record): Record? {
 }
 
 /**
+ * 手动记账的「疑似重复」提醒规则（比 [duplicateOf] 宽松）：
+ * 同一天 + 归一分类相同 + 金额相差 < 0.005 视为疑似同一笔。
+ *
+ * 只用于录入后提醒用户确认，**不参与**导入判重、合并或删除，也不改写任何数据；
+ * 用户确认「仍要保存」时照常写入。
+ */
+fun manualDuplicateOf(records: List<Record>, record: Record): Record? = records.firstOrNull { x ->
+    x.id != record.id &&
+        x.date == record.date &&
+        Categories.normalize(x.category) == Categories.normalize(record.category) &&
+        kotlin.math.abs(x.amount - record.amount) < 0.005
+}
+
+/**
  * 合并导入行（Web `mergeImported`）。
  *
  * 判重命中时：写入 `importedKeys`；油费新记录有升数而旧记录没有时，

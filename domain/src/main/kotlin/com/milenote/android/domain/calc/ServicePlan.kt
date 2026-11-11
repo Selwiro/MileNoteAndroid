@@ -209,6 +209,8 @@ data class PlanRow(
     /** 最近完成时的里程（提醒的完成里程或对应保养记录的里程）；无则 null。 */
     val completedKm: Double? = null,
     val hasCompleted: Boolean,
+    /** 「上次已做」对应的记录 id（用于计划表点进保养记录）；无则 null。 */
+    val lastRecordId: String? = null,
     /** 历史记录条数（本轮之前的已做记录）。 */
     val recordCount: Int,
     /** 已完成提醒数量。 */
@@ -285,6 +287,12 @@ fun servicePlanRows(ledger: Ledger, date: LocalDate, km: Double): List<PlanRow> 
             history.firstOrNull()?.date == completedDate -> history.firstOrNull()?.odometer
             else -> lastDone?.completedKm ?: history.firstOrNull()?.odometer
         }
+        // 「上次已做」对应的记录：优先取与完成日期同一条历史记录，其次取完成提醒关联的记录。
+        val lastRecordId = when {
+            completedDate.isEmpty() -> null
+            history.firstOrNull()?.date == completedDate -> history.firstOrNull()?.id
+            else -> lastDone?.recordId
+        }
         val status = when {
             current != null ->
                 if (reminderState(current, km, date).level == ReminderLevel.OVERDUE) "overdue" else "pending"
@@ -302,6 +310,7 @@ fun servicePlanRows(ledger: Ledger, date: LocalDate, km: Double): List<PlanRow> 
             completedDate = completedDate,
             completedKm = completedKm,
             hasCompleted = done.isNotEmpty() || history.isNotEmpty(),
+            lastRecordId = lastRecordId,
             recordCount = history.size,
             doneCount = done.size,
         )
