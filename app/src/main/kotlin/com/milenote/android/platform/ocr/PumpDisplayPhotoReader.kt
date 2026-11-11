@@ -25,6 +25,12 @@ import kotlin.math.roundToInt
  */
 internal object PumpDisplayPhotoReader {
 
+    /**
+     * 读取尺度：1f = 原图。降采样重试会引入噪声假读数（实测把 622.40 拼成 1111.12），
+     * 暂只跑原尺度；等 ocr3 这类小图方案（降噪后再放大）验证通过再打开。
+     */
+    private val PHOTO_SCALES = floatArrayOf(1f)
+
     /** 局部对比度阈值候选：暗字（深色 LCD 反光/无背光）与亮字（背光 LCD）各几档。 */
     private val DARK_DELTAS = intArrayOf(14, 18, 22, 26, 30, 40)
     private val LIGHT_DELTAS = intArrayOf(16, 22, 26, 32, 38)
@@ -84,7 +90,7 @@ internal object PumpDisplayPhotoReader {
         val allRows = ArrayList<RowValue>()
         // 小图（手机相册里常只有几百像素）会被上层放大到 1400+，掩膜会糊；同时用原尺度和
         // 降采样后再跑一遍，多尺度结果一起做一致性校验。
-        for (scale in floatArrayOf(1f)) {
+        for (scale in PHOTO_SCALES) {
             val sw = (width * scale).roundToInt().coerceAtLeast(32)
             val sh = (height * scale).roundToInt().coerceAtLeast(32)
             val scaled = if (scale == 1f) pixels else downsample(pixels, width, height, sw, sh)
@@ -775,10 +781,11 @@ internal object PumpDisplayPhotoReader {
         if (price != null) {
             if (price in 5.0..10.0) score += 5
             if (price in 3.0..15.0) score += 2
-            score += min(3, max(0, (priceRow?.text?.length ?: 0) - 2))
+            score += ((priceRow?.text?.length ?: 0) - 2).coerceIn(0, 1)
         }
-        score += min(3, max(0, amountRow.text.length - 3))
-        score += min(3, max(0, litersRow.text.length - 3))
+        // 加油机位数有限：金额 4–5 位、升数 3–4 位；过长的「读数」多半是噪声拼出来的。
+        score += (amountRow.text.length - 3).coerceIn(0, 2)
+        score += (litersRow.text.length - 3).coerceIn(0, 2)
         if (!hasPrice) score -= 1
         return score
     }
