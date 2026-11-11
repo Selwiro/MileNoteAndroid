@@ -102,6 +102,12 @@ fun RecordEditorScreen(
     val form = remember(ledger.id, target) { RecordEditorState(ledger = ledger, target = target) }
     var showOcr by remember { mutableStateOf(false) }
     var ocrPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var confirmDiscard by remember { mutableStateOf(false) }
+
+    // 有未保存改动时先确认再关闭；没有改动直接关（保持原来的轻快手感）。
+    fun requestDismiss() {
+        if (form.isDirty) confirmDiscard = true else onDismiss()
+    }
 
     // 相机按钮 / 桌面「识别小票」快捷方式：先直接调起系统照片选择器，选到照片后才打开 OCR 页面。
     // （旧流程是先打开 OCR 页再在页内弹选择器，会先闪一下「选择小票照片」占位页。）
@@ -128,12 +134,12 @@ fun RecordEditorScreen(
     // 快捷方式「识别小票」：进入编辑器即弹选择器；取消则留在记一笔表单。
     LaunchedEffect(target) { if (target.startOcr) openReceiptPicker() }
 
-    // 系统返回键 / 预测式返回手势：关闭页面（未保存内容不做二次确认，与 Web 关闭弹窗一致）。
-    BackHandler(onBack = onDismiss)
+    // 系统返回键 / 预测式返回手势：有未保存改动时先确认（避免误触返回白填）。
+    BackHandler(onBack = { requestDismiss() })
 
     RecordEditorBody(
         form = form,
-        onDismiss = onDismiss,
+        onDismiss = { requestDismiss() },
         onSave = {
             val record = form.attemptSave()
             if (record != null) {
@@ -148,6 +154,28 @@ fun RecordEditorScreen(
         onOcrClick = { openReceiptPicker() },
     )
 
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text(tr("放弃未保存的修改？", "Discard unsaved changes?")) },
+            text = { Text(tr("返回后本次填写的内容不会保存。", "Your changes will not be saved.")) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDiscard = false
+                        onDismiss()
+                    },
+                ) {
+                    Text(tr("放弃", "Discard"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscard = false }) {
+                    Text(tr("继续编辑", "Keep editing"))
+                }
+            },
+        )
+    }
     if (form.showDatePicker) {
         EditorDatePickerDialog(
             initialDate = form.date,

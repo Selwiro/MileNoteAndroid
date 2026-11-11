@@ -53,6 +53,7 @@ import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
 import com.milenote.android.domain.calc.stats
+import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
@@ -321,7 +322,7 @@ private fun RecordsSearchFilterRow(
         CompactSearchField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = tr("搜索备注、日期或来源…", "Search notes, dates or sources…"),
+            placeholder = tr("搜索备注、日期、金额或里程…", "Search notes, dates, amounts or mileage…"),
             modifier = Modifier.weight(1f),
         )
         FilterPill(
@@ -607,7 +608,7 @@ private fun recordSubtitle(record: Record): String {
 }
 
 /** 搜索 / 分类 / 期间三重筛选，并按日期倒序、同日里程倒序排列。 */
-private fun filterRecords(
+internal fun filterRecords(
     ledger: Ledger,
     query: String,
     category: String?,
@@ -626,7 +627,14 @@ private fun filterRecords(
                 append(record.note).append(' ')
                 append(record.source).append(' ')
                 append(record.date).append(' ')
-                append(record.category)
+                append(record.category).append(' ')
+                // 金额与里程：同时给「格式化值」和「原始数字」，搜索 680 / 680.00 / 42,000 都能命中。
+                append(Format.money(record.amount)).append(' ')
+                append(Numbers.jsString(record.amount)).append(' ')
+                record.odometer?.let {
+                    append(Format.km(it)).append(' ')
+                    append(Numbers.jsString(it)).append(' ')
+                }
             }.contains(keyword, ignoreCase = true)
             inPeriod && matchCategory && matchSearch
         }

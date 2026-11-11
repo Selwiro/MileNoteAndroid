@@ -54,6 +54,7 @@ import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.calc.completeImportedServices
 import com.milenote.android.domain.calc.duplicateOf
+import com.milenote.android.domain.calc.manualDuplicateOf
 import com.milenote.android.domain.calc.mergeFuelBatch
 import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.import.ImportItem
@@ -353,6 +354,33 @@ class MileNoteViewModel(
     }
 
     fun saveRecord(record: Record) {
+        val active = _state.value.activeCar
+        // 手动记账疑似重复提醒：仅新增记录、且同日同分类同金额时确认一次。
+        val isNew = active?.records?.none { it.id == record.id } ?: true
+        val duplicate = active?.takeIf { isNew }?.let { manualDuplicateOf(it.records, record) }
+        if (duplicate != null) {
+            val profile = active.vehicle.energyProfile
+            val label = DataLabels.categoryFor(active, duplicate.category, profile)
+            confirm(
+                PendingConfirm(
+                    title = tr("可能重复的记录", "Possible duplicate entry"),
+                    message = tr(
+                        "同一天已经有一条相同分类和金额的记录：%s · %s · %s。仍要保存吗？",
+                        "There is already an entry with the same date, category and amount: %s · %s · %s. Save anyway?",
+                        Dates.displayDots(duplicate.date),
+                        label,
+                        "${Units.currencySymbol}${Format.money(duplicate.amount)}",
+                    ),
+                    confirmLabel = tr("仍要保存", "Save anyway"),
+                    action = { persistRecord(record) },
+                ),
+            )
+            return
+        }
+        persistRecord(record)
+    }
+
+    private fun persistRecord(record: Record) {
         // 能源费分类显示名随能量档位：纯电「电费」、插混「能源」；燃油车保持原提示文案不变。
         val active = _state.value.activeCar
         val profile = active?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY

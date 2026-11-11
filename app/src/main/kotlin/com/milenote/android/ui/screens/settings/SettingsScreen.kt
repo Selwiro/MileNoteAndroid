@@ -169,6 +169,7 @@ private enum class SettingsPage {
     BACKUP,
     WEBDAV,
     ABOUT,
+    PRIVACY,
     LICENSES,
     ;
 
@@ -184,6 +185,7 @@ private enum class SettingsPage {
             BACKUP -> tr("备份与还原", "Backup & restore")
             WEBDAV -> tr("WebDAV 同步", "WebDAV sync")
             ABOUT -> tr("关于", "About")
+            PRIVACY -> tr("隐私与数据", "Privacy & data")
             LICENSES -> tr("开源许可", "Licenses")
         }
 }
@@ -203,7 +205,7 @@ private enum class SettingsPage {
  * - 外部导入：小熊油耗、钱迹记账、其他 App 分享；来源预选后直接进入导入向导（纯电当前车隐藏小熊油耗）。
  * - 备份与还原：JSON 完整备份、费用 CSV 导出、JSON 还原、删除全部数据。
  * - WebDAV 同步：连接配置、前台自动同步、手动上传/下载。
- * - 关于：应用 logo 与简介、检查更新、官网/GitHub、开源许可入口、演示账本。
+ * - 关于：应用 logo 与简介、检查更新、官网/GitHub、隐私与数据、开源许可入口、演示账本。
  * - 开源许可：本应用与第三方组件的许可证全文（离线内嵌）、Android SDK 许可条款链接。
  *
  * @param vm 全局 ViewModel。
@@ -242,6 +244,7 @@ fun SettingsScreen(
     var editing by remember { mutableStateOf<VehicleEditTarget?>(null) }
     var pendingBackup by remember { mutableStateOf<String?>(null) }
     var pendingCsv by remember { mutableStateOf<ByteArray?>(null) }
+    var pendingXlsx by remember { mutableStateOf<ByteArray?>(null) }
     var pendingRaw by remember { mutableStateOf<ByteArray?>(null) }
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.ROOT.name) }
     var categoryTab by rememberSaveable { mutableIntStateOf(0) }
@@ -319,6 +322,27 @@ fun SettingsScreen(
         if (uri != null && bytes != null) {
             runCatching { FileExporter.writeTo(context, uri, bytes) }
                 .onSuccess { notify(tr("费用 CSV 已导出", "Expense CSV exported"), MessageKind.SUCCESS) }
+                .onFailure {
+                    notify(
+                        tr(
+                            "导出失败：%s",
+                            "Export failed: %s",
+                            it.message ?: tr("无法写入所选文件", "Could not write the selected file"),
+                        ),
+                        MessageKind.ERROR,
+                    )
+                }
+        }
+    }
+
+    val createXlsx = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ) { uri ->
+        val bytes = pendingXlsx
+        pendingXlsx = null
+        if (uri != null && bytes != null) {
+            runCatching { FileExporter.writeTo(context, uri, bytes) }
+                .onSuccess { notify(tr("费用 Excel 已导出", "Expense Excel exported"), MessageKind.SUCCESS) }
                 .onFailure {
                     notify(
                         tr(
@@ -413,6 +437,22 @@ fun SettingsScreen(
         }
         pendingCsv = LedgerExports.csv(ledger)
         createCsv.launch(LedgerExports.csvFileName())
+    }
+
+    fun exportXlsxFile() {
+        val ledger = activeCar
+        if (ledger == null) {
+            notify(tr("当前没有可导出的车辆", "No vehicle available to export"), MessageKind.WARNING)
+            return
+        }
+        pendingXlsx = runCatching { LedgerExports.xlsx(ledger) }.getOrElse {
+            notify(
+                tr("生成 Excel 失败：%s", "Could not build the Excel file: %s", it.message ?: ""),
+                MessageKind.ERROR,
+            )
+            return
+        }
+        createXlsx.launch(LedgerExports.xlsxFileName())
     }
 
     /** 导出解析失败时被隔离的原始账本（只用于人工检查/抢救，不能直接还原）。 */
@@ -738,6 +778,7 @@ fun SettingsScreen(
                         message = message,
                         onExportBackup = { exportBackupFile() },
                         onExportCsv = { exportCsvFile() },
+                        onExportXlsx = { exportXlsxFile() },
                         onExportRaw = { exportRawFile() },
                         onRefreshQuarantinedRaw = { vm.refreshQuarantinedRaw() },
                         onRefreshReplaceSnapshot = { vm.refreshReplaceSnapshot() },
@@ -785,8 +826,11 @@ fun SettingsScreen(
                         onToggleDemo = {
                             if (state.demo) vm.exitDemo() else vm.enterDemo()
                         },
+                        onOpenPrivacy = { pageName = SettingsPage.PRIVACY.name },
                         onOpenLicenses = { pageName = SettingsPage.LICENSES.name },
                     )
+
+                    SettingsPage.PRIVACY -> PrivacyPage()
 
                     SettingsPage.LICENSES -> LicensesPage()
                 }
@@ -1405,6 +1449,7 @@ private fun BackupRestorePage(
     message: SettingsMessage?,
     onExportBackup: () -> Unit,
     onExportCsv: () -> Unit,
+    onExportXlsx: () -> Unit,
     onExportRaw: () -> Unit,
     onRefreshQuarantinedRaw: suspend () -> Unit,
     onRefreshReplaceSnapshot: suspend () -> Unit,
@@ -1493,6 +1538,17 @@ private fun BackupRestorePage(
                     enabled = !busy,
                     onClick = onExportCsv,
                 )
+                SectionDivider()
+                SettingsActionRow(
+                    icon = MileNoteIcons.Chart,
+                    title = tr("导出费用 Excel（.xlsx）", "Export expense Excel (.xlsx)"),
+                    subtitle = tr(
+                        "两张表：费用明细 + 分类汇总，金额/里程可直接求和",
+                        "Two sheets: expense details and category summary, with numeric cells",
+                    ),
+                    enabled = !busy,
+                    onClick = onExportXlsx,
+                )
             }
         }
 
@@ -1551,6 +1607,7 @@ private fun BackupRestorePage(
 private fun AboutPage(
     demo: Boolean,
     onToggleDemo: () -> Unit,
+    onOpenPrivacy: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -1679,6 +1736,16 @@ private fun AboutPage(
                 )
                 SectionDivider()
                 SettingsMenuRow(
+                    icon = MileNoteIcons.Lock,
+                    title = tr("隐私与数据", "Privacy & data"),
+                    subtitle = tr(
+                        "数据存在哪、用哪些权限、会连哪些服务",
+                        "Where data lives, which permissions are used, what connects to the network",
+                    ),
+                    onClick = onOpenPrivacy,
+                )
+                SectionDivider()
+                SettingsMenuRow(
                     icon = MileNoteIcons.Info,
                     title = tr("开源许可", "Open-source licenses"),
                     subtitle = tr("本应用与第三方组件的许可证全文", "License texts for this app and its bundled components"),
@@ -1757,6 +1824,241 @@ private fun AboutPage(
     }
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// 隐私与数据
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * 隐私与数据页：把「数据存在哪、要哪些权限、会连哪些服务」讲清楚。
+ *
+ * 不是正式法律文本（正式隐私政策随上架版本提供）；文案与
+ * `docs/legal/privacy-policy.md`、官网「隐私与数据」屏保持同一口径。
+ * 注意：不要出现「完全离线 / 绝不上传」这类绝对表述——检查更新、油价、WebDAV
+ * 都会联网，只在用户主动触发或对应功能开启时发生。
+ */
+@Composable
+private fun PrivacyPage() {
+    val context = LocalContext.current
+
+    fun openLink(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    SettingsPageList {
+        item("local") {
+            SectionCard(title = tr("数据存在哪里", "Where your data lives")) {
+                PrivacyParagraph(
+                    tr(
+                        "账本只保存在这台设备的应用私有目录（单文件 JSON，车辆图片内嵌其中）。没有账号体系，" +
+                            "开发者没有服务器，也不会收到你的账本、记录或图片。",
+                        "Your ledger is stored only in this app's private storage on this device — a single JSON " +
+                            "file with vehicle images embedded. There are no accounts, no developer server, and " +
+                            "your ledger, records or photos are never sent to the developer.",
+                    ),
+                )
+                PrivacyParagraph(
+                    tr(
+                        "卸载应用会删除本机数据；换手机、清缓存前请先在「备份与还原」导出完整备份。",
+                        "Uninstalling removes the data on this device. Before switching phones or clearing " +
+                            "storage, export a full backup in Backup & restore.",
+                    ),
+                    secondary = true,
+                )
+            }
+        }
+
+        item("permissions") {
+            SectionCard(
+                title = tr("应用权限（共 2 项）", "Permissions (2 total)"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Globe,
+                    title = tr("网络", "Network"),
+                    subtitle = tr(
+                        "检查更新、今日油价、你自己配置的 WebDAV 同步",
+                        "Update check, live fuel prices, and the WebDAV sync you configure",
+                    ),
+                    onClick = {},
+                    showChevron = false,
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Location,
+                    title = tr("粗略定位", "Approximate location"),
+                    subtitle = tr(
+                        "仅用于把坐标反查成城市名以取城市油价；坐标不保存、不会上传；拒绝授权时回退省级价",
+                        "Only used to resolve a city for local fuel prices. Coordinates are not stored or " +
+                            "uploaded; without permission the app falls back to province-level prices.",
+                    ),
+                    onClick = {},
+                    showChevron = false,
+                )
+                SectionDivider()
+                Text(
+                    text = tr(
+                        "不申请相机、相册、通讯录、电话等权限；识别小票使用系统照片选择器（Photo Picker）。",
+                        "The app does not request camera, photo-library, contacts or phone permissions; " +
+                            "receipt scanning uses the system photo picker.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            }
+        }
+
+        item("network") {
+            SectionCard(title = tr("会联网的场景", "When the app connects")) {
+                PrivacyParagraph(
+                    tr(
+                        "以下联网只在你主动触发、或对应功能开启时发生，且都不包含账本内容：",
+                        "The app connects only when you trigger it or enable the related feature. None of these " +
+                            "requests include your ledger contents:",
+                    ),
+                    secondary = true,
+                )
+                PrivacyBullet(
+                    tr(
+                        "检查更新：点「检查更新」时才请求 GitHub（api.github.com），只读取版本信息，请求里不含任何账本内容。",
+                        "Update check: only when you tap Check for updates; it reads version info from GitHub " +
+                            "(api.github.com) and the request contains no ledger data.",
+                    ),
+                )
+                PrivacyBullet(
+                    tr(
+                        "今日油价：中文界面且车辆有油箱时，按省 / 市名查询公开油价数据集；纯电车辆与英文界面不请求。",
+                        "Fuel prices: in Chinese, for vehicles with a fuel tank, the app queries public price " +
+                            "datasets by province or city name. EVs and the English UI make no such request.",
+                    ),
+                )
+                PrivacyBullet(
+                    tr(
+                        "WebDAV 同步：只有你自己填写服务器地址和密码后才启用；远端默认是明文 JSON，可在设置里开启 AES-256-GCM 加密上传。",
+                        "WebDAV sync: enabled only after you enter your own server and password. The remote " +
+                            "file is plain JSON by default; encrypted (AES-256-GCM) upload can be turned on in " +
+                            "Settings.",
+                    ),
+                )
+                PrivacyBullet(
+                    tr(
+                        "车辆图片链接：只有你手动填写图片 URL 时才加载该链接。",
+                        "Vehicle image URL: loaded only if you type an image URL yourself.",
+                    ),
+                )
+                PrivacyParagraph(
+                    tr(
+                        "以上请求均为 HTTPS（release 版禁止明文 HTTP，例外仅限本机调试地址）。",
+                        "All of the above use HTTPS; release builds block cleartext HTTP except for local " +
+                            "debug addresses.",
+                    ),
+                    secondary = true,
+                )
+            }
+        }
+
+        item("on-device") {
+            SectionCard(title = tr("端侧处理", "Processed on device")) {
+                PrivacyParagraph(
+                    tr(
+                        "小票识别（Tesseract 引擎）与文件解析（XLS / XLSX / JSON / CSV）都在本机完成。" +
+                            "识别用的图片只在内存中处理，识别结束即释放，不落盘、不上传、不写入账本。",
+                        "Receipt recognition (Tesseract) and file parsing (XLS / XLSX / JSON / CSV) run entirely " +
+                            "on this device. Images used for recognition are processed in memory, released " +
+                            "afterwards, never written to disk, uploaded or stored in the ledger.",
+                    ),
+                )
+            }
+        }
+
+        item("tracking") {
+            SectionCard(title = tr("广告与统计", "Ads and analytics")) {
+                PrivacyParagraph(
+                    tr(
+                        "无广告、无统计埋点 SDK、无崩溃上报 SDK、无账号体系；备份与导出文件由你自行保管。",
+                        "There are no ads, analytics SDKs, crash-reporting SDKs or accounts. Backup and export " +
+                            "files are yours to keep.",
+                    ),
+                )
+            }
+        }
+
+        item("control") {
+            SectionCard(title = tr("你的控制权", "Your controls")) {
+                PrivacyBullet(
+                    tr(
+                        "随时导出：完整备份 JSON、费用 CSV / Excel；导出文件不经过开发者。",
+                        "Export anytime: full JSON backup, expense CSV or Excel. Exported files never pass " +
+                            "through the developer.",
+                    ),
+                )
+                PrivacyBullet(
+                    tr(
+                        "随时删除：设置 → 备份与还原 → 删除全部数据；WebDAV 远端文件需你在自己的服务器上删除。",
+                        "Delete anytime: Settings → Backup & restore → Delete all data. Remote WebDAV files " +
+                            "must be deleted on your own server.",
+                    ),
+                )
+                PrivacyBullet(
+                    tr(
+                        "WebDAV 加密密码只保存在本机、无法找回；忘记后无法解密远端账本。",
+                        "The WebDAV encryption password stays on this device and cannot be recovered; if you " +
+                            "forget it, the remote ledger cannot be decrypted.",
+                    ),
+                )
+            }
+        }
+
+        item("note") {
+            SectionCard(title = tr("说明", "Notes")) {
+                PrivacyParagraph(
+                    tr(
+                        "本页是应用内的隐私说明，不是正式法律文本。应用上架时会提供完整的《隐私政策》与《用户协议》链接。",
+                        "This page is an in-app explanation, not a formal legal document. When the app is " +
+                            "published, links to the full Privacy Policy and Terms will be provided.",
+                    ),
+                    secondary = true,
+                )
+                SectionDivider()
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Code,
+                    title = tr("问题与建议", "Questions or feedback"),
+                    subtitle = "github.com/Selwiro/MileNoteAndroid/issues",
+                    onClick = { openLink("https://github.com/Selwiro/MileNoteAndroid/issues") },
+                    showChevron = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrivacyParagraph(text: String, secondary: Boolean = false) {
+    Text(
+        text = text,
+        style = if (secondary) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+        color = if (secondary) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+}
+
+@Composable
+private fun PrivacyBullet(text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "·",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    Spacer(modifier = Modifier.size(8.dp))
+}
 
 // ---------------------------------------------------------------------------------------------
 // 开源许可

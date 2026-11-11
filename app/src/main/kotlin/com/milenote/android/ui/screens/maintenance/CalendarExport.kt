@@ -16,7 +16,7 @@ import com.milenote.android.platform.FileExporter
 import com.milenote.android.platform.LedgerExports
 
 /** 等待用户选择保存位置的一次 ICS 导出。 */
-private data class PendingIcs(val fileName: String, val bytes: ByteArray)
+private data class PendingIcs(val fileName: String, val bytes: ByteArray, val count: Int)
 
 /**
  * 单条提醒导出日历（Web「导出日历提醒」，`calendar()`）。
@@ -32,6 +32,63 @@ private data class PendingIcs(val fileName: String, val bytes: ByteArray)
 @Composable
 internal fun rememberCalendarExportAction(): (Reminder) -> Unit {
     val context = LocalContext.current
+    val save = rememberCalendarSaver()
+    return { reminder ->
+        val ics = LedgerExports.ics(reminder)
+        if (ics == null || !Dates.isValid(reminder.dueDate)) {
+            Toast.makeText(
+                context,
+                tr("该提醒没有有效到期日期，无法导出日历", "This reminder has no valid due date, so it cannot be exported."),
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            save(
+                PendingIcs(
+                    fileName = LedgerExports.icsFileName(reminder),
+                    bytes = ics.toByteArray(Charsets.UTF_8),
+                    count = 1,
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * 一次性导出多条提醒（未完成且有到期日期的合成一个 ICS）。
+ *
+ * 入口在保养计划卡；没有可导出项时给出提示，不生成空文件。
+ *
+ * @return 传入提醒列表即触发导出的动作。
+ */
+@Composable
+internal fun rememberCalendarBatchExportAction(): (List<Reminder>) -> Unit {
+    val context = LocalContext.current
+    val save = rememberCalendarSaver()
+    return { reminders ->
+        val ics = LedgerExports.icsAll(reminders)
+        val count = reminders.count { !it.done && Dates.isValid(it.dueDate) }
+        if (ics == null || count == 0) {
+            Toast.makeText(
+                context,
+                tr("没有可导出的提醒（需有到期日期且未完成）", "No reminders to export — they need a due date and must be open."),
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            save(
+                PendingIcs(
+                    fileName = LedgerExports.icsAllFileName(),
+                    bytes = ics.toByteArray(Charsets.UTF_8),
+                    count = count,
+                ),
+            )
+        }
+    }
+}
+
+/** 公共保存流程：SAF 保存 → 失败兜底分享 → 提示（单条 / 批量共用）。 */
+@Composable
+private fun rememberCalendarSaver(): (PendingIcs) -> Unit {
+    val context = LocalContext.current
     var pending by remember { mutableStateOf<PendingIcs?>(null) }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/calendar"),
@@ -43,7 +100,11 @@ internal fun rememberCalendarExportAction(): (Reminder) -> Unit {
         if (saved) {
             Toast.makeText(
                 context,
-                tr("日历文件已保存，可导入到系统日历", "Calendar file saved. You can import it into your calendar app."),
+                if (target.count > 1) {
+                    tr("已导出 %d 条提醒，可导入到系统日历", "%d reminders exported. You can import them into your calendar app.", target.count)
+                } else {
+                    tr("日历文件已保存，可导入到系统日历", "Calendar file saved. You can import it into your calendar app.")
+                },
                 Toast.LENGTH_LONG,
             ).show()
             return@rememberLauncherForActivityResult
@@ -61,18 +122,8 @@ internal fun rememberCalendarExportAction(): (Reminder) -> Unit {
             Toast.LENGTH_LONG,
         ).show()
     }
-    return { reminder ->
-        val ics = LedgerExports.ics(reminder)
-        if (ics == null || !Dates.isValid(reminder.dueDate)) {
-            Toast.makeText(
-                context,
-                tr("该提醒没有有效到期日期，无法导出日历", "This reminder has no valid due date, so it cannot be exported."),
-                Toast.LENGTH_SHORT,
-            ).show()
-        } else {
-            val fileName = LedgerExports.icsFileName(reminder)
-            pending = PendingIcs(fileName = fileName, bytes = ics.toByteArray(Charsets.UTF_8))
-            launcher.launch(fileName)
-        }
+    return { pendingIcs ->
+        pending = pendingIcs
+        launcher.launch(pendingIcs.fileName)
     }
 }

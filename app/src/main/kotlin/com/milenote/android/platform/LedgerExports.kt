@@ -1,6 +1,7 @@
 package com.milenote.android.platform
 
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.export.ExpenseWorkbook
 import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Reminder
@@ -11,45 +12,14 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
- * 与 Web 版一致的文本导出：费用 CSV 与单条提醒 ICS。
+ * 与 Web 版一致的文本导出：费用 CSV、费用 Excel 与保养提醒 ICS。
  *
  * CSV 为 UTF-8 BOM + CRLF，全部单元格加引号并防公式注入；
- * 列在 Web 版基础上于「金额」后补齐「应付金额 / 优惠金额 / 油价 / 燃油标号」
- * （取记录字段，空则空单元格），与导入别名表 [com.milenote.android.domain.import.FIELDS]
- * 中对应字段互相映射，保证导出文件可被导入流程原样回灌。
- * ICS 为全天事件 + 提前一天 DISPLAY 提醒。
+ * 列定义与 Excel 导出共用 [ExpenseWorkbook.headers]（燃油 / 纯电 17 列、插混 18 列），
+ * 与导入别名表 [com.milenote.android.domain.import.FIELDS] 中对应字段互相映射。
+ * ICS 为全天事件 + 提前一天 DISPLAY 提醒；支持单条与「一次性导出全部」。
  */
 object LedgerExports {
-
-    /** 燃油车 CSV 表头：保持历史 17 列与列序不变（测试与 CSV 回读都依赖）。 */
-    private val CSV_HEADERS_FUEL = listOf(
-        "日期", "地点", "项目", "分类", "金额",
-        "应付金额", "优惠金额", "油价", "燃油标号",
-        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源",
-    )
-
-    /**
-     * 纯电 CSV 表头：列数与列序不变，只把能源相关列改成充电语义，
-     * 第 9 列保留为通用「标号」（纯电无值，留空），保证导出/导入列位置稳定。
-     */
-    private val CSV_HEADERS_EV = listOf(
-        "日期", "地点", "项目", "分类", "金额",
-        "应付金额", "优惠金额", "电价", "标号",
-        "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源",
-    )
-
-    /**
-     * 插混（PHEV / 增程）CSV 表头：**18 列** = 燃油 17 列 + 末尾「充电量」。
-     *
-     * 第 8 列取中性「单价」（同一列既可能是油价也可能是电价），
-     * 第 9 列仍是「燃油标号」（只有加油行有值）；加油行写「加油量」、
-     * 充电行写末尾「充电量」，两者互斥（与记录里 `liters` / `kwh` 互斥一致）。
-     */
-    private val CSV_HEADERS_PHEV = listOf(
-        "日期", "地点", "项目", "分类", "金额",
-        "应付金额", "优惠金额", "单价", "燃油标号",
-        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "充电量",
-    )
 
     /**
      * 当前车辆全部记录 → CSV 字节（含 BOM）；表头与能量列按动力类型切换。
@@ -60,11 +30,7 @@ object LedgerExports {
      */
     fun csv(ledger: Ledger): ByteArray {
         val profile = ledger.vehicle.energyProfile
-        val headers = when (profile) {
-            EnergyProfile.ELECTRIC_ONLY -> CSV_HEADERS_EV
-            EnergyProfile.DUAL -> CSV_HEADERS_PHEV
-            EnergyProfile.FUEL_ONLY -> CSV_HEADERS_FUEL
-        }
+        val headers = ExpenseWorkbook.headers(ledger)
         val dual = profile == EnergyProfile.DUAL
         val sorted = ledger.records.sortedWith(
             compareByDescending<com.milenote.android.domain.model.Record> { it.date }
@@ -109,17 +75,61 @@ object LedgerExports {
         return byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + lines.toByteArray(Charsets.UTF_8)
     }
 
+    /** 当前车辆全部记录 → `.xlsx`（费用明细 + 分类汇总，金额/里程为数字单元格）。 */
+    fun xlsx(ledger: Ledger): ByteArray = ExpenseWorkbook.build(ledger)
+
     /** 单条提醒 → ICS 文本（与 Web `calendar()` 字段一致）。 */
     fun ics(reminder: Reminder): String? {
         val dueDate = Dates.parse(reminder.dueDate) ?: return null
+        return wrapCalendar(listOf(vevent(reminder, dueDate)))
+    }
+
+    /**
+     * 一次性导出多条提醒：未完成且有有效到期日期的提醒合成**一个** ICS 文件。
+     *
+     * @return 没有可导出项时返回 null（调用方提示用户）。
+     */
+    fun icsAll(reminders: List<Reminder>): String? {
+        val events = reminders.mapNotNull { reminder ->
+            if (reminder.done) return@mapNotNull null
+            val dueDate = Dates.parse(reminder.dueDate) ?: return@mapNotNull null
+            vevent(reminder, dueDate)
+        }
+        if (events.isEmpty()) return null
+        return wrapCalendar(events)
+    }
+
+    /** 备份文件名，如 `里程志备份-2026-11-04.json`。 */
+    fun backupFileName(date: LocalDate = Dates.today()): String =
+        "里程志备份-${Dates.iso(date)}.json"
+
+    fun csvFileName(date: LocalDate = Dates.today()): String = "里程志-${Dates.iso(date)}.csv"
+
+    fun xlsxFileName(date: LocalDate = Dates.today()): String = "里程志-${Dates.iso(date)}.xlsx"
+
+    fun icsFileName(reminder: Reminder): String = "保养提醒-${reminder.dueDate}.ics"
+
+    /** 批量 ICS 文件名，如 `保养提醒-全部-2026-11-11.ics`。 */
+    fun icsAllFileName(date: LocalDate = Dates.today()): String =
+        "保养提醒-全部-${Dates.iso(date)}.ics"
+
+    private fun wrapCalendar(events: List<String>): String {
+        val lines = buildList {
+            add("BEGIN:VCALENDAR")
+            add("VERSION:2.0")
+            add("PRODID:-//DriveLedger//CN")
+            addAll(events)
+            add("END:VCALENDAR")
+        }
+        return lines.joinToString("\r\n")
+    }
+
+    private fun vevent(reminder: Reminder, dueDate: LocalDate): String {
         val end = dueDate.plusDays(1)
         val dtstamp = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
             .withZone(ZoneOffset.UTC)
             .format(Instant.now())
-        val lines = listOf(
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//DriveLedger//CN",
+        return listOf(
             "BEGIN:VEVENT",
             "UID:${reminder.id}@drive-ledger",
             "DTSTAMP:$dtstamp",
@@ -133,18 +143,8 @@ object LedgerExports {
             "DESCRIPTION:${escape(reminder.title)}",
             "END:VALARM",
             "END:VEVENT",
-            "END:VCALENDAR",
-        )
-        return lines.joinToString("\r\n")
+        ).joinToString("\r\n")
     }
-
-    /** 备份文件名，如 `里程志备份-2026-11-04.json`。 */
-    fun backupFileName(date: LocalDate = Dates.today()): String =
-        "里程志备份-${Dates.iso(date)}.json"
-
-    fun csvFileName(date: LocalDate = Dates.today()): String = "里程志-${Dates.iso(date)}.csv"
-
-    fun icsFileName(reminder: Reminder): String = "保养提醒-${reminder.dueDate}.ics"
 
     private fun cell(value: String): String {
         val text = value.replace("\r", " ")

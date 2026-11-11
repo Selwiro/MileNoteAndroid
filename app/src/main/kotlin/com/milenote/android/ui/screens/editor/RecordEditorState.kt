@@ -128,6 +128,40 @@ internal class RecordEditorState(
     /** 上一次由自动计算填出来的油费字段（用户手改后移除）。 */
     private val autoFuelFields = mutableSetOf<String>()
 
+    /**
+     * 表单是否有未保存的改动（返回时据此确认是否丢弃）。
+     *
+     * 编辑既有记录时与回填值比较；新增记录与初始默认值比较（日期默认今天，
+     * 改过日期、金额、分类、备注等任一字段即视为有改动）。
+     */
+    val isDirty: Boolean
+        get() = snapshot() != initialSnapshot
+
+    private val initialSnapshot: String = snapshot()
+
+    private fun snapshot(): String = listOf(
+        amount,
+        date,
+        category,
+        odometer,
+        liters,
+        kwh,
+        unitPrice,
+        fuelGrade,
+        payable,
+        discount,
+        rate,
+        distance,
+        full.toString(),
+        missed.toString(),
+        note,
+        location,
+        projects.joinToString("\u3001"),
+        newProjects,
+        charging.toString(),
+        draftCategories.joinToString("\u3001"),
+    ).joinToString("|")
+
     // ---- 弹层 / 校验状态 ----
     var showErrors by mutableStateOf(false)
     var validationError by mutableStateOf<String?>(null)

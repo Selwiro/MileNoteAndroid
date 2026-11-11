@@ -136,6 +136,7 @@ fun MaintenanceScreen(
     }
 
     val exportCalendar = rememberCalendarExportAction()
+    val exportCalendarAll = rememberCalendarBatchExportAction()
     var completeTarget by remember { mutableStateOf<Reminder?>(null) }
     var addReminder by remember { mutableStateOf(false) }
     var editReminder by remember { mutableStateOf<Reminder?>(null) }
@@ -255,7 +256,20 @@ fun MaintenanceScreen(
                             "Next due date is based on the latest service record",
                         ),
                         action = {
-                            TextButton(onClick = { vm.openServicePlanEditor() }) { Text(tr("编辑计划", "Edit plan")) }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                // 一次性把未来所有未完成、有到期日期的提醒导出成一个 ICS（原来只能逐条导）。
+                                if (ledger.reminders.any { !it.done && Dates.isValid(it.dueDate) }) {
+                                    TextButton(onClick = { exportCalendarAll(ledger.reminders) }) {
+                                        Text(tr("导出日历", "Export calendar"))
+                                    }
+                                }
+                                TextButton(onClick = { vm.openServicePlanEditor() }) {
+                                    Text(tr("编辑计划", "Edit plan"))
+                                }
+                            }
                         },
                     ) {
                         if (!configured) {
@@ -319,6 +333,10 @@ fun MaintenanceScreen(
             onComplete = { reminder ->
                 planDetail = null
                 completeTarget = reminder
+            },
+            onOpenRecord = { recordId ->
+                planDetail = null
+                vm.openEditor(recordId = recordId)
             },
         )
     }
@@ -932,6 +950,7 @@ private fun PlanRowDetailSheet(
     today: LocalDate,
     onDismiss: () -> Unit,
     onComplete: (Reminder) -> Unit,
+    onOpenRecord: (String) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val current = row.current
@@ -988,6 +1007,11 @@ private fun PlanRowDetailSheet(
                             )
                         }
                     }
+                    row.lastRecordId?.let { recordId ->
+                        TextButton(onClick = { onOpenRecord(recordId) }) {
+                            Text(tr("查看上次保养记录", "View last service record"))
+                        }
+                    }
                     FilledTonalButton(
                         onClick = { onComplete(current) },
                         modifier = Modifier
@@ -1016,6 +1040,12 @@ private fun PlanRowDetailSheet(
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )
+                    // 保养记录 ↔ 提醒互链：从「上次已做」直接跳进那条保养记录。
+                    row.lastRecordId?.let { recordId ->
+                        TextButton(onClick = { onOpenRecord(recordId) }) {
+                            Text(tr("查看保养记录", "View service record"))
+                        }
+                    }
                 }
                 else -> {
                     Text(
