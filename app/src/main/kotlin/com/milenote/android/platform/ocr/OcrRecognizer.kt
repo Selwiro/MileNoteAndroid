@@ -89,6 +89,25 @@ object TesseractLatinOcrRecognizer : OcrRecognizer {
     override suspend fun recognize(bitmap: Bitmap): OcrText = engine.recognize(bitmap)
 }
 
+/** 仅调试用：数字白名单引擎（OcrDebugActivity 调用，正式链路不引用）。 */
+internal object DebugDigitOcrRecognizer {
+    private val dense = TessEngine(
+        language = "eng",
+        pageSegMode = TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK,
+        tag = "DebugDigitDense",
+        whitelist = "0123456789.",
+    )
+    private val sparse = TessEngine(
+        language = "eng",
+        pageSegMode = TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT,
+        tag = "DebugDigitSparse",
+        whitelist = "0123456789.",
+    )
+
+    suspend fun recognize(bitmap: Bitmap, sparseText: Boolean = false): OcrText =
+        if (sparseText) sparse.recognize(bitmap) else dense.recognize(bitmap)
+}
+
 /**
  * 全局 Application Context 持有者：OCR 接口不带 Context，用一次性注入避免把平台细节
  * 泄漏到页面层（页面只依赖 [OcrRecognizer]）。
@@ -177,6 +196,7 @@ private class TessEngine(
     private val language: String,
     private val pageSegMode: Int,
     private val tag: String,
+    private val whitelist: String? = null,
 ) {
     private val mutex = Mutex()
 
@@ -244,6 +264,9 @@ private class TessEngine(
                 )
             }
             engine.setPageSegMode(pageSegMode)
+            if (whitelist != null) {
+                runCatching { engine.setVariable("tessedit_char_whitelist", whitelist) }
+            }
             // 手机照片没有可靠的 DPI 元数据，交给 Tesseract 自行估计常把行高判错；
             // 小票/屏幕照片按 300dpi 处理的经验值最稳。
             runCatching { engine.setVariable("user_defined_dpi", "300") }

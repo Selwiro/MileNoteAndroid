@@ -171,6 +171,7 @@ object PumpDisplayReader {
             val pixels = IntArray(width * height)
             prepared.getPixels(pixels, 0, width, 0, 0, width, height)
             decodePixels(pixels, width, height)
+                ?: PumpDisplayPhotoReader.read(pixels, width, height)
         } finally {
             scaled?.recycle()
         }
@@ -218,10 +219,41 @@ object PumpDisplayReader {
         return null
     }
 
+    /** 调试用：跑一遍候诊断（debug 构建的 OcrDebugActivity 调用，release 不调用）。 */
+    @JvmStatic
+    internal fun debugTrace(bitmap: Bitmap): String = runCatching {
+        val longest = max(bitmap.width, bitmap.height)
+        val prepared = if (longest > MAX_LONG_SIDE) {
+            val ratio = MAX_LONG_SIDE.toFloat() / longest
+            Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * ratio).toInt().coerceAtLeast(1),
+                (bitmap.height * ratio).toInt().coerceAtLeast(1),
+                true,
+            )
+        } else {
+            bitmap
+        }
+        try {
+            val width = prepared.width
+            val height = prepared.height
+            val pixels = IntArray(width * height)
+            prepared.getPixels(pixels, 0, width, 0, 0, width, height)
+            val trace = StringBuilder("trace ${width}x$height\n")
+            attempt(pixels, width, height, trace)
+            val photoTrace = StringBuilder()
+            val photo = PumpDisplayPhotoReader.read(pixels, width, height, photoTrace)
+            trace.append("photoReadings=$photo\n").append(photoTrace)
+            trace.toString()
+        } finally {
+            if (prepared !== bitmap) prepared.recycle()
+        }
+    }.getOrElse { "trace failed: $it" }
+
     // ---------------------------------------------------------------- 掩膜 ----
 
     /** 用全部候选掩膜跑一遍；返回第一个能组装出读数的结果。 */
-    private fun attempt(pixels: IntArray, width: Int, height: Int): AttemptResult {
+    private fun attempt(pixels: IntArray, width: Int, height: Int, trace: StringBuilder? = null): AttemptResult {
         // 1) 一次扫描：亮度表 + 直方图（亮度、红优势子集、冷色子集）。
         val lum = ByteArray(pixels.size)
         val lumHistogram = IntArray(256)
@@ -264,11 +296,14 @@ object PumpDisplayReader {
         val darkFraction = histogramFraction(lumHistogram, 0, lumThreshold)
         val lightFraction = 1f - darkFraction
 
+        trace?.appendLine("lumOtsu=$lumThreshold red=$redThreshold($warmCount) cold=$coldThreshold($coldCount) " +
+            "fixRed=$fixedRedCount fracs red=$redFraction cyan=$cyanFraction dark=$darkFraction light=$lightFraction")
+
         // 3) 逐个候选掩膜尝试（红 LED → 蓝/青 LCD → 深字 → 浅字），命中即返回。
         var displayBands = 0
         var adaptiveRedUsable = false
         if (redThreshold >= 0 && plausible(redFraction)) {
-            val result = runCandidate(KIND_RED, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height)
+            val result = runCandidate(KIND_RED, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height, trace)
             result.readings?.let { return result }
             displayBands = max(displayBands, result.displayBands)
             adaptiveRedUsable = result.displayBands > 0
@@ -276,22 +311,22 @@ object PumpDisplayReader {
         // 兜底：老版固定阈值的红掩膜（个别高亮/过曝屏自适应阈值可能切歪）。
         // 自适应红掩膜已经切出数字行带时就不再花一遍全图扫描。
         if (!adaptiveRedUsable && plausible(fixedRedCount / total)) {
-            val result = runCandidate(KIND_RED_FIXED, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height)
+            val result = runCandidate(KIND_RED_FIXED, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height, trace)
             result.readings?.let { return result }
             displayBands = max(displayBands, result.displayBands)
         }
         if (coldThreshold >= 0 && plausible(cyanFraction)) {
-            val result = runCandidate(KIND_CYAN, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height)
+            val result = runCandidate(KIND_CYAN, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height, trace)
             result.readings?.let { return result }
             displayBands = max(displayBands, result.displayBands)
         }
         if (plausible(darkFraction)) {
-            val result = runCandidate(KIND_DARK, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height)
+            val result = runCandidate(KIND_DARK, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height, trace)
             result.readings?.let { return result }
             displayBands = max(displayBands, result.displayBands)
         }
         if (plausible(lightFraction)) {
-            val result = runCandidate(KIND_LIGHT, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height)
+            val result = runCandidate(KIND_LIGHT, pixels, lum, redThreshold, coldThreshold, lumThreshold, width, height, trace)
             result.readings?.let { return result }
             displayBands = max(displayBands, result.displayBands)
         }
@@ -307,10 +342,13 @@ object PumpDisplayReader {
         lumThreshold: Int,
         width: Int,
         height: Int,
+        trace: StringBuilder? = null,
     ): AttemptResult {
-        val mask = buildMask(kind, pixels, lum, redThreshold, coldThreshold, lumThreshold)
+        val mask = buildMask(kind, pixels, lum, redThreshold, coldThreshold, lumThreshold, trace)
             ?: return EMPTY_ATTEMPT
-        return processMask(mask, width, height)
+        val result = processMask(mask, width, height, trace)
+        trace?.appendLine("  kind=$kind readings=${result.readings} displayBands=${result.displayBands}")
+        return result
     }
 
     private fun buildMask(
@@ -320,6 +358,7 @@ object PumpDisplayReader {
         redThreshold: Int,
         coldThreshold: Int,
         lumThreshold: Int,
+        trace: StringBuilder? = null,
     ): ByteArray? {
         val mask = ByteArray(pixels.size)
         var ink = 0
@@ -350,13 +389,14 @@ object PumpDisplayReader {
             }
         }
         val fraction = ink.toFloat() / pixels.size
+        trace?.appendLine("mask kind=$kind ink=$ink fraction=$fraction")
         if (fraction < MIN_INK_FRACTION || fraction > MAX_INK_FRACTION) return null
         return mask
     }
 
     // ------------------------------------------------------------ 行带 + 列块 ----
 
-    private fun processMask(mask: ByteArray, width: Int, height: Int): AttemptResult {
+    private fun processMask(mask: ByteArray, width: Int, height: Int, trace: StringBuilder? = null): AttemptResult {
         // 1) 行投影。
         val rowInk = IntArray(height)
         for (y in 0 until height) {
@@ -385,6 +425,7 @@ object PumpDisplayReader {
             lastInkRow = y
         }
         if (bandStart >= 0) rawBands.add(intArrayOf(bandStart, lastInkRow))
+        trace?.appendLine("  rawBands=${rawBands.joinToString { "${it[0]}..${it[1]}" }}")
         if (rawBands.isEmpty()) return EMPTY_ATTEMPT
 
         // 3) 基础过滤，再只留高度接近最高行带的（标题 / 边框细带丢掉）。
@@ -403,6 +444,7 @@ object PumpDisplayReader {
             if (bandHeight > maxBandHeight) maxBandHeight = bandHeight
             if (bands.size >= MAX_BANDS) break
         }
+        trace?.appendLine("  bands=${bands.joinToString { "${it[0]}..${it[1]}" }}")
         if (bands.isEmpty()) return EMPTY_ATTEMPT
         val keepThreshold = maxBandHeight * BAND_HEIGHT_KEEP_RATIO
         val bandHeightForDisplay = height * DISPLAY_BAND_HEIGHT_RATIO
@@ -429,11 +471,13 @@ object PumpDisplayReader {
                 }
             }
             rows.add(BinaryRow(rowMask, width, bandHeight))
+            trace?.appendLine("  row y=$top..$bottom h=$bandHeight runs=${bandRuns.runCount} tallInk=${bandRuns.keep.count { it }}")
         }
         if (rows.size < 3) return AttemptResult(null, displayBands)
 
         // 4) 逐行解码 + 组装（组装内含金额 = 升数 × 单价的一致性校验）。
         val lines = SevenSegmentDecoder.decodeRows(rows)
+        trace?.appendLine("  decodedLines=$lines")
         return AttemptResult(SevenSegmentDecoder.assembleReadings(lines), displayBands)
     }
 

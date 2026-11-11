@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 本机 OCR 调试入口（仅 debug 构建，release 不含）；从 adb 传图片路径直接跑识别链路。 -->
+        <activity
+            android:name=".debug.OcrDebugActivity"
+            android:exported="true" />
+    </application>
+</manifest>
