@@ -356,7 +356,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **314 domain unit tests** and **197 app unit tests**.
+The suite currently contains **332 domain unit tests** and **210 app unit tests**.
 
 ### Building a release APK
 

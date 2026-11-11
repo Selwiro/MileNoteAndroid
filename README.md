@@ -356,7 +356,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-当前包含 **314 项领域层单元测试**和 **197 项 App 层单元测试**。
+当前包含 **332 项领域层单元测试**和 **210 项 App 层单元测试**。
 
 ### 构建 Release APK
 
