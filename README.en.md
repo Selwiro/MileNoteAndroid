@@ -179,7 +179,7 @@ The app currently uses a portrait phone layout; tablet and landscape two-pane la
 
 ## Download and install
 
-The current release is **v0.37.1 beta (versionCode 96)**. The project is still being tested and actively developed.
+The current release is **v0.38.0 beta (versionCode 97)**. The project is still being tested and actively developed.
 
 Download from:
 
