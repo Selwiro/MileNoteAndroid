@@ -42,9 +42,9 @@ import com.milenote.android.ui.icons.MileNoteIcons
  * 明细页的「搜索框 + 筛选胶囊」以及卡片右上角的筛选胶囊原来各页各写一套，高度也不一致
  * （搜索框 56dp、筛选胶囊 48dp / 32dp）。这里统一成一组 32dp 高的紧凑控件，供
  * 「费用统计-明细」「能耗分析-明细」「能耗走势 / 概览」复用：
- * - CompactSearchField：BasicTextField + 圆形描边（聚焦时描边变主色），高度 [CompactControlHeight]；
- *   底色保持透明（与原来的 OutlinedTextField 一样，浅色下就是页面白底），只压高度、不改配色；
- * - FilterPill：圆形 surfaceContainerHigh 胶囊 + DropdownMenu，高度同 [CompactControlHeight]；
+ * - CompactSearchField：BasicTextField + 圆形描边（聚焦时描边变主色），恢复 56dp 高度；
+ *   底色保持透明（与原来的 OutlinedTextField 一样，浅色下就是页面白底）；
+ * - FilterPill：圆形 surfaceContainerHigh 胶囊 + DropdownMenu，保持 32dp 紧凑高度；
  * - FilterMenuGroupLabel / FilterMenuCheckIcon / FilterMenuDivider：多分组菜单的标题、勾选与分隔线。
  *
  * 32dp 是「全部」时间胶囊的既有视觉高度（420dpi = 84px），对齐后同一行控件不再高低不齐。
@@ -52,13 +52,16 @@ import com.milenote.android.ui.icons.MileNoteIcons
  * 不改动 Dimens 设计 token。
  */
 
-/** 紧凑筛选行统一高度：搜索框与筛选胶囊都按 32dp 对齐（420dpi = 84px）。 */
+/** 筛选胶囊 / 卡片动作的统一高度：32dp（420dpi = 84px）。 */
 private val CompactControlHeight = 32.dp
 
+/** 列表页搜索框高度：恢复 0.37.1 之前的高版式（56dp）。 */
+private val SearchFieldHeight = 56.dp
+
 /**
- * 紧凑搜索框（[CompactControlHeight] 高、圆形描边、`outlineVariant` 边框、**透明底**）：
- * 左侧 18dp 搜索图标 + 占位文字，聚焦时描边变 `primary`。底色不加填充，
- * 浅色主题下与页面白底一致（与改造前的 OutlinedTextField 视觉相同），只把上下高度压到 32dp。
+ * 高版搜索框（[SearchFieldHeight] 高、圆形描边、`outlineVariant` 边框、**透明底**）：
+ * 左侧 20dp 搜索图标 + 占位文字，聚焦时描边变 `primary`。底色不加填充，
+ * 与改造前的 OutlinedTextField 视觉一致；右侧在有内容时显示清空按钮。
  *
  * @param value 当前关键词。
  * @param onValueChange 关键词变化回调。
@@ -77,7 +80,7 @@ fun CompactSearchField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
-            .height(CompactControlHeight)
+            .height(SearchFieldHeight)
             .clip(CircleShape)
             .border(
                 width = 1.dp,
@@ -86,20 +89,20 @@ fun CompactSearchField(
             )
             .onFocusChanged { focused = it.isFocused }
             .semantics { contentDescription = placeholder }
-            .padding(start = 10.dp, end = 12.dp),
-        textStyle = MaterialTheme.typography.bodyMedium.copy(color = scheme.onSurface),
+            .padding(start = 16.dp, end = 16.dp),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface),
         cursorBrush = SolidColor(scheme.primary),
         singleLine = true,
         decorationBox = { innerTextField ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Icon(
                     imageVector = MileNoteIcons.Search,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(20.dp),
                     tint = scheme.onSurfaceVariant,
                 )
                 Box(
@@ -109,7 +112,7 @@ fun CompactSearchField(
                     if (value.isEmpty()) {
                         Text(
                             text = placeholder,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = scheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -122,7 +125,7 @@ fun CompactSearchField(
                         imageVector = MileNoteIcons.Close,
                         contentDescription = tr("清空搜索", "Clear search"),
                         modifier = Modifier
-                            .size(16.dp)
+                            .size(18.dp)
                             .clip(CircleShape)
                             .clickable { onValueChange("") },
                         tint = scheme.onSurfaceVariant,

@@ -74,7 +74,7 @@ import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.HeaderTextTabs
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.SectionCard
-import com.milenote.android.ui.components.StatsRangeRow
+import com.milenote.android.ui.components.RangeFilterAction
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
@@ -288,19 +288,18 @@ fun FuelScreen(
             )
         }
         }
-        // ---- 页级统计范围（概览 + 走势共用，与总览同一个状态） ----
-        item(key = "stats-range") {
-            StatsRangeRow(
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = vm::setPeriod,
-                onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
-            )
-        }
-        // ---- 油耗/能耗概览（卡内 2×2；插混 2×3） ----
+        // ---- 油耗/能耗概览（卡内 2×2；插混 2×3；范围胶囊在卡头，概览 + 走势共用） ----
         item(key = "overview") {
             SectionCard(
                 title = if (ev || phev) tr("能耗概览", "Energy overview") else tr("油耗概览", "Fuel overview"),
+                action = {
+                    RangeFilterAction(
+                        period = period,
+                        customRange = customRange,
+                        onSelectPeriod = vm::setPeriod,
+                        onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
+                    )
+                },
             ) {
                 if (phev) {
                     PhevEnergyMetrics(

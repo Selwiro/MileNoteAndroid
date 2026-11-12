@@ -132,53 +132,38 @@ private fun yearMonthDay(date: LocalDate): String = "${date.year}.${monthDay(dat
 // ---------------------------------------------------------------------------------------------
 
 /**
- * 统计页的范围行：左侧「统计范围」+ 右侧 32dp 胶囊。
- *
- * 总览与油耗/能耗共用 `UiState.period` + `customRange`，两页各出现一次入口但改的是同一份状态；
- * 卡片里不再放第二个范围控件。
+ * 卡片头范围胶囊：总览「用车统计」与油耗「概览」共用，直接放进 `SectionCard` 的 action 槽，
+ * 不再占页面独立一行；同页的趋势/走势卡只跟随、不再放第二个时间控件。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatsRangeRow(
+fun RangeFilterAction(
     period: Period,
     customRange: DateRange?,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    FilterPill(
+        label = rangeLabel(period, customRange),
+        expanded = expanded,
+        onToggle = { expanded = true },
+        onDismiss = { expanded = false },
+        contentDescription = tr("选择统计范围", "Select date range"),
     ) {
-        Text(
-            text = tr("统计范围", "Date range"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
+        RangeMenuItems(
+            period = period,
+            customRange = customRange,
+            onSelectPeriod = {
+                onSelectPeriod(it)
+                expanded = false
+            },
+            onSelectCustom = {
+                expanded = false
+                showRangePicker = true
+            },
         )
-        FilterPill(
-            label = rangeLabel(period, customRange),
-            expanded = expanded,
-            onToggle = { expanded = true },
-            onDismiss = { expanded = false },
-            contentDescription = tr("选择统计范围", "Select date range"),
-        ) {
-            RangeMenuItems(
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = {
-                    onSelectPeriod(it)
-                    expanded = false
-                },
-                onSelectCustom = {
-                    expanded = false
-                    showRangePicker = true
-                },
-            )
-        }
     }
     if (showRangePicker) {
         CustomRangePickerDialog(

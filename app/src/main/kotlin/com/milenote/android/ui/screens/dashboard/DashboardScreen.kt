@@ -92,7 +92,7 @@ import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.components.StatusKind
 import com.milenote.android.ui.components.StatusPill
-import com.milenote.android.ui.components.StatsRangeRow
+import com.milenote.android.ui.components.RangeFilterAction
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
@@ -243,19 +243,15 @@ private fun DashboardContent(
             return@LazyColumn
         }
 
-        item(key = "range") {
-            StatsRangeRow(
-                period = state.period,
-                customRange = state.customRange,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCustomRange = onSelectCustomRange,
-            )
-        }
         item(key = "stats") {
             VehicleStatsCard(
+                period = state.period,
+                customRange = state.customRange,
                 statsResult = periodStats,
                 ev = ledger.isEv,
                 phev = ledger.vehicle.energyProfile == EnergyProfile.DUAL,
+                onSelectPeriod = onSelectPeriod,
+                onSelectCustomRange = onSelectCustomRange,
             )
         }
         // 2026-11-12：原「里程趋势 + 支出趋势」两张卡合并成一张「趋势」卡，
@@ -719,9 +715,13 @@ private fun DashboardCard(
  */
 @Composable
 private fun VehicleStatsCard(
+    period: Period,
+    customRange: DateRange?,
     statsResult: StatsResult,
     ev: Boolean = false,
     phev: Boolean = false,
+    onSelectPeriod: (Period) -> Unit,
+    onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 平均油耗/能耗：满箱/满电区间加权；纯电没有满充区间时回退累计估算口径。
@@ -737,6 +737,14 @@ private fun VehicleStatsCard(
     DashboardCard(
         modifier = modifier,
         title = tr("用车统计", "Vehicle stats"),
+        action = {
+            RangeFilterAction(
+                period = period,
+                customRange = customRange,
+                onSelectPeriod = onSelectPeriod,
+                onSelectCustomRange = onSelectCustomRange,
+            )
+        },
     ) {
         // 2×2 指标：用行/列间距与对齐形成分组（不用分割线）。
         Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
