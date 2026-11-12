@@ -4,6 +4,7 @@ package com.milenote.android.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -194,8 +195,9 @@ internal enum class SettingsPage {
  * 设置子页（底栏 v4 起设置首页已抽成「我的」菜单页 [MineScreen]，本页只渲染单个子页）。
  *
  * 从「我的」菜单推入，路由参数 `page` 决定初始子页（[SettingsPage.fromKey]）；顶栏返回箭头 =
- * `onBack()`（导航层 pop 回「我的」）。子页之间只有「关于 → 隐私与数据 / 开源许可」一层内部切换，
- * 这两页的返回箭头同样 pop 回「我的」（与 v4 之前的返回口径一致）。
+ * `onBack()`（导航层 pop 回「我的」）。子页之间只有「关于 → 隐私与数据 / 开源许可」一层内部切换；
+ * 从「关于」切进去的两页，返回（顶栏与系统返回键）先回「关于」，再返回才回「我的」，
+ * 与页面层级一致；用路由直接打开这两页时仍 pop 回「我的」。
  *
  * - 我的车辆：横向车辆卡片，点卡片切换当前车辆，卡片右上角编辑；添加车辆打开全屏编辑对话框。
  * - 外观：5 套皮肤、深浅色三态。
@@ -247,8 +249,23 @@ fun SettingsScreen(
     var pendingXlsx by remember { mutableStateOf<ByteArray?>(null) }
     var pendingRaw by remember { mutableStateOf<ByteArray?>(null) }
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.fromKey(initialPage).name) }
+    // 「关于 → 隐私与数据 / 开源许可」是页内切换，没有导航栈；用这个标记让返回回「关于」而不是直接回「我的」。
+    var cameFromAbout by rememberSaveable { mutableStateOf(false) }
     var categoryTab by rememberSaveable { mutableIntStateOf(0) }
     val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: SettingsPage.fromKey(initialPage)
+
+    /** 顶栏 / 系统返回：从「关于」切进来的子页先回「关于」，其余照旧 pop 回「我的」。 */
+    fun goBack() {
+        if (cameFromAbout) {
+            pageName = SettingsPage.ABOUT.name
+            cameFromAbout = false
+        } else {
+            onBack()
+        }
+    }
+
+    // 页内切换不压导航栈，系统返回键也走同一套「先回关于」的规则。
+    BackHandler(enabled = cameFromAbout) { goBack() }
 
     fun notify(
         text: String,
@@ -490,7 +507,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text(page.title, style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { goBack() }) {
                         Icon(
                             imageVector = MileNoteIcons.Back,
                             contentDescription = tr("返回", "Back"),
@@ -665,7 +682,6 @@ fun SettingsScreen(
                         // 纯电当前车隐藏「小熊油耗」（只认加油 XLS），其它导入入口保留。
                         ev = activeCar?.isEv == true,
                         onOpenImporter = { source -> onOpenImporter(source) },
-                        onGoBackup = { pageName = SettingsPage.BACKUP.name },
                     )
 
                     SettingsPage.BACKUP -> BackupRestorePage(
@@ -728,8 +744,14 @@ fun SettingsScreen(
                         onToggleDemo = {
                             if (state.demo) vm.exitDemo() else vm.enterDemo()
                         },
-                        onOpenPrivacy = { pageName = SettingsPage.PRIVACY.name },
-                        onOpenLicenses = { pageName = SettingsPage.LICENSES.name },
+                        onOpenPrivacy = {
+                            cameFromAbout = true
+                            pageName = SettingsPage.PRIVACY.name
+                        },
+                        onOpenLicenses = {
+                            cameFromAbout = true
+                            pageName = SettingsPage.LICENSES.name
+                        },
                     )
 
                     SettingsPage.PRIVACY -> PrivacyPage()
@@ -1291,7 +1313,6 @@ private fun CategoryTabsPage(
 private fun ExternalImportPage(
     ev: Boolean,
     onOpenImporter: (String) -> Unit,
-    onGoBackup: () -> Unit,
 ) {
     SettingsPageList {
         item("sources") {

@@ -52,8 +52,9 @@ import com.milenote.android.ui.theme.metricValue
  * 2026-11-12 改版（方案 A / 卡片 M1）：
  * - 顶部「数据概览」卡只讲**数据本身**（车辆 / 记录 / 相伴天数 + 上次备份 / 同步状态），
  *   不做"本地账号/个人资料"身份叙事——App 没有账号，`无账号` 也不需要在页面上自我介绍；
- * - 菜单拆成「车辆与偏好 / 数据与同步 / 关于」三个分组、10 个入口；行右侧不挂当前值
+ * - 菜单拆成「车辆与偏好 / 数据与同步 / 应用」三个分组、8 个入口；行右侧不挂当前值
  *   （车辆数 / 皮肤 / 单位 / 备份时间 / WebDAV 开关 / 版本号都不再挤在菜单行上，2026-11-12 用户反馈）；
+ * - 「隐私与数据」「开源许可」是低频只读内容，只保留「关于」页内入口，根页不再重复（2026-11-12 去重）；
  * - 页脚只留品牌字标（不写「数据默认保存在本机」这类说明，数据口径在「隐私与数据」子页）。
  *
  * 页面本身无顶栏 / 底栏，由外层 Scaffold 提供；顶栏标题「我的」+ 车辆胶囊与其他 tab 一致。
@@ -197,25 +198,12 @@ fun MineScreen(
 
             item("menu-about") {
                 MineGroup(
-                    label = tr("关于", "About"),
+                    label = tr("应用", "App"),
                 ) {
                     MineValueRow(
                         icon = MileNoteIcons.Info,
                         title = tr("关于", "About"),
                         onClick = { onOpenPage(SettingsPage.ABOUT.key) },
-                    )
-                    SectionDivider()
-                    MineValueRow(
-                        icon = MileNoteIcons.Lock,
-                        title = tr("隐私与数据", "Privacy & data"),
-                        onClick = { onOpenPage(SettingsPage.PRIVACY.key) },
-                    )
-                    SectionDivider()
-                    // 关于页内这一行用的是 Info 图标；根页与「关于」相邻，换成 Code 以免两行同图标。
-                    MineValueRow(
-                        icon = MileNoteIcons.Code,
-                        title = tr("开源许可", "Licenses"),
-                        onClick = { onOpenPage(SettingsPage.LICENSES.key) },
                     )
                 }
             }

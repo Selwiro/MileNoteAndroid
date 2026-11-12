@@ -7,7 +7,7 @@
 ## 现状
 
 - **0.38.0（versionCode 97，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
-  minSdk 26 / targetSdk 37。界面中英双语（设置 → 外观 → 语言）。
+  minSdk 26 / targetSdk 37。界面中英双语（我的 → 外观 → 语言）。
 - Kotlin 2.4.21 + Jetpack Compose（BOM 2026.09.00、material3 1.5.0-beta02）+ Material 3 Expressive；
   AGP 9.5.0 / Gradle 9.6.0。**版本矩阵是实测跑通的，不要随手升级。**
 - `domain/` = 纯 Kotlin 领域层（算法、备份、导入、OCR 解析，JVM 单测）；Web 版已停更，domain 以本仓库实现为准，不再对照 Web。

@@ -151,7 +151,7 @@ WebDAV 是可选功能。未配置时，账本始终保存在本地。
 
 WebDAV 连接密码使用 Android Keystore 与 AES-256-GCM 加密保存在设备上。Release 版本只允许 HTTPS 连接。
 
-上传的账本可以选择加密（默认关闭）。在「设置 → WebDAV 同步」中开启「加密上传」并设置独立的加密密码（至少 8 个字符）后，远端保存的是 AES-256-GCM 密文，密钥由该密码经 PBKDF2-SHA256（600000 次迭代）派生；加密密码同样由 Android Keystore 保护，仅保存在本机，开发者无法获取。在另一台设备上输入同一密码即可解密并还原账本。
+上传的账本可以选择加密（默认关闭）。在「我的 → WebDAV 同步」中开启「加密上传」并设置独立的加密密码（至少 8 个字符）后，远端保存的是 AES-256-GCM 密文，密钥由该密码经 PBKDF2-SHA256（600000 次迭代）派生；加密密码同样由 Android Keystore 保护，仅保存在本机，开发者无法获取。在另一台设备上输入同一密码即可解密并还原账本。
 
 加密上传的文件与 Web 版「加密同步」使用同一种格式，可以互读：Web 版能读取 Android 加密的文件，Android 也能读取 Web 版加密或明文的文件。
 
@@ -427,7 +427,7 @@ keyPassword=...
 
 请在 [Issues](https://github.com/Selwiro/MileNoteAndroid/issues) 中描述问题。Bug 报告建议包含：
 
-- 应用版本号（设置 → 关于）。
+- 应用版本号（我的 → 关于）。
 - 手机型号及 Android 版本。
 - 复现步骤与实际表现。
 - 必要的截图或错误信息。
@@ -523,7 +523,7 @@ type(范围): 摘要
 
 ### 完整依赖清单
 
-App 内「设置 → 关于 → 开源许可」列出随 APK 分发的全部运行期依赖（当前 182 项）及其许可证全文；本页只列直接使用的项目与数据来源。第三方组件清单见 [app/src/main/assets/licenses/third-party-notices.txt](app/src/main/assets/licenses/third-party-notices.txt)。
+App 内「我的 → 关于 → 开源许可」列出随 APK 分发的全部运行期依赖（当前 182 项）及其许可证全文；本页只列直接使用的项目与数据来源。第三方组件清单见 [app/src/main/assets/licenses/third-party-notices.txt](app/src/main/assets/licenses/third-party-notices.txt)。
 
 ## 许可与贡献
 
