@@ -57,6 +57,7 @@ private fun MileNoteIconsPreview() {
                         MileNoteIcons.Location, MileNoteIcons.Sparkle, MileNoteIcons.Info,
                         MileNoteIcons.Warning, MileNoteIcons.Error, MileNoteIcons.Close,
                         MileNoteIcons.MoreVert, MileNoteIcons.Minus, MileNoteIcons.Plus,
+                        MileNoteIcons.Person, MileNoteIcons.PersonFilled,
                     ),
                 )
             }

@@ -2,8 +2,6 @@ package com.milenote.android.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
@@ -28,8 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -80,6 +76,7 @@ import com.milenote.android.ui.screens.dashboard.DashboardScreen
 import com.milenote.android.ui.screens.fuel.FuelScreen
 import com.milenote.android.ui.screens.maintenance.MaintenanceScreen
 import com.milenote.android.ui.screens.records.RecordsScreen
+import com.milenote.android.ui.screens.settings.MineScreen
 import com.milenote.android.ui.screens.settings.SettingsScreen
 
 private data class BottomTab(
@@ -102,7 +99,6 @@ private fun bottomTabsFor(profile: EnergyProfile): List<BottomTab> {
     val energyUi = profile != EnergyProfile.FUEL_ONLY
     return listOf(
         BottomTab(Routes.DASHBOARD, "总览", "Overview", MileNoteIcons.Home, MileNoteIcons.HomeFilled),
-        BottomTab(Routes.RECORDS, "记录", "Records", MileNoteIcons.Records, MileNoteIcons.RecordsFilled),
         BottomTab(
             Routes.FUEL,
             if (energyUi) "能耗" else "油耗",
@@ -111,6 +107,7 @@ private fun bottomTabsFor(profile: EnergyProfile): List<BottomTab> {
             MileNoteIcons.FuelFilled,
         ),
         BottomTab(Routes.MAINTENANCE, "保养", "Maintenance", MileNoteIcons.Maintenance, MileNoteIcons.MaintenanceFilled),
+        BottomTab(Routes.MINE, "我的", "Me", MileNoteIcons.Person, MileNoteIcons.PersonFilled),
     )
 }
 
@@ -127,16 +124,56 @@ private fun vehicleTypeIcon(profile: EnergyProfile): ImageVector = when (profile
     EnergyProfile.DUAL -> MileNoteIcons.VehicleHybrid
 }
 
+/** 三个推入的「明细 / 记录」路由（走外层顶栏 + 返回箭头，不显示底栏）。 */
+private val detailRoutes = setOf(Routes.RECORDS, Routes.FUEL_DETAIL, Routes.SERVICE_HISTORY)
+
 /** 顶栏标题：油耗分析 / 能耗分析按当前车能量档位切换（其余路由与语言无关逻辑不变）。 */
 private fun topBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
     Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
-    Routes.RECORDS -> TopBarCopy(tr("费用统计", "Analytics"), "")
     Routes.FUEL -> if (profile != EnergyProfile.FUEL_ONLY) {
         TopBarCopy(tr("能耗分析", "Energy"), "")
     } else {
         TopBarCopy(tr("油耗分析", "Fuel"), "")
     }
     Routes.MAINTENANCE -> TopBarCopy(tr("维修保养", "Service"), "")
+    Routes.MINE -> TopBarCopy(tr("我的", "Me"), "")
+    else -> null
+}
+
+/** 推入的「明细 / 记录」页顶栏：带返回箭头、无车辆胶囊。 */
+private fun detailTopBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
+    Routes.RECORDS -> TopBarCopy(tr("费用明细", "Expense details"), "")
+    Routes.FUEL_DETAIL -> if (profile != EnergyProfile.FUEL_ONLY) {
+        TopBarCopy(tr("能耗明细", "Energy records"), "")
+    } else {
+        TopBarCopy(tr("油耗明细", "Fuel records"), "")
+    }
+    Routes.SERVICE_HISTORY -> TopBarCopy(tr("维修保养记录", "Maintenance records"), "")
+    else -> null
+}
+
+/** tab 顶栏右上角的页面动作：三个概览页各进自己的明细 / 记录页；「我的」无动作。 */
+private data class TopBarAction(
+    val route: String,
+    val labelZh: String,
+    val labelEn: String,
+    val icon: ImageVector,
+)
+
+private fun topBarAction(route: String, profile: EnergyProfile): TopBarAction? = when (route) {
+    Routes.DASHBOARD -> TopBarAction(Routes.RECORDS, "费用明细", "Expense details", MileNoteIcons.Records)
+    Routes.FUEL -> TopBarAction(
+        Routes.FUEL_DETAIL,
+        if (profile != EnergyProfile.FUEL_ONLY) "能耗明细" else "油耗明细",
+        if (profile != EnergyProfile.FUEL_ONLY) "Energy records" else "Fuel records",
+        MileNoteIcons.Records,
+    )
+    Routes.MAINTENANCE -> TopBarAction(
+        Routes.SERVICE_HISTORY,
+        "维修保养记录",
+        "Maintenance records",
+        MileNoteIcons.Records,
+    )
     else -> null
 }
 
@@ -154,6 +191,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
     val pagerState = rememberPagerState(pageCount = { bottomTabs.size })
     val scope = rememberCoroutineScope()
     val isTabs = currentRoute == Routes.DASHBOARD
+    val isDetail = currentRoute in detailRoutes
     val currentPage = pagerState.currentPage.coerceIn(0, bottomTabs.lastIndex)
     val showBottomBar = isTabs
 
@@ -163,7 +201,12 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             navController.navigate(Routes.IMPORTER)
         }
     }
-    val copy = if (isTabs) topBarCopy(bottomTabs[currentPage].route, profile) else null
+    val copy = when {
+        isTabs -> topBarCopy(bottomTabs[currentPage].route, profile)
+        isDetail -> detailTopBarCopy(currentRoute, profile)
+        else -> null
+    }
+    val tabAction = if (isTabs) topBarAction(bottomTabs[currentPage].route, profile) else null
 
     // 四个底部 tab 支持左右滑动切换；在非首个 tab 按返回先回总览。
     BackHandler(enabled = isTabs && currentPage != 0) {
@@ -185,9 +228,15 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.background)
                         .statusBarsPadding()
-                        .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                        // 明细页左侧是返回箭头，页边距收到 4dp；tab 页标题贴 16dp。
+                        .padding(start = if (isDetail) 4.dp else 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (isDetail) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(MileNoteIcons.Back, contentDescription = tr("返回", "Back"))
+                        }
+                    }
                     Text(
                         text = copy.title,
                         style = MaterialTheme.typography.titleLarge,
@@ -196,30 +245,37 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    val vehicle = state.vehicle
-                    if (vehicle != null) {
-                        androidx.compose.foundation.layout.Spacer(
-                            modifier = Modifier.width(8.dp),
-                        )
-                        AssistChip(
-                            onClick = { vm.showVehicleSwitcher(true) },
-                            label = {
-                                Text(
-                                    text = com.milenote.android.i18n.DataLabels.vehicleName(vehicle.name),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                    if (isTabs) {
+                        val vehicle = state.vehicle
+                        if (vehicle != null) {
+                            androidx.compose.foundation.layout.Spacer(
+                                modifier = Modifier.width(8.dp),
+                            )
+                            AssistChip(
+                                onClick = { vm.showVehicleSwitcher(true) },
+                                label = {
+                                    Text(
+                                        text = com.milenote.android.i18n.DataLabels.vehicleName(vehicle.name),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(vehicleTypeIcon(profile), contentDescription = null)
+                                },
+                            )
+                            androidx.compose.foundation.layout.Spacer(
+                                modifier = Modifier.width(4.dp),
+                            )
+                        }
+                        if (tabAction != null) {
+                            IconButton(onClick = { navController.navigate(tabAction.route) }) {
+                                Icon(
+                                    imageVector = tabAction.icon,
+                                    contentDescription = tr(tabAction.labelZh, tabAction.labelEn),
                                 )
-                            },
-                            leadingIcon = {
-                                Icon(vehicleTypeIcon(profile), contentDescription = null)
-                            },
-                        )
-                        androidx.compose.foundation.layout.Spacer(
-                            modifier = Modifier.width(4.dp),
-                        )
-                    }
-                    IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = tr("设置", "Settings"))
+                            }
+                        }
                     }
                 }
             }
@@ -262,16 +318,22 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                         },
                     )
                 }
+                composable(Routes.RECORDS) {
+                    RecordsScreen(vm = vm, modifier = Modifier.fillMaxSize())
+                }
                 composable(
-                    route = Routes.SETTINGS,
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None },
-                ) {
+                    route = Routes.SETTINGS_PAGE_PATTERN,
+                    arguments = listOf(
+                        navArgument("page") {
+                            type = NavType.StringType
+                            defaultValue = "vehicles"
+                        },
+                    ),
+                ) { entry ->
                     SettingsScreen(
                         vm = vm,
-                        onNavigate = { navController.navigate(it) },
+                        initialPage = entry.arguments?.getString("page") ?: "vehicles",
+                        onBack = { navController.popBackStack() },
                         onOpenImporter = { source -> navController.navigate(Routes.importerRoute(source)) },
                     )
                 }
@@ -403,7 +465,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
 }
 
 
-/** 四个底部 tab 的横向分页容器（微信式左右滑动切换）。 */
+/** 底部 4 个 tab 的横向分页容器（微信式左右滑动切换）：总览 / 油耗 / 保养 / 我的。 */
 @Composable
 private fun HomeTabs(
     vm: MileNoteViewModel,
@@ -420,9 +482,12 @@ private fun HomeTabs(
         holder.SaveableStateProvider(tabs[page].route) {
             when (page) {
                 0 -> DashboardScreen(vm = vm, onNavigate = onNavigate)
-                1 -> RecordsScreen(vm = vm, onNavigate = onNavigate)
-                2 -> FuelScreen(vm = vm, onNavigate = onNavigate)
-                3 -> MaintenanceScreen(vm = vm, onNavigate = onNavigate)
+                1 -> FuelScreen(vm = vm, onNavigate = onNavigate)
+                2 -> MaintenanceScreen(vm = vm, onNavigate = onNavigate)
+                3 -> MineScreen(
+                    vm = vm,
+                    onOpenPage = { pageKey -> onNavigate(Routes.settingsPageRoute(pageKey)) },
+                )
             }
         }
     }

@@ -124,7 +124,8 @@ private val HeroCarArtWidth = 170.dp
  *
  * 页面不自带 Scaffold / 顶栏 / 底栏 / FAB；只输出滚动内容，并按 [MileNoteDimens.PageBottom]
  * 预留底部空间。统计范围使用 [UiState.effectiveRange]（自定义范围优先），只影响指标 / 构成；
- * 「支出趋势 / 费用构成」已移到费用统计页；本页图表 / 待办与统计卡统一为同一种 SectionCard 版式。
+ * 底栏 v4 起「支出趋势」重新回到本页（费用统计页取消）；「费用构成」留到月报 / 年报。
+ * 本页图表 / 待办与统计卡统一为同一种 SectionCard 版式。
  *
  * @param vm 全局 ViewModel（期间 / 自定义范围 / 编辑记录 / 演示）。
  * @param onNavigate 顶层路由跳转（记录、油耗、保养、设置）。
@@ -275,6 +276,10 @@ private fun DashboardContent(
                 onSelectCustomRange = onSelectCustomRange,
             )
         }
+        // 底栏 v4：原「费用统计 → 统计」页签的支出趋势并回总览；两张按月图先原样上下排。
+        item(key = "expense-trend") {
+            ExpenseTrendCard(ledger = ledger, today = today)
+        }
 
     }
 
@@ -323,7 +328,7 @@ private fun DashboardLoadState(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        TextButton(onClick = { onNavigate(Routes.SETTINGS) }) {
+        TextButton(onClick = { onNavigate(Routes.MINE) }) {
             Text(tr("前往设置导出原始数据", "Go to Settings to export raw data"))
         }
         TextButton(onClick = onReloadLedger) {
@@ -388,7 +393,7 @@ private fun VehicleHeroCard(
             .background(Brush.linearGradient(gradient.colors))
             .clickable(
                 onClickLabel = tr("管理车辆", "Manage vehicle"),
-                onClick = { onNavigate(Routes.SETTINGS) },
+                onClick = { onNavigate(Routes.MINE) },
             )
             .semantics(mergeDescendants = true) {
                 contentDescription = tr(

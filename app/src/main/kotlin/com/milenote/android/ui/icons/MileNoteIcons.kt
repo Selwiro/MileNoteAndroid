@@ -91,6 +91,23 @@ object MileNoteIcons {
         )
     }
 
+    /** 我的（描边：头 + 肩线，Material Symbols Rounded person 几何）。 */
+    val Person: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Person",
+            "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+            "M4 21v-1c0-2.8 3.6-5 8-5s8 2.2 8 5v1",
+        )
+    }
+
+    /** 我的（选中：实心头 + 肩，底栏用）。 */
+    val PersonFilled: ImageVector by lazy {
+        filledIcon(
+            name = "MileNote.PersonFilled",
+            "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z",
+        )
+    }
+
     /** 车辆（Web `car`）。 */
     val Car: ImageVector by lazy {
         strokeIcon(
@@ -525,7 +542,7 @@ object MileNoteIcons {
     }
 
     /** 底栏 4 项图标：总览 / 记录 / 油耗 / 保养。 */
-    val BottomNav: List<ImageVector> = listOf(Home, Records, Fuel, Maintenance)
+    val BottomNav: List<ImageVector> = listOf(Home, Fuel, Maintenance, Person)
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -4,8 +4,6 @@ package com.milenote.android.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -117,14 +115,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * 返回上一页的导航约定（兜底）：宿主没有 `OnBackPressedDispatcher` 时，
- * 导航层收到该值应执行 `navController.popBackStack()`。
- */
-const val SETTINGS_NAV_BACK: String = "back"
-
 /** 设置页内的轻量提示（导出/导入/图片处理的结果；账本类操作由 VM 的全局 Snackbar 播报）。 */
-private data class SettingsMessage(
+internal data class SettingsMessage(
     val text: String,
     val kind: MessageKind,
     val actionLabel: String? = null,
@@ -159,8 +151,7 @@ private data class VehicleEditTarget(
  * 一级按性质分三组：车辆/外观/单位/记账、数据（外部导入 / 备份与还原 / WebDAV 同步）、关于。
  * 全部子页都从设置首页一层进入，不再有三级页。
  */
-private enum class SettingsPage {
-    ROOT,
+internal enum class SettingsPage {
     VEHICLES,
     APPEARANCE,
     UNITS,
@@ -173,10 +164,13 @@ private enum class SettingsPage {
     LICENSES,
     ;
 
+    /** 路由参数用的稳定 key（小写；改动会让旧深链失效，不要随手改）。 */
+    val key: String
+        get() = name.lowercase()
+
     /** 顶栏标题（随语言切换；不要放进枚举构造参数，那样会固定在类加载时的语言）。 */
     val title: String
         get() = when (this) {
-            ROOT -> tr("设置", "Settings")
             VEHICLES -> tr("我的车辆", "My vehicles")
             APPEARANCE -> tr("外观", "Appearance")
             UNITS -> tr("单位", "Units")
@@ -188,15 +182,20 @@ private enum class SettingsPage {
             PRIVACY -> tr("隐私与数据", "Privacy & data")
             LICENSES -> tr("开源许可", "Licenses")
         }
+
+    companion object {
+        /** 路由参数 -> 子页；未知 / 空值回退到「我的车辆」。 */
+        fun fromKey(key: String?): SettingsPage =
+            entries.firstOrNull { it.key == key } ?: VEHICLES
+    }
 }
 
 /**
- * 设置。
+ * 设置子页（底栏 v4 起设置首页已抽成「我的」菜单页 [MineScreen]，本页只渲染单个子页）。
  *
- * 首页：三张卡片、8 行菜单（单色图标 + 标题 + chevron）——
- * 车辆/外观/单位/费用分类与项目；外部导入 / 备份与还原 / WebDAV 同步；关于。
- * 点按进入子页；子页共用同一个 TopAppBar（返回箭头回到菜单），系统返回键用
- * [BackHandler] 先回菜单；不新增路由。返回逻辑只有"子页 → 设置首页"一层。
+ * 从「我的」菜单推入，路由参数 `page` 决定初始子页（[SettingsPage.fromKey]）；顶栏返回箭头 =
+ * `onBack()`（导航层 pop 回「我的」）。子页之间只有「关于 → 隐私与数据 / 开源许可」一层内部切换，
+ * 这两页的返回箭头同样 pop 回「我的」（与 v4 之前的返回口径一致）。
  *
  * - 我的车辆：横向车辆卡片，点卡片切换当前车辆，卡片右上角编辑；添加车辆打开全屏编辑对话框。
  * - 外观：5 套皮肤、深浅色三态。
@@ -209,15 +208,16 @@ private enum class SettingsPage {
  * - 开源许可：本应用与第三方组件的许可证全文（离线内嵌）、Android SDK 许可条款链接。
  *
  * @param vm 全局 ViewModel。
- * @param onNavigate 路由回调；仅在首页返回、且宿主没有 OnBackPressedDispatcher 时回传
- *   [SETTINGS_NAV_BACK]（兜底）。
+ * @param initialPage 初始子页 key（路由参数，见 [SettingsPage.key]）。
+ * @param onBack 返回「我的」（导航层 popBackStack）。
  * @param onOpenImporter 打开导入向导（外部导入），参数为来源 id（bear / qianji）。
  * @param modifier 外部修饰符。
  */
 @Composable
 fun SettingsScreen(
     vm: MileNoteViewModel,
-    onNavigate: (String) -> Unit = {},
+    initialPage: String,
+    onBack: () -> Unit,
     onOpenImporter: (String?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -246,9 +246,9 @@ fun SettingsScreen(
     var pendingCsv by remember { mutableStateOf<ByteArray?>(null) }
     var pendingXlsx by remember { mutableStateOf<ByteArray?>(null) }
     var pendingRaw by remember { mutableStateOf<ByteArray?>(null) }
-    var pageName by rememberSaveable { mutableStateOf(SettingsPage.ROOT.name) }
+    var pageName by rememberSaveable { mutableStateOf(SettingsPage.fromKey(initialPage).name) }
     var categoryTab by rememberSaveable { mutableIntStateOf(0) }
-    val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: SettingsPage.ROOT
+    val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: SettingsPage.fromKey(initialPage)
 
     fun notify(
         text: String,
@@ -484,34 +484,16 @@ fun SettingsScreen(
         )
     }
 
-    // 子页时系统返回 / 手势返回先回设置菜单，不退出页面路由。
-    BackHandler(enabled = page != SettingsPage.ROOT) {
-        pageName = SettingsPage.ROOT.name
-    }
-
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text(page.title, style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-                    IconButton(
-                        onClick = {
-                            if (page == SettingsPage.ROOT) {
-                                if (backDispatcher != null) {
-                                    backDispatcher.onBackPressed()
-                                } else {
-                                    onNavigate(SETTINGS_NAV_BACK)
-                                }
-                            } else {
-                                pageName = SettingsPage.ROOT.name
-                            }
-                        },
-                    ) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             imageVector = MileNoteIcons.Back,
-                            contentDescription = if (page == SettingsPage.ROOT) tr("返回", "Back") else tr("返回设置", "Back to settings"),
+                            contentDescription = tr("返回", "Back"),
                         )
                     }
                 },
@@ -540,86 +522,6 @@ fun SettingsScreen(
             // key(page)：切换子页时重置滚动位置，不沿用上一页的 LazyColumn 偏移。
             key(page) {
                 when (page) {
-                    SettingsPage.ROOT -> SettingsPageList(narrow = true) {
-                        if (state.loadError != null || state.demo || message != null) {
-                            item("messages") {
-                                SettingsMessageArea(
-                                    loadError = state.loadError,
-                                    demo = state.demo,
-                                    message = message,
-                                    onExitDemo = { vm.exitDemo() },
-                                    onDismissMessage = { message = null },
-                                )
-                            }
-                        }
-
-                        item("menu-main") {
-                            SectionCard(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
-                            ) {
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Car,
-                                    title = tr("我的车辆", "My vehicles"),
-                                    onClick = { pageName = SettingsPage.VEHICLES.name },
-                                )
-                                SectionDivider()
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Palette,
-                                    title = tr("外观", "Appearance"),
-                                    onClick = { pageName = SettingsPage.APPEARANCE.name },
-                                )
-                                SectionDivider()
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Ruler,
-                                    title = tr("单位", "Units"),
-                                    onClick = { pageName = SettingsPage.UNITS.name },
-                                )
-                                SectionDivider()
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Tag,
-                                    title = tr("费用分类与项目", "Categories & items"),
-                                    onClick = { pageName = SettingsPage.CATEGORIES.name },
-                                )
-                            }
-                        }
-
-                        item("menu-data") {
-                            SectionCard(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
-                            ) {
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Import,
-                                    title = tr("外部导入", "Import"),
-                                    onClick = { pageName = SettingsPage.IMPORT.name },
-                                )
-                                SectionDivider()
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Archive,
-                                    title = tr("备份与还原", "Backup & restore"),
-                                    onClick = { pageName = SettingsPage.BACKUP.name },
-                                )
-                                SectionDivider()
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Cloud,
-                                    title = tr("WebDAV 同步", "WebDAV sync"),
-                                    onClick = { pageName = SettingsPage.WEBDAV.name },
-                                )
-                            }
-                        }
-
-                        item("menu-about") {
-                            SectionCard(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
-                            ) {
-                                SettingsMenuRow(
-                                    icon = MileNoteIcons.Info,
-                                    title = tr("关于", "About"),
-                                    onClick = { pageName = SettingsPage.ABOUT.name },
-                                )
-                            }
-                        }
-                    }
-
                     SettingsPage.VEHICLES -> SettingsPageList {
                         if (message != null) {
                             item("messages") {
@@ -859,7 +761,7 @@ fun SettingsScreen(
 
 /** 设置子页统一的滚动容器：16/24dp 页边距、内容 max 840dp、底部 96dp 预留。 */
 @Composable
-private fun SettingsPageList(
+internal fun SettingsPageList(
     narrow: Boolean = false,
     content: LazyListScope.() -> Unit,
 ) {
@@ -892,7 +794,7 @@ private fun SettingsPageList(
  * 设置一级/二级页的菜单行：单色图标 + 标题（+ 可选一行说明），无图标底色。
  */
 @Composable
-private fun SettingsMenuRow(
+internal fun SettingsMenuRow(
     icon: ImageVector,
     title: String,
     onClick: (() -> Unit)? = null,
@@ -945,7 +847,7 @@ private fun SettingsMenuRow(
 
 /** 首页 / 数据页顶部的提示区（账本读取错误、演示横幅、导出导入结果）。 */
 @Composable
-private fun SettingsMessageArea(
+internal fun SettingsMessageArea(
     loadError: String?,
     demo: Boolean,
     message: SettingsMessage?,
@@ -2267,7 +2169,7 @@ private fun SettingsActionRow(
 
 /** 区块内分隔线（带左右缩进，避免与图标列打架）。 */
 @Composable
-private fun SectionDivider() {
+internal fun SectionDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(vertical = 1.dp),
         thickness = 1.dp,

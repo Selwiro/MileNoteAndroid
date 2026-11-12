@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,7 +51,6 @@ import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
-import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
@@ -71,10 +69,7 @@ import com.milenote.android.ui.components.FilterPill
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MoneySize
 import com.milenote.android.ui.components.MoneyText
-import com.milenote.android.ui.components.SecondaryTabs
 import com.milenote.android.ui.icons.MileNoteIcons
-import com.milenote.android.ui.screens.dashboard.CompositionCard
-import com.milenote.android.ui.screens.dashboard.ExpenseTrendCard
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.MileNoteDimens
@@ -88,19 +83,17 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
- * 费用统计页：固定「统计 / 明细」页签。
+ * 费用明细页（底栏 v4：原「记录 / 费用统计」页取消，本页由总览右上角图标推入）。
  *
- * - 统计：支出趋势 + 费用构成；
- * - 明细：搜索、时间/分类筛选、合计、按月分组列表；
- * - 点行打开编辑，长按删除；底栏高度已由外层 Scaffold 预留。
+ * 搜索、时间 / 分类筛选、合计、按月分组列表；点行打开编辑，长按删除。
+ * 「支出趋势」已移到总览；「费用构成」留到月报 / 年报（本轮下线）。
+ * 底栏在推入页隐藏，外层顶栏由导航壳提供（返回箭头 + 标题「费用明细」）。
  *
  * @param vm 全局 ViewModel（记录读写、期间状态、编辑器）。
- * @param onNavigate 路由跳转（当前记录页无二级入口；导出统一在设置页，保留参数以稳定导航契约）。
  */
 @Composable
 fun RecordsScreen(
     vm: MileNoteViewModel,
-    onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -138,16 +131,13 @@ private fun RecordsContent(
     onDeleteRecord: (Record) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
     var query by rememberSaveable { mutableStateOf("") }
     // 用空串表示「全部分类」，避免 rememberSaveable 处理 null 的兼容问题。
     var categoryFilter by rememberSaveable { mutableStateOf("") }
     var lastCarId by rememberSaveable { mutableStateOf(ledger.id) }
-    // 动力类型：纯电把「油费」显示为「电费」/ 插混显示「能源」，手填历史记录叫「手填能耗」。
-    val ev = ledger.isEv
 
-    // 进入记录页 / 从编辑页或其它 tab 返回时：不自动聚焦搜索框，主动清焦点并收起输入法。
+    // 进入明细页 / 从编辑页返回时：不自动聚焦搜索框，主动清焦点并收起输入法。
     // 只有用户点击搜索框（或其它输入框）时才由系统弹出键盘。
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -179,61 +169,17 @@ private fun RecordsContent(
     val groups = remember(filtered) { filtered.groupBy { it.date.take(7) } }
     val filteredTotal = remember(filtered, ledger) { filtered.sumOf { costOf(it, ledger) } }
     val hasAnyRecord = ledger.records.isNotEmpty()
-    val feeRange = remember(state.period, state.customRange, today) { state.effectiveRange(today) }
-    val feeStats = remember(ledger, feeRange) { stats(ledger, feeRange.from, feeRange.to) }
 
-    LaunchedEffect(selectedTab) {
-        listState.scrollToItem(0)
-    }
-
-    // 页签固定在页面顶部（不进 LazyColumn），三页共用 SecondaryTabs 版式。
-    Column(modifier = modifier.fillMaxSize()) {
-        SecondaryTabs(
-            labels = listOf(tr("统计", "Statistics"), tr("明细", "Records")),
-            selected = selectedTab,
-            onSelect = { selectedTab = it },
-        )
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f),
-            // 水平留白仍由各 item 自带（月份 stickyHeader 需要通栏），这里只控制上下。
-            contentPadding = PaddingValues(
-                top = MileNoteDimens.CardGap,
-                bottom = MileNoteDimens.PageBottom,
-            ),
-            verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
-        ) {
-        if (selectedTab == 0) {
-            if (hasAnyRecord) {
-                item(key = "fee-trend") {
-                    Box(modifier = Modifier.padding(horizontal = MileNoteDimens.PageHorizontal)) {
-                        ExpenseTrendCard(ledger = ledger, today = today)
-                    }
-                }
-                item(key = "fee-breakdown") {
-                    Box(modifier = Modifier.padding(horizontal = MileNoteDimens.PageHorizontal)) {
-                        CompositionCard(
-                            period = state.period,
-                            customRange = state.customRange,
-                            statsResult = feeStats,
-                            ev = ev,
-                            onSelectPeriod = onSelectPeriod,
-                            onSelectCustomRange = onSelectCustomRange,
-                        )
-                    }
-                }
-            } else {
-                item(key = "stats-empty") {
-                    EmptyState(
-                        title = tr("还没有费用统计", "No analytics yet"),
-                        description = tr("记下一笔支出后，这里会展示支出趋势与费用构成。", "Add an expense and your trends and breakdown will appear here."),
-                        illustration = painterResource(R.drawable.ill_empty_records),
-                        actionLabel = tr("记一笔", "Add entry"),
-                        onAction = onAddRecord,
-                    )
-                }
-            }
-        } else {
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxSize(),
+        // 水平留白仍由各 item 自带（月份 stickyHeader 需要通栏），这里只控制上下。
+        contentPadding = PaddingValues(
+            top = MileNoteDimens.CardGap,
+            bottom = MileNoteDimens.PageBottom,
+        ),
+        verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+    ) {
         item(key = "filters") {
             RecordsSearchFilterRow(
                 query = query,
@@ -270,7 +216,7 @@ private fun RecordsContent(
                     )
                 } else {
                     EmptyState(
-                        title = tr("这里还没有费用统计", "No analytics here yet"),
+                        title = tr("还没有费用记录", "No expense records yet"),
                         description = tr("记下一笔支出，让用车成本一目了然。", "Add an expense to see your running costs at a glance."),
                         illustration = painterResource(R.drawable.ill_empty_records),
                         actionLabel = tr("记一笔", "Add entry"),
@@ -293,9 +239,7 @@ private fun RecordsContent(
                 }
             }
         }
-        }
     }
-}
 }
 
 /** 明细页顶部：左搜索（占剩余宽度）+ 右筛选胶囊（时间 / 分类 / 重置）。 */
