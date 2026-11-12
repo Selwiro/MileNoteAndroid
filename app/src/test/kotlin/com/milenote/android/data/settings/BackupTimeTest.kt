@@ -71,6 +71,46 @@ class BackupTimeTest {
         assertTrue(Regex("""\d{4}-\d{2}-\d{2} \d{2}:\d{2}""").matches(text))
     }
 
+
+    @Test
+    fun `backup age days is null when never backed up`() {
+        assertNull(backupAgeDays(null, now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli(), zone = utc))
+    }
+
+    @Test
+    fun `backup age days counts calendar days not hours`() {
+        val now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli()
+        // 23 小时前跨了日历日：按日历日差应为 1 天，而不是 0。
+        val yesterdayLate = Instant.parse("2026-11-11T03:00:00Z").toEpochMilli()
+        assertEquals(1, backupAgeDays(yesterdayLate, now = now, zone = utc))
+        // 同一天内 1 小时前 = 0 天。
+        val earlierToday = Instant.parse("2026-11-12T01:00:00Z").toEpochMilli()
+        assertEquals(0, backupAgeDays(earlierToday, now = now, zone = utc))
+    }
+
+    @Test
+    fun `backup age days counts multiple days`() {
+        val now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli()
+        val nineDaysAgo = Instant.parse("2026-11-03T02:00:00Z").toEpochMilli()
+        assertEquals(9, backupAgeDays(nineDaysAgo, now = now, zone = utc))
+    }
+
+    @Test
+    fun `backup age days clamps future timestamps to zero`() {
+        val now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli()
+        val tomorrow = Instant.parse("2026-11-13T02:00:00Z").toEpochMilli()
+        assertEquals(0, backupAgeDays(tomorrow, now = now, zone = utc))
+    }
+
+    @Test
+    fun `backup age days respects the requested zone`() {
+        // UTC 的 2026-11-11 20:00 = 上海 2026-11-12 04:00：上海口径是"今天"，UTC 口径是"昨天"。
+        val lastBackup = Instant.parse("2026-11-11T20:00:00Z").toEpochMilli()
+        val now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli()
+        assertEquals(1, backupAgeDays(lastBackup, now = now, zone = utc))
+        assertEquals(0, backupAgeDays(lastBackup, now = now, zone = shanghai))
+    }
+
     @Test
     fun `app settings defaults last backup at to null`() {
         assertNull(AppSettings().lastBackupAt)

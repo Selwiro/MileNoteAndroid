@@ -3,6 +3,7 @@ package com.milenote.android.data.settings
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
@@ -17,3 +18,25 @@ private val backupTimeFormatter: DateTimeFormatter =
 /** 把 epoch 毫秒按 [zone] 格式化成 `yyyy-MM-dd HH:mm`。 */
 fun formatBackupAt(millis: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     backupTimeFormatter.format(Instant.ofEpochMilli(millis).atZone(zone))
+
+/**
+ * 备份距今多少个日历日（今天 = 0、昨天 = 1）。
+ *
+ * 纯函数（不读语言/系统时间），时区显式传入便于单测；按 [zone] 的**日历日**差计算，
+ * 避免「23 小时前」在不同时区/跨零点时被算成 0 天或 1 天。「我的」页用它显示「今天 / 昨天 / N 天前」。
+ *
+ * @param lastBackupAt 上次备份时刻（epoch millis）；null = 尚未备份。
+ * @param now 当前时刻（epoch millis）。
+ * @param zone 计算日历日差用的时区。
+ * @return 天数；未备份返回 null。未来时间（时钟回拨）按 0 处理。
+ */
+fun backupAgeDays(
+    lastBackupAt: Long?,
+    now: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): Int? {
+    if (lastBackupAt == null) return null
+    val from = Instant.ofEpochMilli(lastBackupAt).atZone(zone).toLocalDate()
+    val to = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    return ChronoUnit.DAYS.between(from, to).toInt().coerceAtLeast(0)
+}
