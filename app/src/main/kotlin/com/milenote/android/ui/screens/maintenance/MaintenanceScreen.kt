@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,8 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -35,10 +32,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,23 +41,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.PlanRow
 import com.milenote.android.domain.calc.ReminderLevel
 import com.milenote.android.domain.calc.ServiceProgress
 import com.milenote.android.domain.calc.currentKm
 import com.milenote.android.domain.calc.defaultServicePlan
-import com.milenote.android.domain.calc.groupReminders
 import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.servicePlanRows
 import com.milenote.android.domain.calc.serviceProgress
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
-import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Reminder
-import com.milenote.android.domain.model.energyProfile
-import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
@@ -70,10 +60,7 @@ import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.CategoryBadge
 import com.milenote.android.ui.components.LoadingState
-import com.milenote.android.ui.components.MoneySize
-import com.milenote.android.ui.components.MoneyText
 import com.milenote.android.ui.components.SectionCard
-import com.milenote.android.ui.components.SecondaryTabs
 import com.milenote.android.ui.components.StatusPill
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
@@ -83,14 +70,15 @@ import com.milenote.android.ui.theme.MileNoteShapeTokens
 import java.time.LocalDate
 
 /**
- * 维修保养页（Web `remindersPage`）。
+ * 维修保养页（Web `remindersPage`；底栏 v4 起合并为单页）。
  *
- * 结构：
- * - 顶部「待办与记录 / 计划」两个固定页签（共用 [SecondaryTabs]）；
- * - 待办与记录：待办列表 + 扁平维修保养记录（右上角胶囊按维修 / 保养 / 汽车美容筛选）；
- * - 计划：一张平铺的保养计划表（不按状态分组，离到期越近越靠上、已完成的沉底），
+ * 结构（一个 LazyColumn 两张卡，「待办与记录 / 计划」两个页签已去掉）：
+ * - 待办卡：只放「已到期 + 最近几项」摘要（已到期全放，再用最近到期的补到最多 5 条），
+ *   副标题写「共 X 项 · Y 项已到期」；「维修保养记录」已拆成推入页 [ServiceHistoryScreen]；
+ * - 计划卡：一张平铺的保养计划表（不按状态分组，离到期越近越靠上、已完成的沉底），
  *   右上角「编辑计划」；点行看详情并完成。
  *
+ * 待办卡与计划表同源（提醒），计划表是全量超集，所以待办卡只做摘要、不重复铺全部提醒。
  * 只输出内容，不含 Scaffold / 顶栏 / 底栏；页边距 16dp，底部由外层 Scaffold 预留。
  * 弹层：计划行详情、完成并记录、提醒编辑、启用默认方案、全屏方案编辑。
  *
@@ -113,26 +101,29 @@ fun MaintenanceScreen(
     }
 
     val today = Dates.today()
-    val ev = ledger.isEv
     val km = remember(ledger) { currentKm(ledger) }
-    val groups = remember(ledger.reminders, today) { groupReminders(ledger.reminders, today) }
-    val overdueCount = remember(groups.near, km, today) {
-        groups.near.count { reminderState(it, km, today).level == ReminderLevel.OVERDUE }
-    }
     val rows = remember(ledger, today, km) {
         val base = runCatching { servicePlanRows(ledger, today, km) }
             .getOrDefault(emptyList<PlanRow>())
         sortPlanRows(base, km, today)
     }
-    val history = remember(ledger.records) {
-        ledger.records
-            .filter { it.category in SERVICE_RECORD_CATEGORIES }
-            .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.odometer ?: 0.0 })
-    }
     val configured = remember(ledger) {
         ledger.servicePlanConfigured == true ||
             !ledger.servicePlan.isNullOrEmpty() ||
             ledger.reminders.any { it.source == "默认保养方案" }
+    }
+
+    // 待办卡口径（底栏 v4 R2）：候选 = 未完成且带到期日期 / 到期里程的提醒。
+    // 计划表是全量超集，这里只做摘要，避免同一批提醒在两张卡里重复铺开。
+    val todoCandidates = remember(ledger.reminders, km, today) {
+        pendingReminderCandidates(ledger.reminders, km, today)
+    }
+    val overdueCount = remember(todoCandidates, km, today) {
+        todoCandidates.count { reminderState(it, km, today).level == ReminderLevel.OVERDUE }
+    }
+    // 已到期全放，再用最近到期的补到最多 [TODO_MAX_ITEMS] 条。
+    val todoVisible = remember(todoCandidates, overdueCount) {
+        todoCandidates.take(maxOf(overdueCount, TODO_MAX_ITEMS))
     }
 
     val exportCalendar = rememberCalendarExportAction()
@@ -142,181 +133,115 @@ fun MaintenanceScreen(
     var editReminder by remember { mutableStateOf<Reminder?>(null) }
     var planDetail by remember { mutableStateOf<PlanRow?>(null) }
     var showDefaultPlan by remember { mutableStateOf(false) }
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var historyFilter by rememberSaveable { mutableStateOf("全部") }
 
-    // 记录筛选：旧分类「维修保养」先归一成「保养」再比较，「全部」不过滤。
-    val filteredHistory = remember(history, historyFilter) {
-        if (historyFilter == "全部") {
-            history
-        } else {
-            history.filter { Categories.normalize(it.category) == historyFilter }
-        }
-    }
-
-    Column(modifier = modifier.fillMaxSize()) {
-        SecondaryTabs(
-            labels = listOf(tr("待办与记录", "Tasks & records"), tr("计划", "Plan")),
-            selected = selectedTab,
-            onSelect = { selectedTab = it },
-        )
-        if (selectedTab == 0) {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(
-                    start = MileNoteDimens.PageHorizontal,
-                    end = MileNoteDimens.PageHorizontal,
-                    top = MileNoteDimens.CardGap,
-                    bottom = MileNoteDimens.PageBottom,
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = MileNoteDimens.PageHorizontal,
+            end = MileNoteDimens.PageHorizontal,
+            top = MileNoteDimens.CardGap,
+            bottom = MileNoteDimens.PageBottom,
+        ),
+        verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+    ) {
+        item(key = "todo") {
+            SectionCard(
+                title = tr("待办事项", "To-dos"),
+                subtitle = tr(
+                    "共 %d 项 · %d 项已到期",
+                    "%d items · %d overdue",
+                    todoCandidates.size,
+                    overdueCount,
                 ),
-                verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+                action = {
+                    TextButton(onClick = { addReminder = true }) { Text(tr("添加提醒", "Add reminder")) }
+                },
             ) {
-                item(key = "todo") {
-                    SectionCard(
-                        title = tr("待办事项", "To-dos"),
-                        subtitle = if (overdueCount > 0) {
-                            tr(
-                                "%d 项 · %d 项已到期",
-                                "%d items · %d overdue",
-                                groups.near.size,
-                                overdueCount,
+                if (todoVisible.isEmpty()) {
+                    PendingEmptyState(onAdd = { addReminder = true })
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        todoVisible.forEach { reminder ->
+                            ReminderCard(
+                                ledger = ledger,
+                                reminder = reminder,
+                                km = km,
+                                today = today,
+                                onComplete = { completeTarget = it },
+                                onEdit = { editReminder = it },
                             )
-                        } else {
-                            tr(
-                                "%d 项 · 当前 %s",
-                                "%d items · current %s",
-                                groups.near.size,
-                                distanceText(km),
-                            )
-                        },
-                        action = {
-                            TextButton(onClick = { addReminder = true }) { Text(tr("添加提醒", "Add reminder")) }
-                        },
-                    ) {
-                        if (groups.near.isEmpty()) {
-                            PendingEmptyState(onAdd = { addReminder = true })
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                groups.near.forEach { reminder ->
-                                    ReminderCard(
-                                        ledger = ledger,
-                                        reminder = reminder,
-                                        km = km,
-                                        today = today,
-                                        onComplete = { completeTarget = it },
-                                        onEdit = { editReminder = it },
-                                    )
-                                }
-                            }
                         }
-                    }
-                }
-                item(key = "history") {
-                    SectionCard(
-                        title = tr("维修保养记录", "Maintenance records"),
-                        subtitle = tr(
-                            "%d 次 · 当前 %s",
-                            "%d entries · current %s",
-                            filteredHistory.size,
-                            distanceText(km),
-                        ),
-                        action = {
-                            ServiceHistoryFilter(
-                                filter = historyFilter,
-                                ev = ev,
-                                onSelect = { historyFilter = it },
-                            )
-                        },
-                    ) {
-                        ServiceHistoryFlatList(
-                            records = filteredHistory,
-                            ledger = ledger,
-                            filterActive = historyFilter != "全部" && history.isNotEmpty(),
-                            onEdit = { vm.openEditor(recordId = it.id) },
-                        )
                     }
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(
-                    start = MileNoteDimens.PageHorizontal,
-                    end = MileNoteDimens.PageHorizontal,
-                    top = MileNoteDimens.CardGap,
-                    bottom = MileNoteDimens.PageBottom,
+        }
+        item(key = "plan") {
+            SectionCard(
+                title = tr("保养计划", "Service plan"),
+                subtitle = tr(
+                    "按最近一次保养记录计算下次到期",
+                    "Next due date is based on the latest service record",
                 ),
-                verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
-            ) {
-                item(key = "plan") {
-                    SectionCard(
-                        title = tr("保养计划", "Service plan"),
-                        subtitle = tr(
-                            "按最近一次保养记录计算下次到期",
-                            "Next due date is based on the latest service record",
-                        ),
-                        action = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                // 一次性把未来所有未完成、有到期日期的提醒导出成一个 ICS（原来只能逐条导）。
-                                if (ledger.reminders.any { !it.done && Dates.isValid(it.dueDate) }) {
-                                    TextButton(onClick = { exportCalendarAll(ledger.reminders) }) {
-                                        Text(tr("导出日历", "Export calendar"))
-                                    }
-                                }
-                                TextButton(onClick = { vm.openServicePlanEditor() }) {
-                                    Text(tr("编辑计划", "Edit plan"))
-                                }
-                            }
-                        },
+                action = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        if (!configured) {
-                            EnableDefaultPlanGuide(
-                                powertrain = ledger.vehicle.powertrainKey,
-                                onEnableDefault = { showDefaultPlan = true },
-                                onCustomize = { vm.openServicePlanEditor() },
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                        }
-                        if (rows.isEmpty()) {
-                            Text(
-                                text = tr(
-                                    "暂无计划项目。启用默认方案或编辑自定义方案后，这里会显示完整周期。",
-                                    "No plan items yet. Enable the default plan or edit a custom plan to " +
-                                        "see the full schedule here.",
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            PlanTableHeader()
-                            rows.forEachIndexed { index, row ->
-                                PlanTableRow(
-                                    ledger = ledger,
-                                    row = row,
-                                    km = km,
-                                    today = today,
-                                    onClick = { planDetail = row },
-                                )
-                                if (index != rows.lastIndex) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(start = 13.dp),
-                                        thickness = 1.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                                    )
-                                }
+                        // 一次性把未来所有未完成、有到期日期的提醒导出成一个 ICS（原来只能逐条导）。
+                        if (ledger.reminders.any { !it.done && Dates.isValid(it.dueDate) }) {
+                            TextButton(onClick = { exportCalendarAll(ledger.reminders) }) {
+                                Text(tr("导出日历", "Export calendar"))
                             }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = tr("点项目行查看详情、完成并记录", "Tap an item to see details and log a service"),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 4.dp),
+                        }
+                        TextButton(onClick = { vm.openServicePlanEditor() }) {
+                            Text(tr("编辑计划", "Edit plan"))
+                        }
+                    }
+                },
+            ) {
+                if (!configured) {
+                    EnableDefaultPlanGuide(
+                        powertrain = ledger.vehicle.powertrainKey,
+                        onEnableDefault = { showDefaultPlan = true },
+                        onCustomize = { vm.openServicePlanEditor() },
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+                if (rows.isEmpty()) {
+                    Text(
+                        text = tr(
+                            "暂无计划项目。启用默认方案或编辑自定义方案后，这里会显示完整周期。",
+                            "No plan items yet. Enable the default plan or edit a custom plan to " +
+                                "see the full schedule here.",
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    PlanTableHeader()
+                    rows.forEachIndexed { index, row ->
+                        PlanTableRow(
+                            ledger = ledger,
+                            row = row,
+                            km = km,
+                            today = today,
+                            onClick = { planDetail = row },
+                        )
+                        if (index != rows.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 13.dp),
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = tr("点项目行查看详情、完成并记录", "Tap an item to see details and log a service"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
                 }
             }
         }
@@ -395,115 +320,31 @@ fun MaintenanceScreen(
     }
 }
 
-@Composable
-private fun ServiceHistoryFlatList(
-    records: List<Record>,
-    ledger: Ledger,
-    filterActive: Boolean,
-    onEdit: (Record) -> Unit,
-) {
-    if (records.isEmpty()) {
-        Text(
-            text = if (filterActive) {
-                tr(
-                    "没有符合条件的记录。点右上角「筛选」可切回全部。",
-                    "No matching records. Tap Filter at the top right to show all.",
-                )
-            } else {
-                tr(
-                    "还没有维修保养记录。完成维修、保养或汽车美容后，记下日期、地点、里程、项目和费用。",
-                    "No maintenance records yet. After a repair, service, or detailing job, log the " +
-                        "date, location, mileage, items, and cost.",
-                )
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        records.forEachIndexed { index, record ->
-            ServiceHistoryCard(
-                record = record,
-                ledger = ledger,
-                onClick = { onEdit(record) },
-            )
-            if (index != records.lastIndex) FlatDivider()
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// 维修保养记录筛选
-// ---------------------------------------------------------------------------------------------
-
-/** 记录卡筛选选项（「全部」不过滤；旧分类「维修保养」先归一成「保养」再比较）。 */
-private val SERVICE_HISTORY_FILTERS = listOf("全部", "维修", "保养", "汽车美容")
-
-/** 记录卡右上角筛选胶囊 + 下拉菜单（全部 / 维修 / 保养 / 汽车美容）。 */
-@Composable
-private fun ServiceHistoryFilter(filter: String, ev: Boolean, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val scheme = MaterialTheme.colorScheme
-    Box {
-        Surface(
-            onClick = { expanded = true },
-            shape = CircleShape,
-            color = scheme.surfaceContainerHigh,
-            contentColor = scheme.onSurface,
-        ) {
-            Row(
-                modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = if (filter == "全部") tr("筛选", "Filter") else DataLabels.category(filter, ev),
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                )
-                Icon(
-                    imageVector = MileNoteIcons.ChevronDown,
-                    contentDescription = tr("筛选维修保养记录", "Filter maintenance records"),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            SERVICE_HISTORY_FILTERS.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Text(if (option == "全部") tr("全部", "All") else DataLabels.category(option, ev))
-                    },
-                    trailingIcon = historyFilterCheckIcon(selected = option == filter),
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
-}
-
-/** 筛选菜单选中勾。 */
-@Composable
-private fun historyFilterCheckIcon(selected: Boolean): (@Composable () -> Unit)? =
-    if (!selected) {
-        null
-    } else {
-        {
-            Icon(
-                imageVector = MileNoteIcons.Check,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
-
 // ---------------------------------------------------------------------------------------------
 // 待办卡片
 // ---------------------------------------------------------------------------------------------
+
+/** 待办卡最多展示条数：已到期全放，其余补到这么多条。 */
+private const val TODO_MAX_ITEMS = 5
+
+/**
+ * 待办卡候选（底栏 v4 R2）：未完成、且带到期日期或到期里程的提醒。
+ *
+ * 排序：已到期优先，其次到期日期升序（无日期排最后），再按到期里程升序；
+ * 这样「已到期全放 + 最近到期的补到 5 条」直接取前缀即可。
+ * 只用于待办摘要；计划表用 `servicePlanRows` 展示全量（两者同源，不重复铺开）。
+ */
+private fun pendingReminderCandidates(
+    reminders: List<Reminder>,
+    km: Double,
+    today: LocalDate,
+): List<Reminder> = reminders
+    .filter { !it.done && (Dates.isValid(it.dueDate) || it.dueKm != null) }
+    .sortedWith(
+        compareByDescending<Reminder> { reminderState(it, km, today).level == ReminderLevel.OVERDUE }
+            .thenBy { it.dueDate?.takeIf { d -> d.isNotEmpty() } ?: "9999" }
+            .thenBy { it.dueKm ?: Double.MAX_VALUE },
+    )
 
 @Composable
 private fun ReminderCard(
@@ -1086,69 +927,6 @@ private fun progressSummary(progress: ServiceProgress): String {
     }
     val used = tr("已用 %s%%", "%s%% used", Format.fmt(progress.percent))
     return listOfNotNull(used, remaining).joinToString(" · ")
-}
-
-@Composable
-private fun ServiceHistoryCard(record: Record, ledger: Ledger, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    val projects = record.projects?.takeIf { it.isNotBlank() }
-    // 整行可点直接进入编辑；左侧图标垂直居中，只保留日期 + 项目两行。
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClickLabel = tr("编辑记录", "Edit record")) { onClick() }
-            .height(IntrinsicSize.Min)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CategoryBadge(categoryName = record.category)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            Text(
-                text = buildString {
-                    append(fullDateLabel(record.date))
-                    record.odometer?.let {
-                        append(" · ")
-                        append(distanceText(it))
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = projects?.let { raw ->
-                    raw.split("、").joinToString(tr("、", ", ")) { DataLabels.projectFor(ledger, it) }
-                } ?: DataLabels.categoryFor(ledger, record.category, ledger.vehicle.energyProfile),
-                style = MaterialTheme.typography.titleMedium,
-                color = scheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        MoneyText(
-            amount = Format.money(record.amount),
-            size = MoneySize.MEDIUM,
-            unit = Units.money,
-        )
-    }
-}
-
-/** `2026-10-01` → `2026.10.01`（记录卡第一行日期）。 */
-private fun fullDateLabel(isoDate: String): String = Format.dateDots(isoDate)
-
-/** 扁平列表行的细分割线（不再使用内层卡片）。 */
-@Composable
-private fun FlatDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(start = 12.dp, end = 12.dp),
-        thickness = 1.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-    )
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -73,8 +73,10 @@ import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.screens.dashboard.DashboardScreen
+import com.milenote.android.ui.screens.fuel.EnergyDetailScreen
 import com.milenote.android.ui.screens.fuel.FuelScreen
 import com.milenote.android.ui.screens.maintenance.MaintenanceScreen
+import com.milenote.android.ui.screens.maintenance.ServiceHistoryScreen
 import com.milenote.android.ui.screens.records.RecordsScreen
 import com.milenote.android.ui.screens.settings.MineScreen
 import com.milenote.android.ui.screens.settings.SettingsScreen
@@ -320,6 +322,12 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 }
                 composable(Routes.RECORDS) {
                     RecordsScreen(vm = vm, modifier = Modifier.fillMaxSize())
+                }
+                composable(Routes.FUEL_DETAIL) {
+                    EnergyDetailScreen(vm = vm, modifier = Modifier.fillMaxSize())
+                }
+                composable(Routes.SERVICE_HISTORY) {
+                    ServiceHistoryScreen(vm = vm, modifier = Modifier.fillMaxSize())
                 }
                 composable(
                     route = Routes.SETTINGS_PAGE_PATTERN,

@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenuItem
@@ -39,7 +37,6 @@ import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,7 +69,6 @@ import com.milenote.android.domain.calc.EnergyKind
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
 import com.milenote.android.domain.calc.energyIntervals
-import com.milenote.android.domain.calc.energyRateByRecord
 import com.milenote.android.domain.calc.manualEnergyIntervals
 import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
@@ -80,30 +76,21 @@ import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.ui.MileNoteViewModel
-import com.milenote.android.ui.components.CompactSearchField
 import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.FilterMenuCheckIcon
 import com.milenote.android.ui.components.FilterMenuDivider
 import com.milenote.android.ui.components.FilterMenuGroupLabel
 import com.milenote.android.ui.components.FilterPill
 import com.milenote.android.ui.components.LoadingState
-import com.milenote.android.ui.components.MoneySize
-import com.milenote.android.ui.components.MoneyText
-import com.milenote.android.ui.components.SecondaryTabs
 import com.milenote.android.ui.components.SectionCard
-import com.milenote.android.ui.components.StatusKind
-import com.milenote.android.ui.components.StatusPill
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
-import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.Month
-import java.time.format.TextStyle
 import java.util.Locale
 import kotlinx.coroutines.launch
 import java.time.ZoneOffset
@@ -115,17 +102,17 @@ import java.time.ZoneOffset
  * - **FUEL_ONLY（燃油、HEV）**：今日油价卡 + 2×2 概览（油耗 / 油费支出 / 平均油费 / 里程）+ 油耗走势；
  * - **ELECTRIC_ONLY（纯电）**：无油价卡、不抓价、不定位；2×2 概览（电耗 / 电费支出 / 平均电费 / 里程）+ 电耗走势；
  * - **DUAL（插混 / 增程）**：有油箱 → 油价卡照旧（抓价 / 定位不变）；概览 2×3（平均油耗 / 平均电耗 /
- *   油费 / 电费 / 每公里能源费用 / 里程）、走势右上角「筛选」含时间 + 能源（油耗 / 电耗）两组、
- *   明细加油与充电混排 + 两行汇总。
+ *   油费 / 电费 / 每公里能源费用 / 里程）、走势右上角「筛选」含时间 + 能源（油耗 / 电耗）两组；
+ *   加油与充电明细在推入页 [EnergyDetailScreen] 里混排 + 两行汇总。
  *
- * 结构（自上→下，三块内容统一为 SectionCard 卡片风格，卡内只有标题、无副标题）：
- * 1. 「油耗/能耗概览」卡：右上角时间筛选（全部 / 本月 / 今年 / 自定义 DateRangePicker）+ 卡内 2×2（插混 2×3）纯文字指标；
- * 2. 「油耗/能耗走势」卡：右上角「筛选」胶囊（时间分组；插混另有能源分组，选中即切换曲线数据源）+
+ * 结构（自上→下，统一为 SectionCard 卡片风格，卡内只有标题、无副标题）：
+ * 1. 「今日油价」卡（有油箱且非英文界面时）：标号油价 + 刷新 / 定位；
+ * 2. 「油耗/能耗概览」卡：右上角时间筛选（全部 / 本月 / 今年 / 自定义 DateRangePicker）+ 卡内 2×2（插混 2×3）纯文字指标；
+ * 3. 「油耗/能耗走势」卡：右上角「筛选」胶囊（时间分组；插混另有能源分组，选中即切换曲线数据源）+
  *    平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
- * - 顶部「统计 / 明细」两个固定页签；
- * - 统计：今日油价（有油箱时）+ 概览 + 走势；
- * - 明细：紧凑搜索框、时间筛选、汇总、按月份分组的独立记录卡片，点卡片看详情；
- * - 底部可折叠「满箱法 / 满电+累计 / 双口径说明」。
+ * 4. 底部可折叠「满箱法 / 满电+累计 / 双口径说明」。
+ *
+ * 「明细」页签已拆成独立推入页（[EnergyDetailScreen]）：本页不再含页签，也不含任何明细 state。
  *
  * 纯电车辆：不显示今日油价卡、不创建油价仓库、不抓取、不注册定位权限；
  * 单位与文案全部按档位切换（单位见 [Units.energyUnit] / [Units.energyConsumption]）。
@@ -275,86 +262,24 @@ fun FuelScreen(
     val chartHasExplicitRange = chartCustomRange != null || chartPeriod != Period.ALL
     // 展示筛选范围内的全部区间（不再固定截断为最近 12 个）。
     val intervals = remember(chartFilteredIntervals) { chartFilteredIntervals }
-    // 明细列表使用独立的时间筛选（只影响本次列表，不影响概览 / 走势）。
-    val allEnergyRecords = remember(ledger.records) {
-        ledger.records
-            .filter { Categories.isEnergy(it.category) }
-            .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.odometer ?: 0.0 })
-    }
-    var detailPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
-    var detailCustomRange by remember { mutableStateOf<DateRange?>(null) }
-    var detailQuery by rememberSaveable { mutableStateOf("") }
-    val detailRange = detailCustomRange ?: Dates.range(detailPeriod, today)
-    // 搜索（备注 / 日期）+ 时间范围共同过滤明细列表；汇总按过滤后的记录统计。
-    val detailRecords = remember(allEnergyRecords, detailRange, detailQuery) {
-        val query = detailQuery.trim()
-        allEnergyRecords
-            .filter { it.date >= detailRange.from && it.date <= detailRange.to }
-            .filter { record ->
-                query.isEmpty() || matchesDetailQuery(record, query)
-            }
-    }
-    val detailGroups = remember(detailRecords) {
-        detailRecords.groupBy { monthKey(it.date) }.entries.toList()
-    }
-    // 明细汇总的能量量：燃油累计升数，纯电累计充电度数（含未充满记录）。
-    val detailEnergyAmount = remember(detailRecords, ev) {
-        detailRecords.sumOf { if (ev) it.kwh ?: 0.0 else it.liters ?: 0.0 }
-    }
-    val detailAmount = remember(detailRecords) { detailRecords.sumOf { it.amount } }
-    // 插混明细汇总两行：加油量+油费、充电量+电费。按记录字段分流，与当前档位无关。
-    val detailFuelAmount = remember(detailRecords) {
-        detailRecords.filter { it.kwh == null }.sumOf { it.liters ?: 0.0 }
-    }
-    val detailFuelCost = remember(detailRecords) {
-        detailRecords.filter { it.kwh == null }.sumOf { it.amount }
-    }
-    val detailChargeAmount = remember(detailRecords) {
-        detailRecords.filter { it.kwh != null }.sumOf { it.kwh ?: 0.0 }
-    }
-    val detailChargeCost = remember(detailRecords) {
-        detailRecords.filter { it.kwh != null }.sumOf { it.amount }
-    }
-    // 每条记录对应的满箱/满电区间能耗（domain 纯函数；未加满 / 基准记录无值 → 显示「—」）。
-    // 插混两条流各查各的：加油记录看满箱法、充电记录看满电法。手填能耗历史上是 L/100km，
-    // 两条流都会返回同一条，合并时把燃油流放后面，让手填值按油耗解释。
-    val rateByRecord = remember(ledger.records, ev, phev) {
-        when {
-            ev -> energyRateByRecord(ledger.records, EnergyKind.ELECTRIC)
-            !phev -> energyRateByRecord(ledger.records, EnergyKind.FUEL)
-            else -> energyRateByRecord(ledger.records, EnergyKind.ELECTRIC) +
-                energyRateByRecord(ledger.records, EnergyKind.FUEL)
-        }
-    }
+    // 明细列表（搜索 / 时间筛选 / 汇总 / 月度分组 / 满箱法能耗）已整体搬到推入页 EnergyDetailScreen，
+    // 本页不保留任何明细 state，避免把 detailPeriod 等独立筛选误带进统计页。
     var rangeMenuExpanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
-    var detailMenuExpanded by remember { mutableStateOf(false) }
-    var detailShowRangePicker by remember { mutableStateOf(false) }
     var chartMenuExpanded by remember { mutableStateOf(false) }
     var chartShowRangePicker by remember { mutableStateOf(false) }
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    val listState = rememberLazyListState()
-    LaunchedEffect(selectedTab) { listState.scrollToItem(0) }
 
-    // 页签固定在页面顶部（不进 LazyColumn），三页共用 SecondaryTabs 版式。
-    Column(modifier = modifier.fillMaxSize()) {
-        SecondaryTabs(
-            labels = listOf(tr("统计", "Statistics"), tr("明细", "Records")),
-            selected = selectedTab,
-            onSelect = { selectedTab = it },
-        )
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(
-                start = MileNoteDimens.PageHorizontal,
-                end = MileNoteDimens.PageHorizontal,
-                top = MileNoteDimens.CardGap,
-                bottom = MileNoteDimens.PageBottom,
-            ),
-            verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
-        ) {
-        if (selectedTab == 0) {
+    // 单页内容（页签与明细都已迁出）：今日油价 → 概览 → 走势 → 口径说明。
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = MileNoteDimens.PageHorizontal,
+            end = MileNoteDimens.PageHorizontal,
+            top = MileNoteDimens.CardGap,
+            bottom = MileNoteDimens.PageBottom,
+        ),
+        verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
+    ) {
         // 英文界面不显示「今日油价」：数据源是中文油价站点，对英文用户没有意义；
         // 纯电车辆没有油价，整卡不显示（也不发起抓取 / 不请求定位）。
         if (!I18n.english && !ev) {
@@ -540,164 +465,10 @@ fun FuelScreen(
             }
         }
 
-        } else {
-            // ---- 明细页：搜索 + 时间筛选 → 汇总 → 按月份分组的独立记录卡 ----
-            item(key = "detailTop") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        CompactSearchField(
-                            value = detailQuery,
-                            onValueChange = { detailQuery = it },
-                            placeholder = tr("搜索备注 / 日期", "Search notes / dates"),
-                            modifier = Modifier.weight(1f),
-                        )
-                        FilterPill(
-                            label = rangeLabel(detailPeriod, detailCustomRange),
-                            expanded = detailMenuExpanded,
-                            onToggle = { detailMenuExpanded = true },
-                            onDismiss = { detailMenuExpanded = false },
-                            contentDescription = tr("选择统计范围", "Select date range"),
-                        ) {
-                            Period.entries.forEach { item ->
-                                DropdownMenuItem(
-                                    text = { Text(item.filterLabel()) },
-                                    trailingIcon = FilterMenuCheckIcon(detailCustomRange == null && detailPeriod == item),
-                                    onClick = {
-                                        detailPeriod = item
-                                        detailCustomRange = null
-                                        detailMenuExpanded = false
-                                    },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text(tr("自定义…", "Custom…")) },
-                                trailingIcon = FilterMenuCheckIcon(detailCustomRange != null),
-                                onClick = {
-                                    detailMenuExpanded = false
-                                    detailShowRangePicker = true
-                                },
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = tr("共 %d 条记录", "%d records", detailRecords.size),
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (phev) {
-                            // 插混汇总两行：加油量/油费 与 充电量/电费 分开（币种符号前缀 + 两位小数）。
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = tr(
-                                        "加油 %s %s · %s %s",
-                                        "Fuel %s %s · %s %s",
-                                        Format.fmt(detailFuelAmount),
-                                        Units.volumeUnit,
-                                        Units.currencySymbol,
-                                        Format.money(detailFuelCost),
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = tr(
-                                        "充电 %s %s · %s %s",
-                                        "Charge %s %s · %s %s",
-                                        Format.fmt(detailChargeAmount),
-                                        Units.energyUnit,
-                                        Units.currencySymbol,
-                                        Format.money(detailChargeCost),
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        } else {
-                            Text(
-                                text = tr(
-                                    "筛选合计 %s %s · %s %s",
-                                    "Filtered total %s %s · %s %s",
-                                    Format.fmt(detailEnergyAmount),
-                                    if (ev) Units.energyUnit else Units.volumeUnit,
-                                    Units.currencySymbol,
-                                    Format.money(detailAmount),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-            if (detailRecords.isEmpty()) {
-                item(key = "detailEmpty") {
-                    EmptyState(
-                        icon = MileNoteIcons.Fuel,
-                        title = when {
-                            detailQuery.isBlank() && phev ->
-                                tr("还没有加油或充电记录", "No fuel or charging records yet")
-                            detailQuery.isBlank() ->
-                                if (ev) tr("还没有充电记录", "No charging records yet") else tr("还没有加油记录", "No fuel records yet")
-                            phev ->
-                                tr("没有匹配的加油或充电记录", "No matching fuel or charging records")
-                            else ->
-                                if (ev) tr("没有匹配的充电记录", "No matching charging records") else tr("没有匹配的加油记录", "No matching fuel records")
-                        },
-                        description = if (detailQuery.isBlank()) {
-                            when {
-                                phev -> tr(
-                                    "可在底栏中间「记一笔」记录加油或充电；导入入口在 设置 → 外部导入。",
-                                    "Add fuel or charging from Add entry in the bottom bar; import is in Settings → Import from other apps.",
-                                )
-                                ev -> tr("可在底栏中间「记一笔」记录充电；导入入口在 设置 → 外部导入。", "Add charging from Add entry in the bottom bar; import is in Settings → Import from other apps.")
-                                else -> tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 外部导入。", "Add fuel from Add entry in the bottom bar; import is in Settings → Import from other apps.")
-                            }
-                        } else {
-                            tr("试试清空搜索关键词或调整时间范围。", "Try clearing the search keyword or changing the date range.")
-                        },
-                    )
-                }
-            } else {
-                detailGroups.forEach { group ->
-                    val month = group.key
-                    item(key = "detailMonth-$month") {
-                        FuelMonthTitle(month = month)
-                    }
-                    itemsIndexed(
-                        items = group.value,
-                        key = { index, record -> "detailRecord-$month-$index-${record.id}" },
-                    ) { _, record ->
-                        // 插混混排：每条记录按自己的能量字段决定单位与能耗口径（有 kwh 即充电行）。
-                        val rowEv = if (phev) record.kwh != null else ev
-                        FuelRecordCard(
-                            record = record,
-                            rate = rateByRecord[record.id],
-                            electric = rowEv,
-                            rateUnit = when {
-                                phev -> if (rowEv) Units.energyConsumption else Units.consumption
-                                ev -> null
-                                else -> Units.consumption
-                            },
-                            mixed = phev,
-                            onClick = { vm.openEditor(recordId = record.id) },
-                        )
-                    }
-                }
-            }
-            // ---- 明细底部：满箱法 / 满电+累计口径说明 ----
-            item(key = "footnote") {
-                FuelFootnote(ev = ev, phev = phev)
-            }
+        // 明细列表已迁到推入页 EnergyDetailScreen；口径说明保留在统计页底部。
+        item(key = "footnote") {
+            FuelFootnote(ev = ev, phev = phev)
         }
-    }
     }
 
     if (showRangePicker) {
@@ -707,16 +478,6 @@ fun FuelScreen(
             onConfirm = { from, to ->
                 vm.setCustomRange(from, to)
                 showRangePicker = false
-            },
-        )
-    }
-    if (detailShowRangePicker) {
-        CustomRangePickerDialog(
-            customRange = detailCustomRange,
-            onDismiss = { detailShowRangePicker = false },
-            onConfirm = { from, to ->
-                detailCustomRange = DateRange(from, to)
-                detailShowRangePicker = false
             },
         )
     }
@@ -1037,11 +798,11 @@ internal fun StatCell(
 // ---------------------------------------------------------------------------------------------
 
 /** 时间胶囊文案：自定义优先，跨年时带年份。 */
-private fun rangeLabel(period: Period, customRange: DateRange?): String =
+internal fun rangeLabel(period: Period, customRange: DateRange?): String =
     customRangeLabel(customRange) ?: period.filterLabel()
 
 /** 自定义范围的短文案：同年 `10.01–10.18`，跨年 `2025.12.01–2026.01.02`；解析失败返回 null。 */
-private fun customRangeLabel(customRange: DateRange?): String? {
+internal fun customRangeLabel(customRange: DateRange?): String? {
     val range = customRange ?: return null
     val from = Dates.parse(range.from) ?: return null
     val to = Dates.parse(range.to) ?: return null
@@ -1053,7 +814,7 @@ private fun customRangeLabel(customRange: DateRange?): String? {
 }
 
 /** 时间分组选项文案（全部 / 本月 / 今年）。 */
-private fun Period.filterLabel(): String = when (this) {
+internal fun Period.filterLabel(): String = when (this) {
     Period.ALL -> tr("全部", "All")
     Period.MONTH -> tr("本月", "This month")
     Period.YEAR -> tr("今年", "This year")
@@ -1085,23 +846,10 @@ private fun monthDay(date: LocalDate): String =
 
 private fun yearMonthDay(date: LocalDate): String = "${date.year}.${monthDay(date)}"
 
-/** `2026-10-18` → `10 月 18 日`（记录卡 / 详情统一，不显示年份与星期）。 */
-private fun monthDayLabel(isoDate: String): String {
-    val date = Dates.parse(isoDate)
-    return if (date != null) {
-        tr(
-            "${date.monthValue} 月 ${date.dayOfMonth} 日",
-            "${Month.of(date.monthValue).getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} ${date.dayOfMonth}",
-        )
-    } else {
-        Format.dateDots(isoDate)
-    }
-}
-
 /** 自定义统计范围：M3 DateRangePicker（闭区间，ISO 日期）。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CustomRangePickerDialog(
+internal fun CustomRangePickerDialog(
     customRange: DateRange?,
     onDismiss: () -> Unit,
     onConfirm: (String, String) -> Unit,
@@ -1161,176 +909,13 @@ private fun toUtcMillis(isoDate: String): Long? = Dates.parse(isoDate)
 private fun fromUtcMillis(millis: Long): String =
     Dates.iso(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
 
-// ---------------------------------------------------------------------------------------------
-// 加油明细时间轴
-// ---------------------------------------------------------------------------------------------
-
-/** 月份分组键：合法 ISO 日期取 `YYYY-MM`，异常数据归入「其他记录」。 */
-private fun monthKey(date: String): String =
-    if (date.length >= 7 && date[4] == '-') date.take(7) else ""
-
-/** 明细页月份小标题（`2026 年 11 月`）。 */
-@Composable
-private fun FuelMonthTitle(month: String) {
-    val year = month.take(4)
-    val monthNumber = month.drop(5).trimStart('0').ifEmpty { "0" }
-    val title = if (month.length >= 7 && month[4] == '-') {
-        val monthEn = monthNumber.toIntOrNull()
-            ?.let { Month.of(it).getDisplayName(TextStyle.SHORT, Locale.ENGLISH) }
-            ?: monthNumber
-        tr("$year 年 $monthNumber 月", "$monthEn $year")
-    } else {
-        tr("其他记录", "Other records")
-    }
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-    )
-}
-
-/** 明细页搜索：备注或日期（ISO / 2026.10.18 / 10 月 18 日 均可命中）。 */
-private fun matchesDetailQuery(record: Record, query: String): Boolean {
-    if (record.note.contains(query, ignoreCase = true)) return true
-    val dayLabel = monthDayLabel(record.date)
-    return listOf(
-        record.date,
-        Format.dateDots(record.date),
-        dayLabel,
-        dayLabel.replace(" ", ""),
-    ).any { it.contains(query, ignoreCase = true) }
-}
-
-/**
- * 明细页单条加油/充电记录：独立白色圆角卡（阴影、无内嵌卡片）。
- *
- * 燃油 / 纯电账本保持原样：燃油显示单次油耗（[rateUnit] = 油耗单位），纯电不显示单次能耗
- * （[rateUnit] = null）。插混（[mixed] = true）同一列表里两种记录混排，每行按自己的能量字段
- * 决定单位、能耗口径与「加油量 / 充电量」措辞。
- *
- * @param rate 该记录的满箱/满电法能耗（L/100km 或 kWh/100km），无值为 null → 显示「—」
- * @param electric 该行是充电记录（有 kwh）还是加油记录
- * @param rateUnit 单次能耗单位；null 时整块隐藏（纯电保留原样）
- * @param mixed 插混混排列表：加油量 / 充电量加显式前缀，其余账本沿用 `+量` 版式
- */
-@Composable
-private fun FuelRecordCard(
-    record: Record,
-    rate: Double?,
-    electric: Boolean,
-    rateUnit: String?,
-    mixed: Boolean,
-    onClick: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val dark = LocalMileNoteDarkTheme.current
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = scheme.surfaceContainerLowest,
-        contentColor = scheme.onSurface,
-        border = null,
-        shadowElevation = if (dark) 0.dp else 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = monthDayLabel(record.date),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                val (statusLabel, statusKind) = fuelStatus(record, electric)
-                StatusPill(text = statusLabel, status = statusKind)
-            }
-            // 燃油：油耗最大，公里数次之，升数与金额最小；
-            // 纯电：单次充电不覆盖可计算里程，不显示单次能耗，只保留公里数。
-            Row(verticalAlignment = Alignment.Bottom) {
-                if (rateUnit != null) {
-                    Text(
-                        text = rate?.let { Format.money(it) } ?: "—",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = scheme.onSurface,
-                    )
-                    Text(
-                        text = " $rateUnit",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = scheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 3.dp),
-                    )
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = record.odometer?.let { tr("%s %s", "%s %s", Format.fmt(it), Units.distanceUnit) }
-                        ?: tr("— %s", "— %s", Units.distanceUnit),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = scheme.onSurface,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = when {
-                        mixed && electric -> record.kwh?.let {
-                            tr("充电量 %s %s", "Charge %s %s", Format.fmt(it), Units.energyUnit)
-                        } ?: tr("充电量 — %s", "Charge — %s", Units.energyUnit)
-                        mixed -> record.liters?.let {
-                            tr("加油量 %s %s", "Fuel %s %s", Format.fmt(it), Units.volumeUnit)
-                        } ?: tr("加油量 — %s", "Fuel — %s", Units.volumeUnit)
-                        electric -> record.kwh?.let { tr("+%s %s", "+%s %s", Format.fmt(it), Units.energyUnit) }
-                            ?: tr("— %s", "— %s", Units.energyUnit)
-                        else -> record.liters?.let { tr("+%s %s", "+%s %s", Format.fmt(it), Units.volumeUnit) }
-                            ?: tr("— %s", "— %s", Units.volumeUnit)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = "${Units.currencySymbol} ${Format.money(record.amount)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-/**
- * 时间轴状态点：手填能耗 info 实心 / 漏记 warning 实心 / 已加满(充满) success 实心 / 未加满 outline 空心。
- */
-private fun fuelDot(
-    record: Record,
-    outline: Color,
-    semantic: com.milenote.android.ui.theme.MileNoteSemanticColors,
-): Pair<Color, Boolean> = when {
-    record.kind == "manual" -> semantic.info.content to false
-    record.missed -> semantic.warning.content to false
-    record.full -> semantic.success.content to false
-    else -> outline to true
-}
-
-
-/** 加油/充电记录状态：已加满(充满) / 未加满(充满) / 漏记后重置 / 手填油耗(能耗)。 */
-private fun fuelStatus(record: Record, ev: Boolean): Pair<String, StatusKind> = when {
-    record.missed -> tr("漏记后重置", "Baseline reset after a missed entry") to StatusKind.SOON
-    record.kind == "manual" -> (if (ev) tr("手填能耗", "Manual energy entry") else tr("手填油耗", "Manual fuel entry")) to StatusKind.NORMAL
-    record.full -> (if (ev) tr("已充满", "Full charge") else tr("已加满", "Filled up")) to StatusKind.DONE
-    else -> (if (ev) tr("未充满", "Not fully charged") else tr("未加满", "Not filled up")) to StatusKind.NORMAL
-}
 
 // ---------------------------------------------------------------------------------------------
 // 页尾口径说明
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-private fun FuelFootnote(ev: Boolean, phev: Boolean) {
+internal fun FuelFootnote(ev: Boolean, phev: Boolean) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
