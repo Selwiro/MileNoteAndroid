@@ -258,14 +258,6 @@ private fun DashboardContent(
                 onSelectCustomRange = onSelectCustomRange,
             )
         }
-        item(key = "reminders") {
-            NearRemindersCard(
-                ledger = ledger,
-                reminders = nearReminders,
-                today = today,
-                onNavigate = onNavigate,
-            )
-        }
         item(key = "mileage") {
             MileageTrendCard(
                 ledger = ledger,
@@ -279,6 +271,14 @@ private fun DashboardContent(
         // 底栏 v4：原「费用统计 → 统计」页签的支出趋势并回总览；两张按月图先原样上下排。
         item(key = "expense-trend") {
             ExpenseTrendCard(ledger = ledger, today = today)
+        }
+        item(key = "reminders") {
+            NearRemindersCard(
+                ledger = ledger,
+                reminders = nearReminders,
+                today = today,
+                onNavigate = onNavigate,
+            )
         }
 
     }

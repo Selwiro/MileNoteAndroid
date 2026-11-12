@@ -1,6 +1,8 @@
 package com.milenote.android.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.pager.HorizontalPager
@@ -168,13 +170,13 @@ private fun topBarAction(route: String, profile: EnergyProfile): TopBarAction? =
         Routes.FUEL_DETAIL,
         if (profile != EnergyProfile.FUEL_ONLY) "能耗明细" else "油耗明细",
         if (profile != EnergyProfile.FUEL_ONLY) "Energy records" else "Fuel records",
-        MileNoteIcons.Records,
+        MileNoteIcons.Fuel,
     )
     Routes.MAINTENANCE -> TopBarAction(
         Routes.SERVICE_HISTORY,
         "维修保养记录",
         "Maintenance records",
-        MileNoteIcons.Records,
+        MileNoteIcons.Maintenance,
     )
     else -> null
 }
@@ -320,14 +322,49 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                         },
                     )
                 }
-                composable(Routes.RECORDS) {
-                    RecordsScreen(vm = vm, modifier = Modifier.fillMaxSize())
+                // 推入的明细页：内容-only + 不透明底色，并且关闭进出场转场
+                // （转场期间旧页面仍在组合中，透明内容会「透」出上一页 → 用户反馈的「两个界面重叠」）。
+                composable(
+                    route = Routes.RECORDS,
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None },
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        RecordsScreen(vm = vm)
+                    }
                 }
-                composable(Routes.FUEL_DETAIL) {
-                    EnergyDetailScreen(vm = vm, modifier = Modifier.fillMaxSize())
+                composable(
+                    route = Routes.FUEL_DETAIL,
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None },
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        EnergyDetailScreen(vm = vm)
+                    }
                 }
-                composable(Routes.SERVICE_HISTORY) {
-                    ServiceHistoryScreen(vm = vm, modifier = Modifier.fillMaxSize())
+                composable(
+                    route = Routes.SERVICE_HISTORY,
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None },
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        ServiceHistoryScreen(vm = vm)
+                    }
                 }
                 composable(
                     route = Routes.SETTINGS_PAGE_PATTERN,

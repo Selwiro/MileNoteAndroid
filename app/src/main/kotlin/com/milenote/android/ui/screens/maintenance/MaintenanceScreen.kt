@@ -178,10 +178,6 @@ fun MaintenanceScreen(
         item(key = "plan") {
             SectionCard(
                 title = tr("保养计划", "Service plan"),
-                subtitle = tr(
-                    "按最近一次保养记录计算下次到期",
-                    "Next due date is based on the latest service record",
-                ),
                 action = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -237,7 +233,10 @@ fun MaintenanceScreen(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = tr("点项目行查看详情、完成并记录", "Tap an item to see details and log a service"),
+                        text = tr(
+                            "按最近一次保养记录计算下次到期；点项目行查看详情、完成并记录",
+                            "Next due is based on the latest service record; tap an item for details and to log a service",
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp),
@@ -328,23 +327,30 @@ fun MaintenanceScreen(
 private const val TODO_MAX_ITEMS = 5
 
 /**
- * 待办卡候选（底栏 v4 R2）：未完成、且带到期日期或到期里程的提醒。
+ * 待办卡候选（底栏 v4 R2 + 2026-11-12 用户口径）：**只看最近一年**。
  *
- * 排序：已到期优先，其次到期日期升序（无日期排最后），再按到期里程升序；
- * 这样「已到期全放 + 最近到期的补到 5 条」直接取前缀即可。
+ * 条件：未完成 + 有有效到期日期 + 到期日期不晚于「今天 + 12 个月」（已过期的也保留，属「已到期」）。
+ * 只有到期里程、没有日期的提醒不进待办，仍可在下方计划表查看。
+ * 排序：已到期优先，其次到期日期升序；这样「已到期全放 + 最近到期的补到 5 条」直接取前缀即可。
  * 只用于待办摘要；计划表用 `servicePlanRows` 展示全量（两者同源，不重复铺开）。
  */
 private fun pendingReminderCandidates(
     reminders: List<Reminder>,
     km: Double,
     today: LocalDate,
-): List<Reminder> = reminders
-    .filter { !it.done && (Dates.isValid(it.dueDate) || it.dueKm != null) }
-    .sortedWith(
-        compareByDescending<Reminder> { reminderState(it, km, today).level == ReminderLevel.OVERDUE }
-            .thenBy { it.dueDate?.takeIf { d -> d.isNotEmpty() } ?: "9999" }
-            .thenBy { it.dueKm ?: Double.MAX_VALUE },
-    )
+): List<Reminder> {
+    val cutoff = Dates.iso(Dates.addMonths(today, 12))
+    return reminders
+        .filter { reminder ->
+            val due = reminder.dueDate
+            !reminder.done && due != null && Dates.isValid(due) && due <= cutoff
+        }
+        .sortedWith(
+            compareByDescending<Reminder> { reminderState(it, km, today).level == ReminderLevel.OVERDUE }
+                .thenBy { it.dueDate?.takeIf { d -> d.isNotEmpty() } ?: "9999" }
+                .thenBy { it.dueKm ?: Double.MAX_VALUE },
+        )
+}
 
 @Composable
 private fun ReminderCard(

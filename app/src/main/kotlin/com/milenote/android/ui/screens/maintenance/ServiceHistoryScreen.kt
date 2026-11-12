@@ -1,19 +1,17 @@
 package com.milenote.android.ui.screens.maintenance
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,19 +37,22 @@ import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.CategoryBadge
+import com.milenote.android.ui.components.EmptyState
 import com.milenote.android.ui.components.FilterMenuCheckIcon
 import com.milenote.android.ui.components.FilterPill
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MoneySize
 import com.milenote.android.ui.components.MoneyText
+import com.milenote.android.ui.icons.MileNoteIcons
+import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteDimens
 
 /**
  * 维修保养记录页（底栏 v4：从保养页右上角「维修保养记录」图标推入）。
  *
  * 只输出内容，不含 Scaffold / 顶栏 / 底栏；顶栏「维修保养记录」+ 返回箭头由导航壳提供。
- * 结构：副标题「N 次 · 当前里程」+ 右上角筛选胶囊（全部 / 维修 / 保养 / 汽车美容）+ 扁平记录列表；
- * 点记录打开编辑器（[MileNoteViewModel.openEditor]），中文/英文文案与旧保养页一致。
+ * 结构：副标题「N 次 · 当前里程」+ 右上角筛选胶囊（全部 / 维修 / 保养 / 汽车美容）+ **卡片式**记录列表
+ * （与费用 / 能耗明细同款：白底圆角卡 + 分类徽标 + 项目标题 + 日期/里程 + 金额，点卡片进编辑器）。
  *
  * @param vm 全局 ViewModel（账本、记录编辑器）。
  */
@@ -121,52 +123,93 @@ fun ServiceHistoryScreen(
                 )
             }
         }
-        item(key = "history") {
-            ServiceHistoryFlatList(
-                records = filteredHistory,
-                ledger = ledger,
-                filterActive = historyFilter != "全部" && history.isNotEmpty(),
-                onEdit = { vm.openEditor(recordId = it.id) },
-            )
+        if (filteredHistory.isEmpty()) {
+            item(key = "empty") {
+                if (historyFilter != "全部" && history.isNotEmpty()) {
+                    EmptyState(
+                        icon = MileNoteIcons.FilterList,
+                        title = tr("没有符合条件的记录", "No matching records"),
+                        description = tr(
+                            "点右上角「筛选」可切回全部。",
+                            "Tap Filter at the top right to show all.",
+                        ),
+                    )
+                } else {
+                    EmptyState(
+                        icon = MileNoteIcons.Maintenance,
+                        title = tr("还没有维修保养记录", "No maintenance records yet"),
+                        description = tr(
+                            "完成维修、保养或汽车美容后，记下日期、地点、里程、项目和费用。",
+                            "After a repair, service, or detailing job, log the date, location, mileage, " +
+                                "items, and cost.",
+                        ),
+                    )
+                }
+            }
+        } else {
+            items(items = filteredHistory, key = { "history-${it.id}" }) { record ->
+                ServiceHistoryCard(
+                    record = record,
+                    ledger = ledger,
+                    onClick = { vm.openEditor(recordId = record.id) },
+                )
+            }
         }
     }
 }
 
-/** 扁平记录列表（页内不再套卡片，分割线沿用旧保养页样式）。 */
+/** 卡片式记录（与费用 / 能耗明细同款：白底圆角卡、分类徽标 + 标题两行 + 金额）。 */
 @Composable
-private fun ServiceHistoryFlatList(
-    records: List<Record>,
-    ledger: Ledger,
-    filterActive: Boolean,
-    onEdit: (Record) -> Unit,
-) {
-    if (records.isEmpty()) {
-        Text(
-            text = if (filterActive) {
-                tr(
-                    "没有符合条件的记录。点右上角「筛选」可切回全部。",
-                    "No matching records. Tap Filter at the top right to show all.",
+private fun ServiceHistoryCard(record: Record, ledger: Ledger, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val dark = LocalMileNoteDarkTheme.current
+    val projects = record.projects?.takeIf { it.isNotBlank() }
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = if (dark) scheme.surfaceContainerLow else Color.White,
+        shadowElevation = if (dark) 0.dp else 1.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CategoryBadge(categoryName = record.category, size = 40.dp)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = projects?.let { raw ->
+                        raw.split("、").joinToString(tr("、", ", ")) { DataLabels.projectFor(ledger, it) }
+                    } ?: DataLabels.categoryFor(ledger, record.category, ledger.vehicle.energyProfile),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            } else {
-                tr(
-                    "还没有维修保养记录。完成维修、保养或汽车美容后，记下日期、地点、里程、项目和费用。",
-                    "No maintenance records yet. After a repair, service, or detailing job, log the " +
-                        "date, location, mileage, items, and cost.",
+                Text(
+                    text = buildString {
+                        append(Format.dateDots(record.date))
+                        record.odometer?.let {
+                            append(" · ")
+                            append(distanceText(it))
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        records.forEachIndexed { index, record ->
-            ServiceHistoryCard(
-                record = record,
-                ledger = ledger,
-                onClick = { onEdit(record) },
+            }
+            MoneyText(
+                amount = Format.money(record.amount),
+                size = MoneySize.MEDIUM,
+                unit = Units.money,
             )
-            if (index != records.lastIndex) FlatDivider()
         }
     }
 }
@@ -202,67 +245,4 @@ private fun ServiceHistoryFilter(filter: String, ev: Boolean, onSelect: (String)
             )
         }
     }
-}
-
-@Composable
-private fun ServiceHistoryCard(record: Record, ledger: Ledger, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    val projects = record.projects?.takeIf { it.isNotBlank() }
-    // 整行可点直接进入编辑；左侧图标垂直居中，只保留日期 + 项目两行。
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClickLabel = tr("编辑记录", "Edit record")) { onClick() }
-            .height(IntrinsicSize.Min)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CategoryBadge(categoryName = record.category)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            Text(
-                text = buildString {
-                    append(fullDateLabel(record.date))
-                    record.odometer?.let {
-                        append(" · ")
-                        append(distanceText(it))
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = projects?.let { raw ->
-                    raw.split("、").joinToString(tr("、", ", ")) { DataLabels.projectFor(ledger, it) }
-                } ?: DataLabels.categoryFor(ledger, record.category, ledger.vehicle.energyProfile),
-                style = MaterialTheme.typography.titleMedium,
-                color = scheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        MoneyText(
-            amount = Format.money(record.amount),
-            size = MoneySize.MEDIUM,
-            unit = Units.money,
-        )
-    }
-}
-
-/** `2026-10-01` → `2026.10.01`（记录卡第一行日期）。 */
-private fun fullDateLabel(isoDate: String): String = Format.dateDots(isoDate)
-
-/** 扁平列表行的细分割线（不再使用内层卡片）。 */
-@Composable
-private fun FlatDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(start = 12.dp, end = 12.dp),
-        thickness = 1.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-    )
 }
