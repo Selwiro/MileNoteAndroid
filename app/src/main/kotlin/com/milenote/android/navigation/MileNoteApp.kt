@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -67,6 +68,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.model.EnergyProfile
+import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
@@ -128,9 +130,6 @@ private fun vehicleTypeIcon(profile: EnergyProfile): ImageVector = when (profile
     EnergyProfile.DUAL -> MileNoteIcons.VehicleHybrid
 }
 
-/** 三个推入的「明细 / 记录」路由（走外层顶栏 + 返回箭头，不显示底栏）。 */
-private val detailRoutes = setOf(Routes.RECORDS, Routes.FUEL_DETAIL, Routes.SERVICE_HISTORY)
-
 /** 顶栏标题：油耗分析 / 能耗分析按当前车能量档位切换（其余路由与语言无关逻辑不变）。 */
 private fun topBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
     Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
@@ -141,18 +140,6 @@ private fun topBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = wh
     }
     Routes.MAINTENANCE -> TopBarCopy(tr("维修保养", "Service"), "")
     Routes.MINE -> TopBarCopy(tr("我的", "Me"), "")
-    else -> null
-}
-
-/** 推入的「明细 / 记录」页顶栏：带返回箭头、无车辆胶囊。 */
-private fun detailTopBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
-    Routes.RECORDS -> TopBarCopy(tr("费用明细", "Expense details"), "")
-    Routes.FUEL_DETAIL -> if (profile != EnergyProfile.FUEL_ONLY) {
-        TopBarCopy(tr("能耗明细", "Energy records"), "")
-    } else {
-        TopBarCopy(tr("油耗明细", "Fuel records"), "")
-    }
-    Routes.SERVICE_HISTORY -> TopBarCopy(tr("维修保养记录", "Maintenance records"), "")
     else -> null
 }
 
@@ -194,27 +181,12 @@ fun MileNoteApp(vm: MileNoteViewModel) {
     val bottomTabs = bottomTabsFor(profile)
     val pagerState = rememberPagerState(pageCount = { bottomTabs.size })
     val scope = rememberCoroutineScope()
-    val isTabs = currentRoute == Routes.DASHBOARD
-    val isDetail = currentRoute in detailRoutes
-    val currentPage = pagerState.currentPage.coerceIn(0, bottomTabs.lastIndex)
-    val showBottomBar = isTabs
 
     // 从系统分享进入时自动打开导入向导（ImportWizard 会消费 sharedImport 并直接预览）。
     LaunchedEffect(state.sharedImport) {
         if (state.sharedImport != null && currentRoute != Routes.IMPORTER_PATTERN) {
             navController.navigate(Routes.IMPORTER)
         }
-    }
-    val copy = when {
-        isTabs -> topBarCopy(bottomTabs[currentPage].route, profile)
-        isDetail -> detailTopBarCopy(currentRoute, profile)
-        else -> null
-    }
-    val tabAction = if (isTabs) topBarAction(bottomTabs[currentPage].route, profile) else null
-
-    // 四个底部 tab 支持左右滑动切换；在非首个 tab 按返回先回总览。
-    BackHandler(enabled = isTabs && currentPage != 0) {
-        scope.launch { pagerState.animateScrollToPage(0) }
     }
 
     LaunchedEffect(state.message) {
@@ -223,181 +195,106 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         vm.consumeMessage()
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            if (copy != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
-                        .statusBarsPadding()
-                        // 明细页左侧是返回箭头，页边距收到 4dp；tab 页标题贴 16dp。
-                        .padding(start = if (isDetail) 4.dp else 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (isDetail) {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(MileNoteIcons.Back, contentDescription = tr("返回", "Back"))
-                        }
+    // 每个导航目标自带 Scaffold（顶栏 / 底栏 / Snackbar），外层不再按路由开关栏：
+    // 外层开关会在同一帧先撤掉栏、目标页内容晚一帧才换，看起来「闪一下」
+    // （2026-11-12 用户反馈）。现在栏与内容在同一个目标里一起换，转场期间屏幕保持上一页的完整画面。
+    NavHost(
+        navController = navController,
+        startDestination = Routes.DASHBOARD,
+        modifier = Modifier.fillMaxSize(),
+        // 所有路由关闭默认的 700ms 淡入淡出（期间上一页仍参与组合，会「透」出上一页）。
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None },
+    ) {
+        composable(Routes.DASHBOARD) {
+            TabsScaffold(
+                vm = vm,
+                pagerState = pagerState,
+                tabs = bottomTabs,
+                profile = profile,
+                vehicle = state.vehicle,
+                snackbarHostState = snackbarHostState,
+                onNavigate = { route ->
+                    val tabIndex = bottomTabs.indexOfFirst { it.route == route }
+                    if (tabIndex >= 0) {
+                        // tab 切换只动 pager，不压导航栈。
+                        scope.launch { pagerState.animateScrollToPage(tabIndex) }
+                    } else {
+                        navController.navigate(route)
                     }
-                    Text(
-                        text = copy.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (isTabs) {
-                        val vehicle = state.vehicle
-                        if (vehicle != null) {
-                            androidx.compose.foundation.layout.Spacer(
-                                modifier = Modifier.width(8.dp),
-                            )
-                            AssistChip(
-                                onClick = { vm.showVehicleSwitcher(true) },
-                                label = {
-                                    Text(
-                                        text = com.milenote.android.i18n.DataLabels.vehicleName(vehicle.name),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(vehicleTypeIcon(profile), contentDescription = null)
-                                },
-                            )
-                            androidx.compose.foundation.layout.Spacer(
-                                modifier = Modifier.width(4.dp),
-                            )
-                        }
-                        if (tabAction != null) {
-                            IconButton(onClick = { navController.navigate(tabAction.route) }) {
-                                Icon(
-                                    imageVector = tabAction.icon,
-                                    contentDescription = tr(tabAction.labelZh, tabAction.labelEn),
-                                )
-                            }
-                        }
-                    }
-                }
+                },
+            )
+        }
+        composable(route = Routes.RECORDS) {
+            DetailScaffold(
+                title = tr("费用明细", "Expense details"),
+                snackbarHostState = snackbarHostState,
+                onBack = { navController.popBackStack() },
+            ) {
+                RecordsScreen(vm = vm)
             }
-        },
-        bottomBar = {
-            if (showBottomBar) {
-                MileNoteBottomBar(
-                    tabs = bottomTabs,
-                    selectedIndex = currentPage,
-                    onSelect = { index ->
-                        scope.launch { pagerState.animateScrollToPage(index) }
-                    },
-                    onAdd = { vm.openEditor() },
+        }
+        composable(route = Routes.FUEL_DETAIL) {
+            DetailScaffold(
+                title = if (profile != EnergyProfile.FUEL_ONLY) {
+                    tr("能耗明细", "Energy records")
+                } else {
+                    tr("油耗明细", "Fuel records")
+                },
+                snackbarHostState = snackbarHostState,
+                onBack = { navController.popBackStack() },
+            ) {
+                EnergyDetailScreen(vm = vm)
+            }
+        }
+        composable(route = Routes.SERVICE_HISTORY) {
+            DetailScaffold(
+                title = tr("维修保养记录", "Maintenance records"),
+                snackbarHostState = snackbarHostState,
+                onBack = { navController.popBackStack() },
+            ) {
+                ServiceHistoryScreen(vm = vm)
+            }
+        }
+        composable(
+            route = Routes.SETTINGS_PAGE_PATTERN,
+            arguments = listOf(
+                navArgument("page") {
+                    type = NavType.StringType
+                    defaultValue = "vehicles"
+                },
+            ),
+        ) { entry ->
+            // 设置子页自带顶栏；外层只提供 Snackbar 宿主与系统栏 inset（与推入前一致）。
+            Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { inner ->
+                SettingsScreen(
+                    vm = vm,
+                    initialPage = entry.arguments?.getString("page") ?: "vehicles",
+                    onBack = { navController.popBackStack() },
+                    onOpenImporter = { source -> navController.navigate(Routes.importerRoute(source)) },
+                    modifier = Modifier.padding(inner),
                 )
             }
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            NavHost(
-                navController = navController,
-                startDestination = Routes.DASHBOARD,
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                composable(Routes.DASHBOARD) {
-                    HomeTabs(
-                        vm = vm,
-                        pagerState = pagerState,
-                        tabs = bottomTabs,
-                        onNavigate = { route ->
-                            val tabIndex = bottomTabs.indexOfFirst { it.route == route }
-                            if (tabIndex >= 0) {
-                                scope.launch { pagerState.animateScrollToPage(tabIndex) }
-                            } else {
-                                navController.navigate(route)
-                            }
-                        },
-                    )
-                }
-                // 推入的明细页：内容-only + 不透明底色，并且关闭进出场转场
-                // （转场期间旧页面仍在组合中，透明内容会「透」出上一页 → 用户反馈的「两个界面重叠」）。
-                composable(
-                    route = Routes.RECORDS,
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None },
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background,
-                    ) {
-                        RecordsScreen(vm = vm)
-                    }
-                }
-                composable(
-                    route = Routes.FUEL_DETAIL,
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None },
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background,
-                    ) {
-                        EnergyDetailScreen(vm = vm)
-                    }
-                }
-                composable(
-                    route = Routes.SERVICE_HISTORY,
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None },
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background,
-                    ) {
-                        ServiceHistoryScreen(vm = vm)
-                    }
-                }
-                composable(
-                    route = Routes.SETTINGS_PAGE_PATTERN,
-                    arguments = listOf(
-                        navArgument("page") {
-                            type = NavType.StringType
-                            defaultValue = "vehicles"
-                        },
-                    ),
-                ) { entry ->
-                    SettingsScreen(
-                        vm = vm,
-                        initialPage = entry.arguments?.getString("page") ?: "vehicles",
-                        onBack = { navController.popBackStack() },
-                        onOpenImporter = { source -> navController.navigate(Routes.importerRoute(source)) },
-                    )
-                }
-                composable(
-                    route = Routes.IMPORTER_PATTERN,
-                    arguments = listOf(
-                        navArgument("source") {
-                            type = NavType.StringType
-                            nullable = true
-                            defaultValue = null
-                        },
-                    ),
-                ) { entry ->
-                    com.milenote.android.ui.screens.importer.ImportWizardScreen(
-                        vm = vm,
-                        initialSource = entry.arguments?.getString("source"),
-                        onClose = { navController.popBackStack() },
-                    )
-                }
+        }
+        composable(
+            route = Routes.IMPORTER_PATTERN,
+            arguments = listOf(
+                navArgument("source") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { inner ->
+                com.milenote.android.ui.screens.importer.ImportWizardScreen(
+                    vm = vm,
+                    initialSource = entry.arguments?.getString("source"),
+                    onClose = { navController.popBackStack() },
+                    modifier = Modifier.padding(inner),
+                )
             }
         }
     }
@@ -509,6 +406,154 @@ fun MileNoteApp(vm: MileNoteViewModel) {
     }
 }
 
+
+/**
+ * 底栏 4 tab 页的骨架：顶栏（标题 + 车辆胶囊 + 明细入口）+ 底部导航 + 横向 pager。
+ *
+ * 栏与内容同属一个导航目标，切子页时不会出现「栏先撤掉、内容后换」的中间帧
+ * （2026-11-12 用户反馈的「进子页面闪一下」）。
+ */
+@Composable
+private fun TabsScaffold(
+    vm: MileNoteViewModel,
+    pagerState: PagerState,
+    tabs: List<BottomTab>,
+    profile: EnergyProfile,
+    vehicle: Vehicle?,
+    snackbarHostState: SnackbarHostState,
+    onNavigate: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val currentPage = pagerState.currentPage.coerceIn(0, tabs.lastIndex)
+    val copy = topBarCopy(tabs[currentPage].route, profile)
+    val tabAction = topBarAction(tabs[currentPage].route, profile)
+
+    // 四个底部 tab 支持左右滑动切换；在非首个 tab 按返回先回总览。
+    BackHandler(enabled = currentPage != 0) {
+        scope.launch { pagerState.animateScrollToPage(0) }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (copy != null) {
+                    Text(
+                        text = copy.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (vehicle != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    AssistChip(
+                        onClick = { vm.showVehicleSwitcher(true) },
+                        label = {
+                            Text(
+                                text = DataLabels.vehicleName(vehicle.name),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(vehicleTypeIcon(profile), contentDescription = null)
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                if (tabAction != null) {
+                    IconButton(onClick = { onNavigate(tabAction.route) }) {
+                        Icon(
+                            imageVector = tabAction.icon,
+                            contentDescription = tr(tabAction.labelZh, tabAction.labelEn),
+                        )
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            MileNoteBottomBar(
+                tabs = tabs,
+                selectedIndex = currentPage,
+                onSelect = { index ->
+                    scope.launch { pagerState.animateScrollToPage(index) }
+                },
+                onAdd = { vm.openEditor() },
+            )
+        },
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            HomeTabs(
+                vm = vm,
+                pagerState = pagerState,
+                tabs = tabs,
+                onNavigate = onNavigate,
+            )
+        }
+    }
+}
+
+/**
+ * 推入页骨架：返回箭头 + 标题顶栏 + Snackbar 宿主。
+ *
+ * 内容统一垫不透明底色，避免切换 / 重建时透出下层页面。
+ */
+@Composable
+private fun DetailScaffold(
+    title: String,
+    snackbarHostState: SnackbarHostState,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(MileNoteIcons.Back, contentDescription = tr("返回", "Back"))
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        },
+    ) { innerPadding ->
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            content()
+        }
+    }
+}
 
 /** 底部 4 个 tab 的横向分页容器（微信式左右滑动切换）：总览 / 油耗 / 保养 / 我的。 */
 @Composable

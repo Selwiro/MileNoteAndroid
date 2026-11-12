@@ -1734,7 +1734,7 @@ private fun AboutPage(
 /**
  * 隐私与数据页：把「数据存在哪、要哪些权限、会连哪些服务」讲清楚。
  *
- * 不是正式法律文本（正式隐私政策随上架版本提供）；文案与
+ * 不是正式法律文本（正式条款与源码见项目仓库）；文案与
  * `docs/legal/privacy-policy.md`、官网「隐私与数据」屏保持同一口径。
  * 注意：不要出现「完全离线 / 绝不上传」这类绝对表述——检查更新、油价、WebDAV
  * 都会联网，只在用户主动触发或对应功能开启时发生。
@@ -1916,9 +1916,9 @@ private fun PrivacyPage() {
             SectionCard(title = tr("说明", "Notes")) {
                 PrivacyParagraph(
                     tr(
-                        "本页是应用内的隐私说明，不是正式法律文本。应用上架时会提供完整的《隐私政策》与《用户协议》链接。",
-                        "This page is an in-app explanation, not a formal legal document. When the app is " +
-                            "published, links to the full Privacy Policy and Terms will be provided.",
+                        "本页是应用内的隐私说明，不是正式法律文本。完整条款与源码见项目仓库。",
+                        "This page is an in-app explanation, not a formal legal document. " +
+                            "Full terms and source code are available in the project repository.",
                     ),
                     secondary = true,
                 )

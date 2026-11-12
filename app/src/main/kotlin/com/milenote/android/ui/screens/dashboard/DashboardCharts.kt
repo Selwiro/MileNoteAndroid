@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -203,7 +204,11 @@ private fun monthsCovered(start: YearMonth, end: YearMonth): List<YearMonth> {
 @Composable
 internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modifier) {
     if (bars.isEmpty() || bars.all { it.km <= 0.0 }) {
-        EmptyChartHint(text = tr("暂无里程数据", "No mileage data yet"), modifier = modifier)
+        EmptyChartHint(
+            text = tr("暂无里程数据", "No mileage data yet"),
+            modifier = modifier,
+            height = TrendChartBodyHeight,
+        )
         return
     }
     val scheme = MaterialTheme.colorScheme
@@ -228,7 +233,7 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(190.dp)
+            .height(TrendChartBodyHeight)
             .semantics { contentDescription = description },
     ) {
         val left = 14.dp.toPx()
@@ -345,9 +350,17 @@ private data class BarSelection(val monthIndex: Int, val categoryIndex: Int)
 /** 环图 / 图例的选中分类名。 */
 private typealias DonutSelection = String
 
-/** 环图直径与柱图绘图区高度（设计规范 §4.2：环图 200dp、柱状 180dp；手机内卡片再收一档）。 */
+/** 环图直径（设计规范 §4.2：环图 200dp；手机内卡片再收一档）。 */
 private val DonutSize = 150.dp
-private val BarPlotHeight = 140.dp
+
+/**
+ * 总览「趋势」卡里程 / 支出两张图共用的固定高度。
+ *
+ * 两张图原先分别是「190dp 折线」和「184dp 柱区 + 12dp 间距 + 图例」，切 tab 时卡高差 40dp+，
+ * 下方「爱车待办」会跟着上下跳（2026-11-12 用户反馈）。统一成一个常量后：
+ * 里程图铺满整个高度；支出图在同一高度内先放柱区（weight 吃掉剩余空间）、再放图例。
+ */
+private val TrendChartBodyHeight = 236.dp
 
 /** 单根柱占列宽的比例（月数 6–24 时自适应，避免固定宽度在 12/24 列时互相重叠）。 */
 private const val BarWidthFraction = 0.62f
@@ -425,7 +438,11 @@ internal fun ExpenseTrendChart(
     ev: Boolean = false,
 ) {
     if (bars.isEmpty() || bars.all { it.total <= 0.0 }) {
-        EmptyChartHint(text = tr("当前范围还没有支出", "No expenses in this range"), modifier = modifier)
+        EmptyChartHint(
+            text = tr("当前范围还没有支出", "No expenses in this range"),
+            modifier = modifier,
+            height = TrendChartBodyHeight,
+        )
         return
     }
     val scheme = MaterialTheme.colorScheme
@@ -454,18 +471,19 @@ internal fun ExpenseTrendChart(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
+            .height(TrendChartBodyHeight)
             .semantics { contentDescription = trendDescription },
     ) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val spacingPx = with(density) { 4.dp.toPx() }
         val columnWidthPx = (widthPx - spacingPx * (bars.size - 1)) / bars.size
-        val rowHeightPx = with(density) { 184.dp.toPx() }
-        // 行内纵向布局：总额标签 20dp + 间距 4 + 绘图区 140 + 间距 4 + 月份标签 16。
+        // 绘图行实际高度：卡高扣掉图例（含 12dp 间距）之后的剩余空间，由 weight 分配。
+        var plotRowHeightPx by remember(bars) { mutableStateOf(0f) }
+        // 行内纵向布局：总额标签 20dp + 间距 4 + 绘图区（weight）+ 间距 4 + 月份标签 16。
         val plotTopPx = with(density) { 24.dp.toPx() }
-        val plotHeightPx = with(density) { BarPlotHeight.toPx() }
 
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // 点空白关闭气泡（柱段自身的点击会优先消费事件）。
             Box(
                 modifier = Modifier
@@ -474,11 +492,12 @@ internal fun ExpenseTrendChart(
                         detectTapGestures { selection = null }
                     },
             )
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(184.dp),
+                        .weight(1f)
+                        .onSizeChanged { plotRowHeightPx = it.height.toFloat() },
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
@@ -504,47 +523,50 @@ internal fun ExpenseTrendChart(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(BarPlotHeight),
+                                    .weight(1f),
                                 contentAlignment = Alignment.BottomCenter,
                             ) {
                                 if (bar.total > 0.0) {
-                                    val fraction = (bar.total / maxTotal).toFloat()
-                                    val barHeight = (BarPlotHeight * fraction * reveal).coerceAtLeast(2.dp)
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth(barFill)
-                                            .height(barHeight)
-                                            .pointerInput(bar, bars[index]) {
-                                                detectTapGestures { offset ->
-                                                    val categoryIndex = resolveBarSlice(
-                                                        categories = bar.categories,
-                                                        total = bar.total,
-                                                        touchY = offset.y,
-                                                        height = size.height.toFloat(),
-                                                    )
-                                                    selection = if (categoryIndex == null) {
-                                                        null
-                                                    } else {
-                                                        val current = selection
-                                                        if (current?.monthIndex == index &&
-                                                            current.categoryIndex == categoryIndex
-                                                        ) {
+                                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                        val fraction = (bar.total / maxTotal).toFloat()
+                                        val barHeight = (maxHeight * fraction * reveal).coerceAtLeast(2.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .fillMaxWidth(barFill)
+                                                .height(barHeight)
+                                                .pointerInput(bar, bars[index]) {
+                                                    detectTapGestures { offset ->
+                                                        val categoryIndex = resolveBarSlice(
+                                                            categories = bar.categories,
+                                                            total = bar.total,
+                                                            touchY = offset.y,
+                                                            height = size.height.toFloat(),
+                                                        )
+                                                        selection = if (categoryIndex == null) {
                                                             null
                                                         } else {
-                                                            BarSelection(index, categoryIndex)
+                                                            val current = selection
+                                                            if (current?.monthIndex == index &&
+                                                                current.categoryIndex == categoryIndex
+                                                            ) {
+                                                                null
+                                                            } else {
+                                                                BarSelection(index, categoryIndex)
+                                                            }
                                                         }
                                                     }
-                                                }
-                                            },
-                                    ) {
-                                        Canvas(modifier = Modifier.fillMaxSize()) {
-                                            drawStackedBar(
-                                                categories = bar.categories,
-                                                total = bar.total,
-                                                selectedIndex = selection
-                                                    ?.takeIf { it.monthIndex == index }
-                                                    ?.categoryIndex,
-                                            )
+                                                },
+                                        ) {
+                                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                                drawStackedBar(
+                                                    categories = bar.categories,
+                                                    total = bar.total,
+                                                    selectedIndex = selection
+                                                        ?.takeIf { it.monthIndex == index }
+                                                        ?.categoryIndex,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -576,6 +598,7 @@ internal fun ExpenseTrendChart(
             val bar = current?.let { bars.getOrNull(it.monthIndex) }
             val category = current?.let { bar?.categories?.getOrNull(it.categoryIndex) }
             if (current != null && bar != null && category != null) {
+                val plotHeightPx = (plotRowHeightPx - with(density) { 44.dp.toPx() }).coerceAtLeast(1f)
                 val barHeightPx = plotHeightPx * (bar.total / maxTotal).toFloat() * reveal
                 val barTopPx = plotTopPx + plotHeightPx - barHeightPx
                 val before = bar.categories.take(current.categoryIndex).sumOf { it.value }
@@ -591,7 +614,7 @@ internal fun ExpenseTrendChart(
                 val rawX = if (bubbleW > 0f && rightX + bubbleW <= widthPx) rightX else leftX
                 val x = rawX.coerceIn(0f, (widthPx - bubbleW).coerceAtLeast(0f))
                 val y = (segmentCenterY - bubbleH / 2f)
-                    .coerceIn(0f, (rowHeightPx - bubbleH).coerceAtLeast(0f))
+                    .coerceIn(0f, (plotRowHeightPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
                     text = "${DataLabels.category(category.name, ev)} · ${Units.currencySymbol}${Format.money(category.value)}\n" +
                         percentText(category.value, bar.total),
@@ -876,11 +899,15 @@ private fun ChartBubble(text: String, modifier: Modifier = Modifier) {
 
 /** 图表空态占位（保持卡片有固定视觉高度，避免切换期间跳动）。 */
 @Composable
-private fun EmptyChartHint(text: String, modifier: Modifier = Modifier) {
+private fun EmptyChartHint(
+    text: String,
+    modifier: Modifier = Modifier,
+    height: Dp = 120.dp,
+) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(height),
         contentAlignment = Alignment.Center,
     ) {
         Text(

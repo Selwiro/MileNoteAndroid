@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,20 +33,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.milenote.android.BuildConfig
-import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.data.settings.backupAgeDays
 import com.milenote.android.data.settings.formatBackupAt
 import com.milenote.android.domain.calc.Companion
 import com.milenote.android.domain.calc.Dates
-import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.icons.MileNoteIcons
-import com.milenote.android.ui.theme.AppTheme
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.metricValue
 
@@ -57,9 +52,9 @@ import com.milenote.android.ui.theme.metricValue
  * 2026-11-12 改版（方案 A / 卡片 M1）：
  * - 顶部「数据概览」卡只讲**数据本身**（车辆 / 记录 / 相伴天数 + 上次备份 / 同步状态），
  *   不做"本地账号/个人资料"身份叙事——App 没有账号，`无账号` 也不需要在页面上自我介绍；
- * - 菜单拆成「车辆与偏好 / 数据与同步 / 关于」三个分组，6 行右侧显示**当前值**
- *   （车辆数、皮肤·深浅色、单位、上次备份、WebDAV 开关、版本号），把"盲设置"变成"可见设置"；
- * - 页脚补品牌与数据口径说明。
+ * - 菜单拆成「车辆与偏好 / 数据与同步 / 关于」三个分组、10 个入口；行右侧不挂当前值
+ *   （车辆数 / 皮肤 / 单位 / 备份时间 / WebDAV 开关 / 版本号都不再挤在菜单行上，2026-11-12 用户反馈）；
+ * - 页脚只留品牌字标（不写「数据默认保存在本机」这类说明，数据口径在「隐私与数据」子页）。
  *
  * 页面本身无顶栏 / 底栏，由外层 Scaffold 提供；顶栏标题「我的」+ 车辆胶囊与其他 tab 一致。
  * 行点击推入设置子页（路由参数为 [SettingsPage.key]）。
@@ -78,7 +73,6 @@ fun MineScreen(
 
     val garage = state.garage
     val cars = garage?.cars.orEmpty()
-    val activeTheme = remember(garage?.theme) { AppTheme.fromId(garage?.theme) }
 
     // ---- 数据概览卡的账本级口径（全部 O(车)，不遍历记录） ----
     val earliestCompanionDate = remember(garage) {
@@ -102,14 +96,6 @@ fun MineScreen(
     } else {
         tr("上次备份 %s · %s", "Last backup %s · %s", backupLabel, syncText)
     }
-
-    val vehiclesValue = if (garage == null) null else tr("%d 辆", "%d", cars.size)
-    val appearanceValue = if (garage == null) {
-        null
-    } else {
-        "${activeTheme.displayName} · ${darkModeLabel(settings.darkMode)}"
-    }
-    val unitsValue = "${Units.distanceUnit} · ${Units.volumeUnit} · ${Units.money}"
 
     Box(modifier = modifier.fillMaxSize()) {
         SettingsPageList(narrow = true) {
@@ -162,28 +148,24 @@ fun MineScreen(
                     MineValueRow(
                         icon = MileNoteIcons.Car,
                         title = tr("我的车辆", "My vehicles"),
-                        value = vehiclesValue,
                         onClick = { onOpenPage(SettingsPage.VEHICLES.key) },
                     )
                     SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Palette,
                         title = tr("外观", "Appearance"),
-                        value = appearanceValue,
                         onClick = { onOpenPage(SettingsPage.APPEARANCE.key) },
                     )
                     SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Ruler,
                         title = tr("单位", "Units"),
-                        value = unitsValue,
                         onClick = { onOpenPage(SettingsPage.UNITS.key) },
                     )
                     SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Tag,
                         title = tr("费用分类与项目", "Categories & items"),
-                        value = null,
                         onClick = { onOpenPage(SettingsPage.CATEGORIES.key) },
                     )
                 }
@@ -196,22 +178,18 @@ fun MineScreen(
                     MineValueRow(
                         icon = MileNoteIcons.Import,
                         title = tr("外部导入", "Import"),
-                        value = null,
                         onClick = { onOpenPage(SettingsPage.IMPORT.key) },
                     )
                     SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Archive,
                         title = tr("备份与还原", "Backup & restore"),
-                        value = backupLabel,
-                        warn = backupMissing,
                         onClick = { onOpenPage(SettingsPage.BACKUP.key) },
                     )
                     SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Cloud,
                         title = tr("WebDAV 同步", "WebDAV sync"),
-                        value = if (syncOn) tr("已开启", "On") else tr("未开启", "Off"),
                         onClick = { onOpenPage(SettingsPage.WEBDAV.key) },
                     )
                 }
@@ -224,14 +202,12 @@ fun MineScreen(
                     MineValueRow(
                         icon = MileNoteIcons.Info,
                         title = tr("关于", "About"),
-                        value = "v${BuildConfig.VERSION_NAME}",
                         onClick = { onOpenPage(SettingsPage.ABOUT.key) },
                     )
                     SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Lock,
                         title = tr("隐私与数据", "Privacy & data"),
-                        value = null,
                         onClick = { onOpenPage(SettingsPage.PRIVACY.key) },
                     )
                     SectionDivider()
@@ -239,7 +215,6 @@ fun MineScreen(
                     MineValueRow(
                         icon = MileNoteIcons.Code,
                         title = tr("开源许可", "Licenses"),
-                        value = null,
                         onClick = { onOpenPage(SettingsPage.LICENSES.key) },
                     )
                 }
@@ -397,21 +372,18 @@ private fun MineGroup(
 }
 
 /**
- * 菜单行：单色图标 + 标题 + 右侧当前值 + chevron（整行可点，48dp 行高）。
+ * 菜单行：单色图标 + 标题 + chevron（整行可点）。
  *
- * @param value 右侧当前值；null = 不显示（该行是"进管理"的入口，没有单一值）。
- * @param warn 值用警告色（如「尚未备份」）。
+ * 右侧只保留 chevron 作为「可进入」的提示，不再显示车辆数 / 当前皮肤 / 备份时间等当前值：
+ * 这些信息要么在子页里能直接看到，要么在概览卡里已有，堆在菜单行上反而打断阅读（2026-11-12 用户反馈）。
  */
 @Composable
 private fun MineValueRow(
     icon: ImageVector,
     title: String,
-    value: String?,
     onClick: () -> Unit,
-    warn: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val warnColor = LocalMileNoteSemanticColors.current.warning.content
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -434,17 +406,6 @@ private fun MineValueRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        if (value != null) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (warn) warnColor else scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 132.dp),
-            )
-        }
         Spacer(modifier = Modifier.width(4.dp))
         Icon(
             imageVector = MileNoteIcons.ChevronRight,
@@ -455,7 +416,7 @@ private fun MineValueRow(
     }
 }
 
-/** 页脚：品牌字标 + 一句数据口径说明（不写版本号，版本在「关于」行）。 */
+/** 页脚：只留品牌字标（版本在「关于」，数据口径在隐私页，不在这里重复）。 */
 @Composable
 private fun MineFooter() {
     Column(
@@ -469,24 +430,7 @@ private fun MineFooter() {
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = tr(
-                "数据默认保存在本机，备份与同步由你掌控",
-                "Data stays on this device; backups and sync are up to you",
-            ),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-            maxLines = 2,
-        )
     }
-}
-
-/** 深浅色偏好的显示名（与「外观」子页同一套文案）。 */
-private fun darkModeLabel(mode: DarkMode): String = when (mode) {
-    DarkMode.SYSTEM -> tr("跟随系统", "System")
-    DarkMode.LIGHT -> tr("浅色", "Light")
-    DarkMode.DARK -> tr("深色", "Dark")
 }
 
 /**
