@@ -25,7 +25,7 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 
 ## Screenshots
 
-These screenshots come from the built-in demo ledger in v0.32.0 (English UI); all data is synthetic. The interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
+These screenshots come from an older build's demo ledger (English UI); all data is synthetic. **Since 0.39.0 the bottom bar is Overview / Fuel / ＋ / Service / Me** (the Analytics page was dissolved: expense trend moved to Overview, expense details open from the Overview top-right icon; fuel details and maintenance records open from their page top-right icons). The interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
 
 | Overview | Add entry | Analytics | Service |
 |:---:|:---:|:---:|:---:|
@@ -66,7 +66,7 @@ Fuel economy is calculated from the distance and the actual fuel volume between 
 - The first full tank only establishes a baseline.
 - Partial fills accumulate until the next settlement.
 - If a refuel was missed, mark it as missed and rebuild the baseline.
-- Outputs include average fuel economy, fuel cost per kilometre, trends and fill-up details.
+- Outputs include average fuel economy, fuel cost per kilometre and trends; fill-up / charging details open from the page top-right icon.
 
 **Plug-in hybrids / range extenders: dual fuel and energy**
 
@@ -94,19 +94,15 @@ Reminders consider both time and mileage, and **whichever threshold is reached f
 
 The plan table shows what was last completed, the next expected date and mileage, and the current status. After you complete a service and save the record, the app schedules the next round automatically.
 
-Due items appear in the in-app to-do list. When you want a system calendar reminder, export a single plan as an `.ics` file.
+Due items appear in the in-app to-do list (since 0.39.0 to-dos and the plan share one page: to-dos show only overdue + the next 3–5 items, while the plan table keeps the full schedule). To use system calendar reminders, export a single plan as an `.ics` file; past maintenance records open from the Service page top-right icon and can be filtered by Repair / Service / Detailing.
 
-### Analytics
+### Spending statistics and expense details
 
-Beyond individual records, the Analytics page summarises spending over a period.
+**Since 0.39.0** the standalone Analytics page is gone; statistics and the record list live in two places:
 
-It covers:
-
-- Total spend, recorded mileage and cost per kilometre.
-- Average fuel economy or the corresponding energy metric.
-- Stacked monthly bars showing how each expense category changes over time.
-- A donut chart comparing category shares.
-- Statistics and records tabs, plus custom date ranges.
+- **Overview**: vehicle stats (total spend, recorded mileage, cost per kilometre, average fuel economy — all following the selected range), mileage trend, and expense trend (stacked monthly bars showing how each category changes).
+- **Expense details**: open from the Overview top-right icon; search plus time (all / this month / this year / custom) and category filters, "N records / filtered total", grouped by month, with edit and delete.
+- The expense breakdown donut is temporarily retired with the old Analytics page and is planned for the upcoming monthly / annual report feature.
 
 Cost per kilometre is based on recorded spending and recorded mileage. Unrecorded costs such as depreciation or loan interest are not included automatically.
 
