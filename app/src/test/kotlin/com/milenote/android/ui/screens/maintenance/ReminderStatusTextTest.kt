@@ -130,6 +130,42 @@ class ReminderStatusTextTest {
         assertEquals("保养", inferServiceCategory(Reminder(id = "r-ev-brake", title = "刹车油")))
     }
 
+    // ---- 待办卡第三行：到期日期 + 到期里程（reminderDeadlineLine） ----
+
+    @Test
+    fun `deadline line joins due date and mileage`() {
+        val r = reminder(dueDate = "2026-12-09", dueKm = 40_000.0)
+        assertEquals("到期 2026.12.09 · 40,000 公里", reminderDeadlineLine(r))
+    }
+
+    @Test
+    fun `deadline line with date only`() {
+        val r = reminder(title = "洗车", dueDate = "2026-12-01")
+        assertEquals("到期 2026.12.01", reminderDeadlineLine(r))
+    }
+
+    @Test
+    fun `deadline line with mileage only`() {
+        val r = reminder(title = "轮胎", dueDate = null, dueKm = 45_000.0)
+        assertEquals("到期 45,000 公里", reminderDeadlineLine(r))
+    }
+
+    @Test
+    fun `deadline line ignores invalid date`() {
+        assertEquals(
+            "到期 45,000 公里",
+            reminderDeadlineLine(reminder(dueDate = "2026-13-01", dueKm = 45_000.0)),
+        )
+        assertEquals(null, reminderDeadlineLine(reminder(dueDate = "", dueKm = null)))
+    }
+
+    @Test
+    fun `deadline line english wording`() {
+        I18n.applyEnglish(true)
+        val r = reminder(dueDate = "2026-12-09", dueKm = 40_000.0)
+        assertEquals("Due 2026.12.09 · 40,000 km", reminderDeadlineLine(r))
+    }
+
     @Test
     fun `ev reminder uses the same status wording`() {
         val r = reminder(title = "三电诊断", dueDate = null, dueKm = 52_000.0, intervalKm = 10_000.0)

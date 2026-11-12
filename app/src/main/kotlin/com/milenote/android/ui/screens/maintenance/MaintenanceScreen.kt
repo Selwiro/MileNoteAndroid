@@ -1,7 +1,6 @@
 package com.milenote.android.ui.screens.maintenance
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,7 +57,6 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
-import com.milenote.android.ui.components.CategoryBadge
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.components.StatusPill
@@ -384,32 +382,52 @@ private fun ReminderCard(
     // 计划中的圆点要够深才看得见（outlineVariant 只有 1.7:1）。
     val dotColor = if (state.level == ReminderLevel.NORMAL) scheme.outline else statusColor
     val progressColor = if (progress?.overdue == true) semantic.danger.content else scheme.primary
-    val actionColor = if (state.level == ReminderLevel.OVERDUE) semantic.danger.content else scheme.primary
+    val deadline = reminderDeadlineLine(reminder)
 
+    // 行内不再有左侧元素（分类圆标 / 完成圆钮）：第一行「标题 + 完成」（左 / 右），
+    // 第二行「状态 + 剩余量」，第三行「到期日期 + 到期里程」，最后一条 4dp 进度条。
+    // 整行点按 = 编辑提醒；右侧「完成」= 完成并记录。
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MileNoteShapes.medium)
             .clickable(onClickLabel = tr("编辑提醒", "Edit reminder")) { onEdit(reminder) }
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(vertical = 8.dp),
     ) {
-        CategoryBadge(
-            categoryName = inferServiceCategory(reminder),
-            size = 40.dp,
-            modifier = Modifier.align(Alignment.Top),
-        )
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(
-                text = DataLabels.projectFor(ledger, reminder.title),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = DataLabels.projectFor(ledger, reminder.title),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // 行尾唯一动作：完成并记录（文字按钮，M3 默认 40dp 高，触控达标）。
+                TextButton(
+                    onClick = { onComplete(reminder) },
+                    modifier = Modifier.height(40.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                ) {
+                    Icon(
+                        imageVector = MileNoteIcons.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = tr("完成", "Done"),
+                        style = MaterialTheme.typography.labelMediumEmphasized,
+                    )
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -427,6 +445,15 @@ private fun ReminderCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            if (deadline != null) {
+                Text(
+                    text = deadline,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             // 每行恰好一条进度条：取 serviceProgress() 的单一结果（日期 / 里程先到维度）。
             LinearProgressIndicator(
                 progress = { ((progress?.percent ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f) },
@@ -440,32 +467,6 @@ private fun ReminderCard(
                 gapSize = 0.dp,
                 drawStopIndicator = {},
             )
-        }
-        // 行尾唯一动作：完成并记录（视觉 40dp 圆，触控 48dp）。
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(MileNoteShapeTokens.full)
-                .clickable { onComplete(reminder) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .border(
-                        width = 1.dp,
-                        color = actionColor.copy(alpha = if (state.level == ReminderLevel.OVERDUE) 0.45f else 0.5f),
-                        shape = CircleShape,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = MileNoteIcons.Check,
-                    contentDescription = tr("完成并记录", "Complete & log"),
-                    modifier = Modifier.size(20.dp),
-                    tint = actionColor,
-                )
-            }
         }
     }
 }

@@ -128,17 +128,21 @@ private fun remainingDaysText(days: Long?): String? {
 /** 里程显示：`42,000 公里` / `26,098 mi`（里程单位随设置 → 外观 → 单位）。 */
 internal fun distanceText(value: Double?): String = Format.km(value, Units.distanceUnit)
 
-/** 到期日期 + 到期里程文案（Web 计划表「下次日期 / 里程」列）。 */
-internal fun reminderDueText(reminder: Reminder): String {
-    val parts = buildList {
-        reminder.dueDate?.takeIf { it.isNotEmpty() }?.let { add(it) }
-        reminder.dueKm?.let { add(distanceText(it)) }
-    }
-    return if (parts.isEmpty()) {
-        tr("待补充日期 / 里程", "Date / mileage to be filled in")
-    } else {
-        parts.joinToString(tr(" 或 ", " or "))
-    }
+/**
+ * 待办卡第三行「到期」文案：到期日期 + 到期里程的绝对值（2026-11-12 用户要求补回）。
+ *
+ * 例：`到期 2026.10.12 · 40,000 公里` / `到期 2026.12.01` / `到期 45,000 公里`。
+ * 日期非法、或两者都没有时返回 null（该行不渲染，行高自动少一行）。
+ */
+internal fun reminderDeadlineLine(reminder: Reminder): String? {
+    val date = reminder.dueDate?.takeIf { it.isNotEmpty() && Dates.isValid(it) }
+    val parts = listOfNotNull(
+        date?.let { Format.dateDots(it) },
+        reminder.dueKm?.let { distanceText(it) },
+    )
+    if (parts.isEmpty()) return null
+    // 只有一个 i18n key；中间分隔符不进 i18n（两端都是已格式化的数值）。
+    return tr("到期 %s", "Due %s", parts.joinToString(" · "))
 }
 
 /** 输入框数值解析：容忍千分位、货币符号与全角逗号（Web `number`）。 */
