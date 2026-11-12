@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,8 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenu
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,7 +109,6 @@ import com.milenote.android.ui.theme.moneyMedium
 import com.milenote.android.util.DataUrlImages
 import java.time.Instant
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.ZoneOffset
 
 /** 顶卡最小高度：与现状一致（156dp），保证页面节奏不变。 */
@@ -120,11 +121,12 @@ private val HeroPortraitWidth = 160.dp
 private val HeroCarArtWidth = 170.dp
 
 /**
- * 总览页：紧凑 Hero 车辆卡 + 用车统计大卡（2×2 指标 + 右上时间筛选）+ 里程趋势 + 爱车待办。
+ * 总览页：紧凑 Hero 车辆卡 + 用车统计大卡（2×2 指标 + 右上时间筛选）+ 趋势卡 + 爱车待办。
  *
  * 页面不自带 Scaffold / 顶栏 / 底栏 / FAB；只输出滚动内容，并按 [MileNoteDimens.PageBottom]
- * 预留底部空间。统计范围使用 [UiState.effectiveRange]（自定义范围优先），只影响指标 / 构成；
- * 底栏 v4 起「支出趋势」重新回到本页（费用统计页取消）；「费用构成」留到月报 / 年报。
+ * 预留底部空间。统计范围使用 [UiState.effectiveRange]（自定义范围优先），只影响指标 / 趋势；
+ * 底栏 v4 起「支出趋势」并回本页（费用统计页取消），2026-11-12 起与原「里程趋势」合并成
+ * 一张卡、卡头文字 tab 切换；「费用构成」留到月报 / 年报。
  * 本页图表 / 待办与统计卡统一为同一种 SectionCard 版式。
  *
  * @param vm 全局 ViewModel（期间 / 自定义范围 / 编辑记录 / 演示）。
@@ -258,8 +260,10 @@ private fun DashboardContent(
                 onSelectCustomRange = onSelectCustomRange,
             )
         }
-        item(key = "mileage") {
-            MileageTrendCard(
+        // 2026-11-12：原「里程趋势 + 支出趋势」两张卡合并成一张「趋势」卡，
+        // 卡头文字 tab 切换里程 / 支出，时间范围与「用车统计」共用同一全局状态。
+        item(key = "trend") {
+            TrendCard(
                 ledger = ledger,
                 period = state.period,
                 customRange = state.customRange,
@@ -267,10 +271,6 @@ private fun DashboardContent(
                 onSelectPeriod = onSelectPeriod,
                 onSelectCustomRange = onSelectCustomRange,
             )
-        }
-        // 底栏 v4：原「费用统计 → 统计」页签的支出趋势并回总览；两张按月图先原样上下排。
-        item(key = "expense-trend") {
-            ExpenseTrendCard(ledger = ledger, today = today)
         }
         item(key = "reminders") {
             NearRemindersCard(
@@ -679,7 +679,7 @@ private fun heroFooterText(ledger: Ledger, days: Int?): String? {
 /**
  * 总览统一卡片容器：`SectionCard` + 卡内标题行（titleMediumEmphasized）+ 可选一行功能说明 / 右侧动作。
  *
- * 支出趋势、费用构成、用车统计、爱车待办共用同一版式与内边距，卡片之间只靠 12dp 间距分组。
+ * 趋势、费用构成、用车统计、爱车待办共用同一版式与内边距，卡片之间只靠 12dp 间距分组。
  */
 @Composable
 private fun DashboardCard(
@@ -821,7 +821,7 @@ private fun VehicleStatsCard(
     }
 }
 
-/** 卡内右上角胶囊按钮 + DropdownMenu（用车统计 / 支出趋势 / 费用构成共用样式）。 */
+/** 卡内右上角胶囊按钮 + DropdownMenu（用车统计 / 趋势 / 费用构成共用样式）。 */
 @Composable
 private fun RangePillMenu(
     label: String,
@@ -897,27 +897,60 @@ private fun RangeFilterButton(
     }
 }
 
+/** 趋势卡的图表类型（卡头文字 tab）。 */
+private enum class TrendTab {
+    MILEAGE,
+    EXPENSE,
+}
+
+/** 趋势卡 tab 文案（纯 UI 文案，数据值不翻译）。 */
+private fun trendTabLabel(tab: TrendTab): String = when (tab) {
+    TrendTab.MILEAGE -> tr("里程", "Mileage")
+    TrendTab.EXPENSE -> tr("支出", "Expense")
+}
+
 /**
- * 里程趋势卡：右上角与「用车统计」完全一致的时间筛选（全部/本月/今年/自定义），
- * 折线图按所选范围的自然月展示每月行驶里程。
+ * 总览「趋势」卡：原「里程趋势」折线 + 「支出趋势」堆叠柱合并成一张卡。
+ *
+ * - 切换控件放在卡头左侧的**文字 tab**（选中加粗 + 3dp 下划线），不再用通栏段控：
+ *   与右上角范围胶囊拉开视觉层级（2026-11-12 用户反馈「两个胶囊像重复控件」）；
+ * - 时间范围沿用全局 [period] / [customRange]（与「用车统计」联动），两张图共用
+ *   [trendMonthsFor] 的同一批月份，切换 tab 时横轴不跳动。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MileageTrendCard(
+private fun TrendCard(
     ledger: Ledger,
     period: Period,
     customRange: DateRange?,
     range: DateRange,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
-    val bars = remember(ledger, range) { buildMileageBars(ledger, range) }
+    var tabName by rememberSaveable { mutableStateOf(TrendTab.MILEAGE.name) }
+    val tab = TrendTab.entries.firstOrNull { it.name == tabName } ?: TrendTab.MILEAGE
+    val months = remember(range) { trendMonthsFor(range) }
+    val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
+    val palette = LocalMileNoteCategoryColors.current
+    val darkTheme = LocalMileNoteDarkTheme.current
+    val monthBars = remember(ledger, palette, darkTheme, months) {
+        buildMonthBars(ledger, palette, darkTheme, months)
+    }
 
-    DashboardCard(
-        title = tr("里程趋势", "Mileage trend"),
-        action = {
+    SectionCard(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TrendTabs(
+                selected = tab,
+                onSelect = { tabName = it.name },
+                modifier = Modifier.weight(1f),
+            )
             RangeFilterButton(
                 label = rangeLabel(period = period, customRange = customRange),
                 expanded = menuExpanded,
@@ -934,9 +967,12 @@ private fun MileageTrendCard(
                     showRangePicker = true
                 },
             )
-        },
-    ) {
-        MileageTrendChart(bars = bars)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        when (tab) {
+            TrendTab.MILEAGE -> MileageTrendChart(bars = mileageBars)
+            TrendTab.EXPENSE -> ExpenseTrendChart(bars = monthBars, ev = ledger.isEv)
+        }
     }
 
     if (showRangePicker) {
@@ -951,278 +987,65 @@ private fun MileageTrendCard(
     }
 }
 
-/** 支出趋势的时间维度。 */
-private enum class TrendRangeMode {
-    HALF,
-    YEAR,
-    CUSTOM,
-}
-
-/** 支出趋势维度 → 显示文案（按当前语言取）。 */
-private fun trendModeLabel(mode: TrendRangeMode): String = when (mode) {
-    TrendRangeMode.HALF -> tr("半年", "6 months")
-    TrendRangeMode.YEAR -> tr("一年", "12 months")
-    TrendRangeMode.CUSTOM -> tr("自定义月份", "Custom months")
-}
-
-/**
- * 支出趋势卡：右上角月份区间筛选（半年默认 / 一年 / 自定义月份），图表按月聚合。
- *
- * 半年 = 最近 6 个自然月，一年 = 最近 12 个自然月；自定义月份最多 24 个月。
- */
+/** 卡头文字 tab：选中加粗 + 3dp 下划线，未选中透明占位保持基线对齐。 */
 @Composable
-internal fun ExpenseTrendCard(ledger: Ledger, today: LocalDate) {
-    var modeName by rememberSaveable { mutableStateOf(TrendRangeMode.HALF.name) }
-    // 空串表示未选择（rememberSaveable 对 String? 的保存兼容性更稳）。
-    var customStart by rememberSaveable { mutableStateOf("") }
-    var customEnd by rememberSaveable { mutableStateOf("") }
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showMonthPicker by remember { mutableStateOf(false) }
-
-    val mode = TrendRangeMode.entries.firstOrNull { it.name == modeName } ?: TrendRangeMode.HALF
-    val months = remember(mode, customStart, customEnd, today) {
-        trendMonths(mode, customStart.ifBlank { null }, customEnd.ifBlank { null }, today)
-    }
-    val palette = LocalMileNoteCategoryColors.current
-    val darkTheme = LocalMileNoteDarkTheme.current
-    val bars = remember(ledger, palette, darkTheme, months) {
-        buildMonthBars(ledger, palette, darkTheme, months)
-    }
-
-    DashboardCard(
-        title = tr("支出趋势", "Expense trend"),
-        action = {
-            RangePillMenu(
-                label = trendRangeLabel(mode, customStart.ifBlank { null }, customEnd.ifBlank { null }, months),
-                expanded = menuExpanded,
-                onToggle = { menuExpanded = true },
-                onDismiss = { menuExpanded = false },
-            ) {
-                TrendRangeMode.entries.forEach { entry ->
-                    if (entry == TrendRangeMode.CUSTOM) {
-                        DropdownMenuItem(
-                            text = { Text(trendModeLabel(entry)) },
-                            trailingIcon = checkIcon(mode == entry),
-                            onClick = {
-                                menuExpanded = false
-                                showMonthPicker = true
-                            },
-                        )
-                    } else {
-                        DropdownMenuItem(
-                            text = { Text(trendModeLabel(entry)) },
-                            trailingIcon = checkIcon(mode == entry),
-                            onClick = {
-                                modeName = entry.name
-                                menuExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-        },
+private fun TrendTabs(
+    selected: TrendTab,
+    onSelect: (TrendTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(22.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ExpenseTrendChart(bars = bars, ev = ledger.isEv)
-    }
-
-    if (showMonthPicker) {
-        val defaultMonths = remember(mode, customStart, customEnd, months) {
-            recentMonths(today, 6)
-        }
-        MonthRangePickerDialog(
-            initialStartMonth = customStart.ifBlank { monthKey(defaultMonths.first()) },
-            initialEndMonth = customEnd.ifBlank { monthKey(defaultMonths.last()) },
-            onDismiss = { showMonthPicker = false },
-            onConfirm = { start, end ->
-                customStart = start
-                customEnd = end
-                modeName = TrendRangeMode.CUSTOM.name
-                showMonthPicker = false
-            },
-        )
-    }
-}
-
-/** 最近 [count] 个自然月（含当月，升序）。 */
-private fun recentMonths(today: LocalDate, count: Int): List<YearMonth> {
-    val end = YearMonth.from(today)
-    return (count - 1 downTo 0).map { end.minusMonths(it.toLong()) }
-}
-
-/** 按筛选模式生成月份列表；自定义范围非法 / 为空时回退半年。 */
-private fun trendMonths(
-    mode: TrendRangeMode,
-    startMonth: String?,
-    endMonth: String?,
-    today: LocalDate,
-): List<YearMonth> = when (mode) {
-    TrendRangeMode.HALF -> recentMonths(today, 6)
-    TrendRangeMode.YEAR -> recentMonths(today, 12)
-    TrendRangeMode.CUSTOM -> {
-        val start = startMonth?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
-        val end = endMonth?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
-        if (start != null && end != null && start <= end) {
-            monthsBetween(start, end).take(24)
-        } else {
-            recentMonths(today, 6)
-        }
-    }
-}
-
-/** 起止月（含）之间的月份列表。 */
-private fun monthsBetween(start: YearMonth, end: YearMonth): List<YearMonth> {
-    val months = mutableListOf<YearMonth>()
-    var current = start
-    while (current <= end) {
-        months += current
-        current = current.plusMonths(1)
-    }
-    return months
-}
-
-/** 趋势筛选标签：半年 / 一年 / 自定义月份（同年 `yyyy.MM–MM`，跨年完整）。 */
-private fun trendRangeLabel(
-    mode: TrendRangeMode,
-    startMonth: String?,
-    endMonth: String?,
-    months: List<YearMonth>,
-): String = when (mode) {
-    TrendRangeMode.HALF -> trendModeLabel(TrendRangeMode.HALF)
-    TrendRangeMode.YEAR -> trendModeLabel(TrendRangeMode.YEAR)
-    TrendRangeMode.CUSTOM -> {
-        val start = startMonth?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
-        val end = endMonth?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
-        when {
-            start != null && end != null && start.year == end.year ->
-                "${start.year}.${month2(start)}–${month2(end)}"
-            start != null && end != null ->
-                "${start.year}.${month2(start)}–${end.year}.${month2(end)}"
-            months.isNotEmpty() -> tr("%d 个月", "%d months", months.size)
-            else -> trendModeLabel(TrendRangeMode.CUSTOM)
-        }
-    }
-}
-
-private fun month2(month: YearMonth): String = month.monthValue.toString().padStart(2, '0')
-
-/** 自定义月份区间选择（两个月份下拉，最多 24 个月）。 */
-@Composable
-private fun MonthRangePickerDialog(
-    initialStartMonth: String,
-    initialEndMonth: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit,
-) {
-    val today = remember { Dates.today() }
-    val options = remember(today) {
-        (0 until 36).map { YearMonth.from(today).minusMonths(it.toLong()) }.reversed()
-    }
-    var start by remember {
-        mutableStateOf(runCatching { YearMonth.parse(initialStartMonth) }.getOrElse { YearMonth.from(today) })
-    }
-    var end by remember {
-        mutableStateOf(runCatching { YearMonth.parse(initialEndMonth) }.getOrElse { YearMonth.from(today) })
-    }
-    val span = if (start <= end) monthsBetween(start, end).size else 0
-    val valid = start <= end && span in 1..24
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = MileNoteShapes.extraLarge,
-        title = { Text(tr("自定义月份", "Custom months"), style = MaterialTheme.typography.headlineSmall) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = tr("选择起止月份，最多 24 个月。", "Pick a start and end month, up to 24 months."),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                MonthDropdown(label = tr("起始月", "Start month"), selected = start, options = options, onSelect = { start = it })
-                MonthDropdown(label = tr("结束月", "End month"), selected = end, options = options, onSelect = { end = it })
-                when {
-                    start > end -> Text(
-                        text = tr("结束月不能早于起始月", "The end month cannot be before the start month"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+        TrendTab.entries.forEach { entry ->
+            val isSelected = entry == selected
+            Column(
+                modifier = Modifier
+                    .clip(MileNoteShapes.small)
+                    .selectable(
+                        selected = isSelected,
+                        role = Role.Tab,
+                        onClick = { onSelect(entry) },
                     )
-                    span > 24 -> Text(
-                        text = tr("月份范围最多 24 个月（当前 %d 个月）", "The range can span at most 24 months (currently %d)", span),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = valid,
-                onClick = { onConfirm(monthKey(start), monthKey(end)) },
-            ) {
-                Text(tr("确定", "OK"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(tr("取消", "Cancel"))
-            }
-        },
-    )
-}
-
-/** 单个月份下拉选择。 */
-@Composable
-private fun MonthDropdown(
-    label: String,
-    selected: YearMonth,
-    options: List<YearMonth>,
-    onSelect: (YearMonth) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
-            shape = MileNoteShapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(top = 4.dp, bottom = 4.dp)
+                    // 宽度收紧到文字宽，避免下划线被 fillMaxWidth 拉到整行、把第二个 tab 挤出卡外。
+                    .width(IntrinsicSize.Max),
+                horizontalAlignment = Alignment.Start,
             ) {
                 Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "${selected.year}.${month2(selected)}",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Icon(
-                    imageVector = MileNoteIcons.ChevronDown,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .size(18.dp),
-                )
-            }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text("${option.year}.${month2(option)}") },
-                    trailingIcon = checkIcon(option == selected),
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
+                    text = trendTabLabel(entry),
+                    style = if (isSelected) {
+                        MaterialTheme.typography.titleMediumEmphasized
+                    } else {
+                        MaterialTheme.typography.titleMedium
+                    },
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                Color.Transparent
+                            },
+                        ),
+                )
             }
         }
     }
 }
+
 
 /**
  * 费用构成卡：右上角统计范围（全部 / 本月 / 今年 / 自定义，与用车统计联动），

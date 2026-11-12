@@ -87,7 +87,7 @@ import kotlin.math.sin
  * 总览页图表（自绘 Canvas，不引入第三方图表库）。
  *
  * 设计规范 §2.7 / §6.2：
- * - 支出趋势：按所选月份区间（半年 / 一年 / 自定义）绘制分类堆叠柱，点击柱段显示
+ * - 支出趋势：按趋势卡统一月份列表绘制分类堆叠柱，点击柱段显示
  *   「YYYY-MM · 分类：金额（x%）」；
  * - 费用构成：环图 + 下方分类图例（色点 + 名称），点击扇区显示金额，中心为总支出。
  * - 分类色一律来自 [LocalMileNoteCategoryColors]（9 类固定顺序、深浅双版本、色觉缺陷安全）。
@@ -123,16 +123,34 @@ internal data class MileageBar(
 )
 
 /**
- * 里程趋势数据：在所选统计范围内按自然月计算每月行驶里程。
+ * 趋势卡统一月份列表（里程折线 / 支出堆叠柱共用同一批月份，切 tab 时横轴不跳动）。
+ *
+ * - 未选范围（「全部」）→ 最近 12 个自然月（沿用里程趋势原口径）；
+ * - 本月 / 今年 / 自定义 → 范围覆盖的自然月，防御性上限 [maxMonths]（默认 24，支出柱图上限）。
+ */
+internal fun trendMonthsFor(
+    range: DateRange,
+    today: LocalDate = Dates.today(),
+    maxMonths: Int = 24,
+): List<YearMonth> {
+    val start = Dates.parse(range.from)
+    val end = Dates.parse(range.to)
+    if (start == null || end == null) {
+        val last = YearMonth.from(today)
+        return (11 downTo 0).map { last.minusMonths(it.toLong()) }
+    }
+    return monthsCovered(YearMonth.from(start), YearMonth.from(end)).take(maxMonths)
+}
+
+/**
+ * 里程趋势数据：按 [months] 逐月计算每月行驶里程。
  *
  * 月里程 = 该月最大 odometer − 上月最大 odometer；上月无读数时用「该月 max − min」；
  * 无有效里程的点置 0（整段都无数据时由图表显示空态）。
- * 「全部」= 最近 12 个月；本月 / 今年 / 自定义 = 范围覆盖的自然月。
  */
 internal fun buildMileageBars(
     ledger: Ledger,
-    range: DateRange,
-    today: LocalDate = Dates.today(),
+    months: List<YearMonth>,
 ): List<MileageBar> {
     data class Reading(val date: LocalDate, val km: Double)
 
@@ -154,20 +172,6 @@ internal fun buildMileageBars(
             .maxOfOrNull { it.km }
         val baseline = previousMax ?: inPeriod.minOf { it.km }
         return (currentMax - baseline).coerceAtLeast(0.0)
-    }
-
-    val months = if (range.from.isBlank()) {
-        val end = YearMonth.from(today)
-        (11 downTo 0).map { end.minusMonths(it.toLong()) }
-    } else {
-        val start = Dates.parse(range.from)
-        val end = Dates.parse(range.to)
-        if (start == null || end == null) {
-            val fallback = YearMonth.from(today)
-            (11 downTo 0).map { fallback.minusMonths(it.toLong()) }
-        } else {
-            monthsCovered(YearMonth.from(start), YearMonth.from(end))
-        }
     }
 
     return months.map { month ->
@@ -430,6 +434,8 @@ internal fun ExpenseTrendChart(
     val maxTotal = remember(bars) { maxOf(1.0, bars.maxOfOrNull { it.total } ?: 0.0) }
     // 月数较多（一年 / 自定义）时隐藏柱顶总额与隔月标签，避免 12–24 列时文字互相重叠。
     val dense = bars.size > 8
+    // 本月 / 近两个月只有 1–2 根柱，按 0.62 列宽会变成巨柱，收窄到 0.28 列宽。
+    val barFill = if (bars.size <= 2) 0.28f else BarWidthFraction
 
     // 入场：柱从 0 生长（300ms，设计规范 §7.2）。
     var started by remember(bars) { mutableStateOf(false) }
@@ -506,7 +512,7 @@ internal fun ExpenseTrendChart(
                                     val barHeight = (BarPlotHeight * fraction * reveal).coerceAtLeast(2.dp)
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxWidth(BarWidthFraction)
+                                            .fillMaxWidth(barFill)
                                             .height(barHeight)
                                             .pointerInput(bar, bars[index]) {
                                                 detectTapGestures { offset ->
@@ -576,7 +582,7 @@ internal fun ExpenseTrendChart(
                 val segmentCenterY = barTopPx +
                     ((before + category.value / 2.0) / bar.total).toFloat() * barHeightPx
                 val barCenterX = current.monthIndex * (columnWidthPx + spacingPx) + columnWidthPx / 2f
-                val barWidthPx = columnWidthPx * BarWidthFraction
+                val barWidthPx = columnWidthPx * barFill
                 val gapPx = with(density) { 8.dp.toPx() }
                 val bubbleW = bubbleSize.width.toFloat()
                 val bubbleH = bubbleSize.height.toFloat()
