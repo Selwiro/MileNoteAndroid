@@ -326,12 +326,18 @@ fun MaintenanceScreen(
 /** 待办卡最多展示条数：已到期全放，其余补到这么多条。 */
 private const val TODO_MAX_ITEMS = 5
 
+/** 只有到期里程的提醒：剩余里程 ≤ 这个值才进待办（用户 2026-11-12 口径：剩余 1000 公里进待办）。 */
+private const val TODO_MILEAGE_ONLY_THRESHOLD_KM = 1000.0
+
 /**
- * 待办卡候选（底栏 v4 R2 + 2026-11-12 用户口径）：**只看最近一年**。
+ * 待办卡候选（底栏 v4 R2 + 2026-11-12 用户口径）：
  *
- * 条件：未完成 + 有有效到期日期 + 到期日期不晚于「今天 + 12 个月」（已过期的也保留，属「已到期」）。
- * 只有到期里程、没有日期的提醒不进待办，仍可在下方计划表查看。
- * 排序：已到期优先，其次到期日期升序；这样「已到期全放 + 最近到期的补到 5 条」直接取前缀即可。
+ * - **有到期日期**：未完成 + 到期日期不晚于「今天 + 12 个月」（**只看最近一年**，已过期的也保留，属「已到期」）；
+ * - **只有到期里程（没有日期）**：未完成 + 剩余里程 ≤ [TODO_MILEAGE_ONLY_THRESHOLD_KM]（1000 公里）才进待办，
+ *   更远的仍只在下方计划表查看。
+ *
+ * 排序：已到期优先，其次到期日期升序（无日期排最后），再按到期里程升序；
+ * 这样「已到期全放 + 最近到期的补到 5 条」直接取前缀即可。
  * 只用于待办摘要；计划表用 `servicePlanRows` 展示全量（两者同源，不重复铺开）。
  */
 private fun pendingReminderCandidates(
@@ -342,8 +348,12 @@ private fun pendingReminderCandidates(
     val cutoff = Dates.iso(Dates.addMonths(today, 12))
     return reminders
         .filter { reminder ->
+            if (reminder.done) return@filter false
             val due = reminder.dueDate
-            !reminder.done && due != null && Dates.isValid(due) && due <= cutoff
+            val dueDateSoon = due != null && Dates.isValid(due) && due <= cutoff
+            val mileageOnlySoon = (due == null || !Dates.isValid(due)) &&
+                reminder.dueKm?.let { it - km <= TODO_MILEAGE_ONLY_THRESHOLD_KM } == true
+            dueDateSoon || mileageOnlySoon
         }
         .sortedWith(
             compareByDescending<Reminder> { reminderState(it, km, today).level == ReminderLevel.OVERDUE }
