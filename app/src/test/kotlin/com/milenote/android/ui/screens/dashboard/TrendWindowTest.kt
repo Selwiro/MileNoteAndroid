@@ -55,6 +55,19 @@ class TrendWindowTest {
     }
 
     @Test
+    fun `very long custom range still keeps the latest 24 months`() {
+        val window = trendMonthWindow(
+            ledgerWith("2026-01-01"),
+            DateRange("2005-01-01", "2026-11-12"),
+            today,
+        )
+        assertEquals(24, window.months.size)
+        assertEquals(YearMonth.of(2024, 12), window.months.first())
+        assertEquals(YearMonth.of(2026, 11), window.months.last())
+        assertEquals(263, window.totalMonths)
+    }
+
+    @Test
     fun `preset ranges cover only their months`() {
         val ledger = ledgerWith("2026-01-01")
         assertEquals(1, trendMonthWindow(ledger, Dates.range(Period.MONTH, today), today).totalMonths)

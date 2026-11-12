@@ -77,6 +77,7 @@ import com.milenote.android.ui.theme.moneySmall
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -152,19 +153,33 @@ internal fun trendMonthWindow(
 ): TrendWindow {
     // 「全部」的 range.to 是 9999-12-31（表示无上界），图表窗口必须收在今天，而不是画到 9999 年。
     val end = if (range.from.isEmpty()) today else Dates.parse(range.to) ?: today
+    val endMonth = YearMonth.from(end)
     val start = Dates.parse(range.from)
-    val all = if (start != null) {
-        monthsCovered(YearMonth.from(start), YearMonth.from(end))
-    } else {
-        val earliest = ledger.records.mapNotNull { Dates.parse(it.date) }.minOrNull()
-        if (earliest != null) {
-            monthsCovered(YearMonth.from(earliest), YearMonth.from(end))
-        } else {
-            val last = YearMonth.from(today)
-            monthsCovered(last.minusMonths((maxMonths - 1).toLong()), last)
-        }
+    if (start != null) {
+        return monthWindowBetween(YearMonth.from(start), endMonth, maxMonths)
     }
-    return TrendWindow(months = all.takeLast(maxMonths), totalMonths = all.size)
+    val earliest = ledger.records.mapNotNull { Dates.parse(it.date) }.minOrNull()
+    if (earliest != null) {
+        return monthWindowBetween(YearMonth.from(earliest), endMonth, maxMonths)
+    }
+    return monthWindowBetween(endMonth.minusMonths((maxMonths - 1).toLong()), endMonth, maxMonths)
+}
+
+/**
+ * 从 [start] 到 [end] 的月份窗口，只保留最近 [maxMonths] 个月。
+ *
+ * 用月份差算总数，不把 10 年以上的月份全物化；这样自定义长区间取到的始终是**最近** 24 个月。
+ */
+private fun monthWindowBetween(
+    start: YearMonth,
+    end: YearMonth,
+    maxMonths: Int,
+): TrendWindow {
+    if (end < start) return TrendWindow(months = listOf(start), totalMonths = 1)
+    val total = ChronoUnit.MONTHS.between(start, end).toInt() + 1
+    val shown = minOf(total, maxMonths)
+    val months = (shown - 1 downTo 0).map { end.minusMonths(it.toLong()) }
+    return TrendWindow(months = months, totalMonths = total)
 }
 
 /**
@@ -206,18 +221,6 @@ internal fun buildMileageBars(
             km = mileageOf(month),
         )
     }
-}
-
-/** 起止月（含）覆盖的自然月；防御性上限 120 个点。 */
-private fun monthsCovered(start: YearMonth, end: YearMonth): List<YearMonth> {
-    if (end < start) return listOf(start)
-    val months = mutableListOf<YearMonth>()
-    var current = start
-    while (current <= end && months.size < 120) {
-        months += current
-        current = current.plusMonths(1)
-    }
-    return months
 }
 
 /**
