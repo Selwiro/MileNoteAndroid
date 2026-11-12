@@ -239,6 +239,10 @@ class MileNoteViewModel(
             ) { garage, demo, loadError, blocked ->
                 LoadSnapshot(garage, demo, loadError, blocked)
             }.collect { snapshot ->
+                // 覆盖 / 还原 / 导入也可能换掉当前车：列表筛选不跟车走，统一在车变时清空。
+                val activeBefore = _state.value.activeCar?.id
+                val activeAfter = snapshot.garage?.activeCar?.id
+                if (activeBefore != null && activeAfter != activeBefore) clearListFilters()
                 _state.value = _state.value.copy(
                     garage = snapshot.garage,
                     demo = snapshot.demo,
