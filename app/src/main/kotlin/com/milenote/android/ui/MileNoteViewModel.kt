@@ -192,6 +192,8 @@ data class UiState(
     val webDav: WebDavUiState = WebDavUiState(),
     /** 总览自定义时间范围；非空时覆盖 [period]。 */
     val customRange: DateRange? = null,
+    /** 列表页筛选：页面 key（[ListFilterPages]）→ 条件；切车 / 进出演示账本时清空。 */
+    val listFilters: Map<String, ListFilterState> = emptyMap(),
     /** 最近一次读取失败被隔离的原始账本；仅用于设置页导出入口。 */
     val quarantinedRaw: QuarantinedRaw? = null,
     /** 最近一次整体覆盖（WebDAV 下载 / 还原）前的本地快照；非空时设置页显示回滚入口。 */
@@ -299,7 +301,22 @@ class MileNoteViewModel(
         _state.value = _state.value.copy(customRange = DateRange(start, end))
     }
 
+    /** 写入指定页面的列表筛选（页面只读写自己的 key）。 */
+    fun setListFilter(page: String, filter: ListFilterState) {
+        _state.value = _state.value.copy(
+            listFilters = _state.value.listFilters + (page to filter),
+        )
+    }
+
+    private fun clearListFilters() {
+        if (_state.value.listFilters.isNotEmpty()) {
+            _state.value = _state.value.copy(listFilters = emptyMap())
+        }
+    }
+
     fun selectVehicle(id: String) {
+        // 切车重置列表筛选：不把 A 车的分类 / 关键词带到 B 车。
+        if (id != _state.value.activeCar?.id) clearListFilters()
         viewModelScope.launch {
             repository.update(syncHistory = false) { it.copy(activeId = id) }
         }
@@ -1153,11 +1170,13 @@ class MileNoteViewModel(
     )
 
     fun enterDemo() {
+        clearListFilters()
         repository.enterDemo()
         _state.value = _state.value.copy(vehicleSwitcher = false, message = tr("已进入演示账本（不保存）", "Demo ledger opened (changes are not saved)"))
     }
 
     fun exitDemo() {
+        clearListFilters()
         repository.exitDemo()
         _state.value = _state.value.copy(message = tr("已退出演示账本", "Demo ledger closed"))
     }

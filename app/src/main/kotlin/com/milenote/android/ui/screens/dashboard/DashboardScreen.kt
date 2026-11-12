@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,12 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,7 +34,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +51,6 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,12 +85,14 @@ import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
 import com.milenote.android.ui.components.CategoryBadge
 import com.milenote.android.ui.components.EmptyState
+import com.milenote.android.ui.components.HeaderTextTabs
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.components.StatusKind
 import com.milenote.android.ui.components.StatusPill
+import com.milenote.android.ui.components.StatsRangeRow
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
@@ -108,9 +103,7 @@ import com.milenote.android.ui.theme.MileNoteShapeTokens
 import com.milenote.android.ui.theme.MileNoteShapes
 import com.milenote.android.ui.theme.moneyMedium
 import com.milenote.android.util.DataUrlImages
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
 
 /** 顶卡最小高度：与现状一致（156dp），保证页面节奏不变。 */
 private val CompactHeroHeight = 156.dp
@@ -250,15 +243,19 @@ private fun DashboardContent(
             return@LazyColumn
         }
 
-        item(key = "stats") {
-            VehicleStatsCard(
+        item(key = "range") {
+            StatsRangeRow(
                 period = state.period,
                 customRange = state.customRange,
+                onSelectPeriod = onSelectPeriod,
+                onSelectCustomRange = onSelectCustomRange,
+            )
+        }
+        item(key = "stats") {
+            VehicleStatsCard(
                 statsResult = periodStats,
                 ev = ledger.isEv,
                 phev = ledger.vehicle.energyProfile == EnergyProfile.DUAL,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCustomRange = onSelectCustomRange,
             )
         }
         // 2026-11-12：原「里程趋势 + 支出趋势」两张卡合并成一张「趋势」卡，
@@ -266,11 +263,7 @@ private fun DashboardContent(
         item(key = "trend") {
             TrendCard(
                 ledger = ledger,
-                period = state.period,
-                customRange = state.customRange,
                 range = range,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCustomRange = onSelectCustomRange,
             )
         }
         item(key = "reminders") {
@@ -700,6 +693,8 @@ private fun DashboardCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMediumEmphasized,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 if (subtitle != null) {
                     Text(
@@ -722,20 +717,13 @@ private fun DashboardCard(
  * 时间筛选：全部 / 本月 / 今年 / 自定义（M3 DateRangePicker）。自定义范围优先，
  * 所有指标随 [range] 联动；数值口径仍由 domain `stats` 计算。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VehicleStatsCard(
-    period: Period,
-    customRange: DateRange?,
     statsResult: StatsResult,
     ev: Boolean = false,
     phev: Boolean = false,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showRangePicker by remember { mutableStateOf(false) }
     // 平均油耗/能耗：满箱/满电区间加权；纯电没有满充区间时回退累计估算口径。
     val energyRate = statsResult.energyRate ?: if (ev) statsResult.estimatedEnergyRate else null
     // 插混：主口径仍是油耗（与能耗页一致），在「平均油耗」格下方补一行电耗小字；
@@ -749,24 +737,6 @@ private fun VehicleStatsCard(
     DashboardCard(
         modifier = modifier,
         title = tr("用车统计", "Vehicle stats"),
-        action = {
-            RangeFilterButton(
-                label = rangeLabel(period = period, customRange = customRange),
-                expanded = menuExpanded,
-                onToggle = { menuExpanded = true },
-                onDismiss = { menuExpanded = false },
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = {
-                    onSelectPeriod(it)
-                    menuExpanded = false
-                },
-                onSelectCustom = {
-                    menuExpanded = false
-                    showRangePicker = true
-                },
-            )
-        },
     ) {
         // 2×2 指标：用行/列间距与对齐形成分组（不用分割线）。
         Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -810,92 +780,6 @@ private fun VehicleStatsCard(
         }
     }
 
-    if (showRangePicker) {
-        CustomRangePickerDialog(
-            customRange = customRange,
-            onDismiss = { showRangePicker = false },
-            onConfirm = { from, to ->
-                onSelectCustomRange(from, to)
-                showRangePicker = false
-            },
-        )
-    }
-}
-
-/** 卡内右上角胶囊按钮 + DropdownMenu（用车统计 / 趋势 / 费用构成共用样式）。 */
-@Composable
-private fun RangePillMenu(
-    label: String,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onDismiss: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    Box {
-        Surface(
-            onClick = onToggle,
-            shape = CircleShape,
-            color = scheme.surfaceContainerHigh,
-            contentColor = scheme.onSurface,
-        ) {
-            Row(
-                modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                Icon(
-                    imageVector = MileNoteIcons.ChevronDown,
-                    contentDescription = tr("选择统计范围", "Select date range"),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, content = content)
-    }
-}
-
-/** 统计范围按钮 + DropdownMenu（全部 / 本月 / 今年 / 自定义）。 */
-@Composable
-private fun RangeFilterButton(
-    label: String,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onDismiss: () -> Unit,
-    period: Period,
-    customRange: DateRange?,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCustom: () -> Unit,
-) {
-    RangePillMenu(
-        label = label,
-        expanded = expanded,
-        onToggle = onToggle,
-        onDismiss = onDismiss,
-    ) {
-        val presetSelected = customRange == null
-        DropdownMenuItem(
-            text = { Text(tr("全部", "All")) },
-            trailingIcon = checkIcon(presetSelected && period == Period.ALL),
-            onClick = { onSelectPeriod(Period.ALL) },
-        )
-        DropdownMenuItem(
-            text = { Text(tr("本月", "This month")) },
-            trailingIcon = checkIcon(presetSelected && period == Period.MONTH),
-            onClick = { onSelectPeriod(Period.MONTH) },
-        )
-        DropdownMenuItem(
-            text = { Text(tr("今年", "This year")) },
-            trailingIcon = checkIcon(presetSelected && period == Period.YEAR),
-            onClick = { onSelectPeriod(Period.YEAR) },
-        )
-        DropdownMenuItem(
-            text = { Text(tr("自定义…", "Custom…")) },
-            trailingIcon = checkIcon(customRange != null),
-            onClick = onSelectCustom,
-        )
-    }
 }
 
 /** 趋势卡的图表类型（卡头文字 tab）。 */
@@ -916,7 +800,7 @@ private fun trendTabLabel(tab: TrendTab): String = when (tab) {
  * - 切换控件放在卡头左侧的**文字 tab**（选中加粗 + 3dp 下划线），不再用通栏段控：
  *   与右上角范围胶囊拉开视觉层级（2026-11-12 用户反馈「两个胶囊像重复控件」）；
  * - 时间范围沿用全局 [period] / [customRange]（与「用车统计」联动），两张图共用
- *   [trendMonthsFor] 的同一批月份，切换 tab 时横轴不跳动；
+ *   [trendMonthWindow] 的同一批月份，切换 tab 时横轴不跳动；
  * - 两张图共用同一「图表区」（绘图 + 底部月份轴）：轴下不再放信息区，支出图例收进卡头的
  *   「图例」按钮、点开底部弹层查看，所以切 tab 时横轴在同一行、卡高也不变，
  *   下方「爱车待办」不会被顶得上下跳（2026-11-12 用户反馈）。
@@ -925,19 +809,25 @@ private fun trendTabLabel(tab: TrendTab): String = when (tab) {
 @Composable
 private fun TrendCard(
     ledger: Ledger,
-    period: Period,
-    customRange: DateRange?,
     range: DateRange,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showRangePicker by remember { mutableStateOf(false) }
     var showLegend by remember { mutableStateOf(false) }
     var tabName by rememberSaveable { mutableStateOf(TrendTab.MILEAGE.name) }
     val tab = TrendTab.entries.firstOrNull { it.name == tabName } ?: TrendTab.MILEAGE
-    val months = remember(range) { trendMonthsFor(range) }
+    val window = remember(ledger, range) { trendMonthWindow(ledger, range) }
+    val months = window.months
+    // 「全部」在图表里只画最近 24 个月；轴下不放信息，窗口说明放在卡头右侧。
+    val windowLabel = when {
+        window.truncated -> tr(
+            "近 %d / %d 个月",
+            "Last %d of %d months",
+            months.size,
+            window.totalMonths,
+        )
+        range.from.isEmpty() -> tr("近 %d 个月", "Last %d months", months.size)
+        else -> null
+    }
     val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
     val palette = LocalMileNoteCategoryColors.current
     val darkTheme = LocalMileNoteDarkTheme.current
@@ -951,51 +841,35 @@ private fun TrendCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TrendTabs(
-                selected = tab,
-                onSelect = {
-                    tabName = it.name
-                    showLegend = false
-                },
-                modifier = Modifier.weight(1f),
-            )
-            // 图例只在支出 tab 出现；图标按钮高 32dp，与右侧范围胶囊一致，不改变卡头高度。
+            Column(modifier = Modifier.weight(1f)) {
+                HeaderTextTabs(
+                    labels = TrendTab.entries.map { trendTabLabel(it) },
+                    selectedIndex = tab.ordinal,
+                    onSelect = { index ->
+                        tabName = TrendTab.entries[index].name
+                        showLegend = false
+                    },
+                )
+                if (windowLabel != null) {
+                    Text(
+                        text = windowLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            // 图例只在支出 tab 出现；图标按钮 32dp，不改变卡头高度。
             if (tab == TrendTab.EXPENSE) {
                 TrendLegendButton(onClick = { showLegend = true })
             }
-            RangeFilterButton(
-                label = rangeLabel(period = period, customRange = customRange),
-                expanded = menuExpanded,
-                onToggle = { menuExpanded = true },
-                onDismiss = { menuExpanded = false },
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = {
-                    onSelectPeriod(it)
-                    menuExpanded = false
-                },
-                onSelectCustom = {
-                    menuExpanded = false
-                    showRangePicker = true
-                },
-            )
         }
         Spacer(modifier = Modifier.height(10.dp))
         when (tab) {
             TrendTab.MILEAGE -> MileageTrendChart(bars = mileageBars)
             TrendTab.EXPENSE -> ExpenseTrendChart(bars = monthBars, ev = ledger.isEv)
         }
-    }
-
-    if (showRangePicker) {
-        CustomRangePickerDialog(
-            customRange = customRange,
-            onDismiss = { showRangePicker = false },
-            onConfirm = { from, to ->
-                onSelectCustomRange(from, to)
-                showRangePicker = false
-            },
-        )
     }
 
     if (showLegend && tab == TrendTab.EXPENSE) {
@@ -1041,138 +915,6 @@ private fun TrendLegendButton(onClick: () -> Unit) {
         }
     }
 }
-
-/** 卡头文字 tab：选中加粗 + 3dp 下划线，未选中透明占位保持基线对齐。 */
-@Composable
-private fun TrendTabs(
-    selected: TrendTab,
-    onSelect: (TrendTab) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TrendTab.entries.forEach { entry ->
-            val isSelected = entry == selected
-            Column(
-                modifier = Modifier
-                    .clip(MileNoteShapes.small)
-                    .selectable(
-                        selected = isSelected,
-                        role = Role.Tab,
-                        onClick = { onSelect(entry) },
-                    )
-                    .padding(top = 4.dp, bottom = 4.dp)
-                    // 宽度收紧到文字宽，避免下划线被 fillMaxWidth 拉到整行、把第二个 tab 挤出卡外。
-                    .width(IntrinsicSize.Max),
-                horizontalAlignment = Alignment.Start,
-            ) {
-                Text(
-                    text = trendTabLabel(entry),
-                    style = if (isSelected) {
-                        MaterialTheme.typography.titleMediumEmphasized
-                    } else {
-                        MaterialTheme.typography.titleMedium
-                    },
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                Color.Transparent
-                            },
-                        ),
-                )
-            }
-        }
-    }
-}
-
-
-/**
- * 费用构成卡：右上角统计范围（全部 / 本月 / 今年 / 自定义，与用车统计联动），
- * 环图 + 下方横排分类图例。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun CompositionCard(
-    period: Period,
-    customRange: DateRange?,
-    statsResult: StatsResult,
-    ev: Boolean = false,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCustomRange: (String, String) -> Unit,
-) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showRangePicker by remember { mutableStateOf(false) }
-
-    DashboardCard(
-        title = tr("费用构成", "Expense breakdown"),
-        action = {
-            RangeFilterButton(
-                label = rangeLabel(period = period, customRange = customRange),
-                expanded = menuExpanded,
-                onToggle = { menuExpanded = true },
-                onDismiss = { menuExpanded = false },
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = {
-                    onSelectPeriod(it)
-                    menuExpanded = false
-                },
-                onSelectCustom = {
-                    menuExpanded = false
-                    showRangePicker = true
-                },
-            )
-        },
-    ) {
-        CategoryBreakdown(
-            categories = statsResult.categories,
-            total = statsResult.total,
-            ev = ev,
-        )
-    }
-
-    if (showRangePicker) {
-        CustomRangePickerDialog(
-            customRange = customRange,
-            onDismiss = { showRangePicker = false },
-            onConfirm = { from, to ->
-                onSelectCustomRange(from, to)
-                showRangePicker = false
-            },
-        )
-    }
-}
-
-/** 下拉菜单选中态的勾选图标。 */
-@Composable
-private fun checkIcon(selected: Boolean): (@Composable () -> Unit)? =
-    if (!selected) {
-        null
-    } else {
-        {
-            Icon(
-                imageVector = MileNoteIcons.Check,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
 
 /** 单个统计指标：小色标 + label / 数值 + 单位（不显示说明 caption）。 */
 @Composable
@@ -1226,100 +968,6 @@ private fun StatCell(
     }
 }
 
-/**
- * 统计范围显示文案：自定义范围优先，跨年时带年份。
- *
- * 例：`全部` / `本月` / `今年` / `10.01–10.31` / `2025.12.01–2026.01.31`。
- */
-private fun rangeLabel(period: Period, customRange: DateRange?): String {
-    customRange?.let { range ->
-        val from = Dates.parse(range.from)
-        val to = Dates.parse(range.to)
-        if (from != null && to != null) {
-            return if (from.year == to.year) {
-                "${monthDay(from)}–${monthDay(to)}"
-            } else {
-                "${yearMonthDay(from)}–${yearMonthDay(to)}"
-            }
-        }
-    }
-    return when (period) {
-        Period.ALL -> tr("全部", "All")
-        Period.MONTH -> tr("本月", "This month")
-        Period.YEAR -> tr("今年", "This year")
-    }
-}
-
-private fun monthDay(date: LocalDate): String =
-    "${date.monthValue.toString().padStart(2, '0')}.${date.dayOfMonth.toString().padStart(2, '0')}"
-
-private fun yearMonthDay(date: LocalDate): String = "${date.year}.${monthDay(date)}"
-
-/** 自定义统计范围：M3 DateRangePicker（闭区间，ISO 日期）。 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CustomRangePickerDialog(
-    customRange: DateRange?,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit,
-) {
-    val initialStart = remember(customRange) { customRange?.from?.let(::toUtcMillis) }
-    val initialEnd = remember(customRange) { customRange?.to?.let(::toUtcMillis) }
-    val pickerState = rememberDateRangePickerState(
-        initialSelectedStartDateMillis = initialStart,
-        initialSelectedEndDateMillis = initialEnd,
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                enabled = pickerState.selectedStartDateMillis != null &&
-                    pickerState.selectedEndDateMillis != null,
-                onClick = {
-                    val start = pickerState.selectedStartDateMillis
-                    val end = pickerState.selectedEndDateMillis
-                    if (start != null && end != null) {
-                        onConfirm(fromUtcMillis(start), fromUtcMillis(end))
-                    }
-                },
-            ) {
-                Text(tr("确定", "OK"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(tr("取消", "Cancel"))
-            }
-        },
-    ) {
-        DateRangePicker(
-            state = pickerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(500.dp)
-                .padding(horizontal = 8.dp),
-            title = {
-                Text(
-                    text = tr("选择统计范围", "Select date range"),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, top = 16.dp),
-                )
-            },
-            showModeToggle = false,
-        )
-    }
-}
-
-/** `YYYY-MM-DD` → 当日 UTC 零点毫秒（DatePicker 的日期语义）。 */
-private fun toUtcMillis(isoDate: String): Long? = Dates.parse(isoDate)
-    ?.atStartOfDay(ZoneOffset.UTC)
-    ?.toInstant()
-    ?.toEpochMilli()
-
-/** DatePicker 返回的 UTC 零点毫秒 → `YYYY-MM-DD`。 */
-private fun fromUtcMillis(millis: Long): String =
-    Dates.iso(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
-
 /** 爱车待办卡：未来一年内最近 3 条（Web 只展示 `near`，仅里程无日期的提醒不进待办）。 */
 @Composable
 private fun NearRemindersCard(
@@ -1333,7 +981,7 @@ private fun NearRemindersCard(
         title = tr("爱车待办", "Upcoming reminders"),
         action = {
             TextButton(onClick = { onNavigate(Routes.MAINTENANCE) }) {
-                Text(tr("管理提醒", "Manage reminders"), style = MaterialTheme.typography.labelLarge)
+                Text(tr("管理提醒", "Manage"), style = MaterialTheme.typography.labelLarge)
             }
         },
     ) {

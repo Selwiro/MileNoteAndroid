@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.records
 
+import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.blankLedger
@@ -23,7 +24,7 @@ class RecordSearchTest {
     )
 
     private fun search(query: String): List<String> =
-        filterRecords(ledger, query, category = null, period = Period.ALL, today = today).map { it.id }
+        filterRecords(ledger, query, categories = emptySet(), period = Period.ALL, today = today).map { it.id }
 
     @Test
     fun `searches by amount`() {
@@ -47,5 +48,30 @@ class RecordSearchTest {
     @Test
     fun `no hit returns empty`() {
         assertTrue(search("999999").isEmpty())
+    }
+
+    @Test
+    fun `multiple categories are matched`() {
+        val ids = filterRecords(
+            ledger,
+            query = "",
+            categories = setOf("停车费", "罚单"),
+            period = Period.ALL,
+            today = today,
+        ).map { it.id }
+        assertEquals(listOf("r3", "r1"), ids)
+    }
+
+    @Test
+    fun `custom range overrides preset`() {
+        val ids = filterRecords(
+            ledger,
+            query = "",
+            categories = emptySet(),
+            period = Period.MONTH,
+            customRange = DateRange("2026-11-02", "2026-11-02"),
+            today = today,
+        ).map { it.id }
+        assertEquals(listOf("r2"), ids)
     }
 }

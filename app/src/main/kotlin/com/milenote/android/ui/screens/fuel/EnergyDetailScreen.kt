@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,6 +28,7 @@ import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.EnergyKind
+import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.energyRateByRecord
 import com.milenote.android.domain.format.Format
@@ -37,17 +37,29 @@ import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
+import com.milenote.android.ui.EnergyTypeFilter
+import com.milenote.android.ui.ListFilterPages
+import com.milenote.android.ui.ListFilterState
 import com.milenote.android.ui.MileNoteViewModel
-import com.milenote.android.ui.components.CompactSearchField
+import com.milenote.android.ui.components.ActiveFilterChip
+import com.milenote.android.ui.components.ActiveFilterChips
+import com.milenote.android.ui.components.CustomRangePickerDialog
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.FilterMenuCheckIcon
-import com.milenote.android.ui.components.FilterPill
+import com.milenote.android.ui.components.FilterOption
+import com.milenote.android.ui.components.FilterOptionList
+import com.milenote.android.ui.components.FilterSection
+import com.milenote.android.ui.components.FilterSheet
 import com.milenote.android.ui.components.LoadingState
+import com.milenote.android.ui.components.RangePresetChips
+import com.milenote.android.ui.components.recordsCountLabel
+import com.milenote.android.ui.components.SearchFilterBar
 import com.milenote.android.ui.components.StatusKind
 import com.milenote.android.ui.components.StatusPill
+import com.milenote.android.ui.components.rangeLabel
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteDimens
+import java.time.LocalDate
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
@@ -97,24 +109,17 @@ fun EnergyDetailScreen(
     val phev = profile == EnergyProfile.DUAL
     val today = Dates.today()
 
-    // 明细列表使用独立的时间筛选（不影响概览 / 走势）。
+    // 明细列表使用本页独立的筛选（不影响统计页的概览 / 走势）。
     val allEnergyRecords = remember(ledger.records) {
         ledger.records
             .filter { Categories.isEnergy(it.category) }
             .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.odometer ?: 0.0 })
     }
-    var detailPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
-    var detailCustomRange by remember { mutableStateOf<DateRange?>(null) }
-    var detailQuery by rememberSaveable { mutableStateOf("") }
-    val detailRange = detailCustomRange ?: Dates.range(detailPeriod, today)
-    // 搜索（备注 / 日期）+ 时间范围共同过滤明细列表；汇总按过滤后的记录统计。
-    val detailRecords = remember(allEnergyRecords, detailRange, detailQuery) {
-        val query = detailQuery.trim()
-        allEnergyRecords
-            .filter { it.date >= detailRange.from && it.date <= detailRange.to }
-            .filter { record ->
-                query.isEmpty() || matchesDetailQuery(record, query)
-            }
+    val filter = state.listFilters[ListFilterPages.FUEL_DETAIL] ?: ListFilterState()
+    val detailRange = filter.range(today)
+    // 搜索（备注 / 日期 / 金额 / 里程）+ 时间范围 + 类型（插混加油 / 充电）共同过滤列表。
+    val detailRecords = remember(allEnergyRecords, filter, today) {
+        filterEnergyRecords(allEnergyRecords, filter, today)
     }
     val detailGroups = remember(detailRecords) {
         detailRecords.groupBy { monthKey(it.date) }.entries.toList()
@@ -148,10 +153,41 @@ fun EnergyDetailScreen(
                 energyRateByRecord(ledger.records, EnergyKind.FUEL)
         }
     }
-    var detailMenuExpanded by remember { mutableStateOf(false) }
-    var detailShowRangePicker by remember { mutableStateOf(false) }
 
-    // ---- 明细页：搜索 + 时间筛选 → 汇总 → 按月份分组的独立记录卡 ----
+    val hasAnyEnergy = allEnergyRecords.isNotEmpty()
+    val hasActiveFilter = filter.activeCount > 0 || filter.query.isNotBlank()
+    val activeChips = remember(filter, ledger) {
+        buildList {
+            if (filter.hasTimeFilter) {
+                add(ActiveFilterChip("time", rangeLabel(filter.period, filter.customRange)))
+            }
+            filter.types.forEach { type ->
+                add(
+                    ActiveFilterChip(
+                        key = "type:$type",
+                        label = if (type == EnergyTypeFilter.CHARGE) {
+                            tr("充电", "Charge")
+                        } else {
+                            tr("加油", "Fuel")
+                        },
+                    ),
+                )
+            }
+        }
+    }
+
+    var sheetOpen by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf(filter) }
+    var showRangePicker by remember { mutableStateOf(false) }
+    val draftFiltered = remember(allEnergyRecords, draft, today) {
+        filterEnergyRecords(allEnergyRecords, draft, today)
+    }
+    // 类型条数按「时间 + 搜索」算，不按已选类型。
+    val draftBase = remember(allEnergyRecords, draft.query, draft.period, draft.customRange, today) {
+        filterEnergyRecords(allEnergyRecords, draft.copy(types = emptySet()), today)
+    }
+
+    // ---- 明细页：搜索 + 筛选面板 → 汇总 → 按月份分组的独立记录卡 ----
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -164,51 +200,41 @@ fun EnergyDetailScreen(
     ) {
         item(key = "detailTop") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CompactSearchField(
-                        value = detailQuery,
-                        onValueChange = { detailQuery = it },
-                        placeholder = tr("搜索备注 / 日期", "Search notes / dates"),
-                        modifier = Modifier.weight(1f),
-                    )
-                    FilterPill(
-                        label = rangeLabel(detailPeriod, detailCustomRange),
-                        expanded = detailMenuExpanded,
-                        onToggle = { detailMenuExpanded = true },
-                        onDismiss = { detailMenuExpanded = false },
-                        contentDescription = tr("选择统计范围", "Select date range"),
-                    ) {
-                        Period.entries.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(item.filterLabel()) },
-                                trailingIcon = FilterMenuCheckIcon(detailCustomRange == null && detailPeriod == item),
-                                onClick = {
-                                    detailPeriod = item
-                                    detailCustomRange = null
-                                    detailMenuExpanded = false
-                                },
+                SearchFilterBar(
+                    query = filter.query,
+                    onQueryChange = { vm.setListFilter(ListFilterPages.FUEL_DETAIL, filter.copy(query = it)) },
+                    placeholder = tr(
+                        "搜索备注、日期、金额或里程…",
+                        "Search notes, dates, amounts or mileage…",
+                    ),
+                    filterCount = filter.activeCount,
+                    onOpenFilter = {
+                        draft = filter
+                        sheetOpen = true
+                    },
+                )
+                ActiveFilterChips(
+                    chips = activeChips,
+                    onRemove = { key ->
+                        when {
+                            key == "time" -> vm.setListFilter(
+                                ListFilterPages.FUEL_DETAIL,
+                                filter.copy(period = Period.ALL, customRange = null),
+                            )
+                            key.startsWith("type:") -> vm.setListFilter(
+                                ListFilterPages.FUEL_DETAIL,
+                                filter.copy(types = filter.types - key.removePrefix("type:")),
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(tr("自定义…", "Custom…")) },
-                            trailingIcon = FilterMenuCheckIcon(detailCustomRange != null),
-                            onClick = {
-                                detailMenuExpanded = false
-                                detailShowRangePicker = true
-                            },
-                        )
-                    }
-                }
+                    },
+                    onClearAll = { vm.setListFilter(ListFilterPages.FUEL_DETAIL, filter.cleared()) },
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = tr("共 %d 条记录", "%d records", detailRecords.size),
+                        text = recordsCountLabel(detailRecords.size),
                         style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f),
                     )
@@ -262,16 +288,23 @@ fun EnergyDetailScreen(
                 EmptyState(
                     icon = MileNoteIcons.Fuel,
                     title = when {
-                        detailQuery.isBlank() && phev ->
+                        !hasAnyEnergy -> if (phev) {
                             tr("还没有加油或充电记录", "No fuel or charging records yet")
-                        detailQuery.isBlank() ->
-                            if (ev) tr("还没有充电记录", "No charging records yet") else tr("还没有加油记录", "No fuel records yet")
-                        phev ->
-                            tr("没有匹配的加油或充电记录", "No matching fuel or charging records")
-                        else ->
-                            if (ev) tr("没有匹配的充电记录", "No matching charging records") else tr("没有匹配的加油记录", "No matching fuel records")
+                        } else if (ev) {
+                            tr("还没有充电记录", "No charging records yet")
+                        } else {
+                            tr("还没有加油记录", "No fuel records yet")
+                        }
+                        phev -> tr("没有匹配的加油或充电记录", "No matching fuel or charging records")
+                        else -> if (ev) {
+                            tr("没有匹配的充电记录", "No matching charging records")
+                        } else {
+                            tr("没有匹配的加油记录", "No matching fuel records")
+                        }
                     },
-                    description = if (detailQuery.isBlank()) {
+                    description = if (hasAnyEnergy && hasActiveFilter) {
+                        tr("试试清空搜索关键词，或清除时间与类型筛选。", "Try clearing the keyword, date and type filters.")
+                    } else {
                         when {
                             phev -> tr(
                                 "可在底栏中间「记一笔」记录加油或充电；导入入口在 设置 → 外部导入。",
@@ -280,8 +313,16 @@ fun EnergyDetailScreen(
                             ev -> tr("可在底栏中间「记一笔」记录充电；导入入口在 设置 → 外部导入。", "Add charging from Add entry in the bottom bar; import is in Settings → Import from other apps.")
                             else -> tr("可在底栏中间「记一笔」记录加油；导入入口在 设置 → 外部导入。", "Add fuel from Add entry in the bottom bar; import is in Settings → Import from other apps.")
                         }
+                    },
+                    actionLabel = if (hasAnyEnergy && hasActiveFilter) {
+                        tr("清除全部筛选", "Clear all filters")
                     } else {
-                        tr("试试清空搜索关键词或调整时间范围。", "Try clearing the search keyword or changing the date range.")
+                        null
+                    },
+                    onAction = if (hasAnyEnergy && hasActiveFilter) {
+                        { vm.setListFilter(ListFilterPages.FUEL_DETAIL, filter.cleared()) }
+                    } else {
+                        null
                     },
                 )
             }
@@ -318,16 +359,89 @@ fun EnergyDetailScreen(
         }
     }
 
-    if (detailShowRangePicker) {
+    if (sheetOpen) {
+        FilterSheet(
+            resultCount = draftFiltered.size,
+            onDismiss = { sheetOpen = false },
+            onReset = { draft = draft.cleared() },
+            onApply = {
+                vm.setListFilter(ListFilterPages.FUEL_DETAIL, draft)
+                sheetOpen = false
+            },
+        ) {
+            FilterSection(title = tr("时间", "Date"))
+            RangePresetChips(
+                period = draft.period,
+                customRange = draft.customRange,
+                onSelectPeriod = { draft = draft.copy(period = it, customRange = null) },
+                onSelectCustom = { showRangePicker = true },
+            )
+            if (phev) {
+                FilterSection(
+                    title = tr("类型", "Type"),
+                    trailing = if (draft.types.isEmpty()) {
+                        tr("全部类型", "All types")
+                    } else {
+                        tr("已选 %d 项", "%d selected", draft.types.size)
+                    },
+                )
+                FilterOptionList(
+                    options = listOf(
+                        FilterOption(
+                            key = EnergyTypeFilter.FUEL,
+                            label = tr("加油", "Fuel"),
+                            count = draftBase.count { it.kwh == null },
+                        ),
+                        FilterOption(
+                            key = EnergyTypeFilter.CHARGE,
+                            label = tr("充电", "Charge"),
+                            count = draftBase.count { it.kwh != null },
+                        ),
+                    ),
+                    selected = draft.types,
+                    onToggle = { type ->
+                        draft = draft.copy(
+                            types = if (type in draft.types) {
+                                draft.types - type
+                            } else {
+                                draft.types + type
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    if (showRangePicker) {
         CustomRangePickerDialog(
-            customRange = detailCustomRange,
-            onDismiss = { detailShowRangePicker = false },
+            customRange = draft.customRange,
+            onDismiss = { showRangePicker = false },
             onConfirm = { from, to ->
-                detailCustomRange = DateRange(from, to)
-                detailShowRangePicker = false
+                draft = draft.copy(customRange = DateRange(from, to))
+                showRangePicker = false
             },
         )
     }
+}
+
+/** 能耗明细过滤：时间 + 关键词 +（插混）加油/充电类型。 */
+private fun filterEnergyRecords(
+    records: List<Record>,
+    filter: ListFilterState,
+    today: LocalDate,
+): List<Record> {
+    val range = filter.range(today)
+    val query = filter.query.trim()
+    val types = filter.types
+    return records
+        .filter { it.date >= range.from && it.date <= range.to }
+        .filter { record ->
+            types.isEmpty() ||
+                (EnergyTypeFilter.CHARGE in types && record.kwh != null) ||
+                (EnergyTypeFilter.FUEL in types && record.kwh == null)
+        }
+        .filter { record -> query.isEmpty() || matchesDetailQuery(record, query) }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -372,16 +486,35 @@ private fun monthDayLabel(isoDate: String): String {
     }
 }
 
-/** 明细页搜索：备注或日期（ISO / 2026.10.18 / 10 月 18 日 均可命中）。 */
+/**
+ * 明细页搜索：备注、日期（ISO / 2026.10.18 / 10 月 18 日）、金额、里程、升数/度数。
+ *
+ * 金额与里程同时匹配「格式化值」和「原始数字」，与费用明细同一套口径。
+ */
 private fun matchesDetailQuery(record: Record, query: String): Boolean {
-    if (record.note.contains(query, ignoreCase = true)) return true
     val dayLabel = monthDayLabel(record.date)
-    return listOf(
-        record.date,
-        Format.dateDots(record.date),
-        dayLabel,
-        dayLabel.replace(" ", ""),
-    ).any { it.contains(query, ignoreCase = true) }
+    val parts = buildList {
+        add(record.note)
+        add(record.date)
+        add(Format.dateDots(record.date))
+        add(dayLabel)
+        add(dayLabel.replace(" ", ""))
+        add(Format.money(record.amount))
+        add(Numbers.jsString(record.amount))
+        record.odometer?.let {
+            add(Format.fmt(it))
+            add(Numbers.jsString(it))
+        }
+        record.liters?.let {
+            add(Format.fmt(it))
+            add(Numbers.jsString(it))
+        }
+        record.kwh?.let {
+            add(Format.fmt(it))
+            add(Numbers.jsString(it))
+        }
+    }
+    return parts.any { it.contains(query, ignoreCase = true) }
 }
 
 /**

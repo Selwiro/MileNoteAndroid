@@ -1,6 +1,5 @@
 package com.milenote.android.ui.screens.records
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -19,8 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,9 +26,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +42,7 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
+import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.costOf
@@ -57,18 +52,26 @@ import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
+import com.milenote.android.ui.ListFilterPages
+import com.milenote.android.ui.ListFilterState
 import com.milenote.android.ui.MileNoteViewModel
-import com.milenote.android.ui.UiState
+import com.milenote.android.ui.components.ActiveFilterChip
+import com.milenote.android.ui.components.ActiveFilterChips
 import com.milenote.android.ui.components.CategoryBadge
-import com.milenote.android.ui.components.CompactSearchField
+import com.milenote.android.ui.components.CustomRangePickerDialog
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.FilterMenuCheckIcon
-import com.milenote.android.ui.components.FilterMenuDivider
-import com.milenote.android.ui.components.FilterMenuGroupLabel
-import com.milenote.android.ui.components.FilterPill
+import com.milenote.android.ui.components.FilterOption
+import com.milenote.android.ui.components.FilterOptionList
+import com.milenote.android.ui.components.FilterSection
+import com.milenote.android.ui.components.FilterSheet
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MoneySize
 import com.milenote.android.ui.components.MoneyText
+import com.milenote.android.ui.components.RangePresetChips
+import com.milenote.android.ui.components.entriesCountLabel
+import com.milenote.android.ui.components.recordsCountLabel
+import com.milenote.android.ui.components.SearchFilterBar
+import com.milenote.android.ui.components.rangeLabel
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
@@ -108,10 +111,9 @@ fun RecordsScreen(
         return
     }
     RecordsContent(
-        state = state,
         ledger = ledger,
-        onSelectPeriod = vm::setPeriod,
-        onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
+        filter = state.listFilters[ListFilterPages.RECORDS] ?: ListFilterState(),
+        onFilterChange = { vm.setListFilter(ListFilterPages.RECORDS, it) },
         onAddRecord = { vm.openEditor() },
         onOpenRecord = { recordId -> vm.openEditor(recordId) },
         onDeleteRecord = vm::deleteRecord,
@@ -122,23 +124,17 @@ fun RecordsScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecordsContent(
-    state: UiState,
     ledger: Ledger,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCustomRange: (String, String) -> Unit,
+    filter: ListFilterState,
+    onFilterChange: (ListFilterState) -> Unit,
     onAddRecord: () -> Unit,
     onOpenRecord: (String) -> Unit,
     onDeleteRecord: (Record) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    var query by rememberSaveable { mutableStateOf("") }
-    // 用空串表示「全部分类」，避免 rememberSaveable 处理 null 的兼容问题。
-    var categoryFilter by rememberSaveable { mutableStateOf("") }
-    var lastCarId by rememberSaveable { mutableStateOf(ledger.id) }
 
     // 进入明细页 / 从编辑页返回时：不自动聚焦搜索框，主动清焦点并收起输入法。
-    // 只有用户点击搜索框（或其它输入框）时才由系统弹出键盘。
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
@@ -146,23 +142,14 @@ private fun RecordsContent(
         keyboardController?.hide()
     }
 
-    // 切换车辆时清空搜索与筛选（与 Web 一致）。
-    LaunchedEffect(ledger.id) {
-        if (ledger.id != lastCarId) {
-            lastCarId = ledger.id
-            query = ""
-            categoryFilter = ""
-        }
-    }
-
     val today = remember { Dates.today() }
-    val categoryOptions = remember(ledger) { Categories.options(ledger) }
-    val filtered = remember(ledger, query, categoryFilter, state.period, today) {
+    val filtered = remember(ledger, filter, today) {
         filterRecords(
             ledger = ledger,
-            query = query,
-            category = categoryFilter.ifEmpty { null },
-            period = state.period,
+            query = filter.query,
+            categories = filter.categories,
+            period = filter.period,
+            customRange = filter.customRange,
             today = today,
         )
     }
@@ -170,10 +157,82 @@ private fun RecordsContent(
     val filteredTotal = remember(filtered, ledger) { filtered.sumOf { costOf(it, ledger) } }
     val hasAnyRecord = ledger.records.isNotEmpty()
 
+    // 分类选项：账本实际出现的分类（归一后），内置 9 类在前、自定义在后。
+    val categoryOptions = remember(ledger) {
+        val present = ledger.records
+            .map { Categories.normalize(it.category) }
+            .filter { it.isNotEmpty() }
+            .toSet()
+        Categories.ALL.filter { it in present } +
+            present.filter { it !in Categories.ALL }.sorted()
+    }
+    // 分类条数：按「时间 + 搜索」算、不按已选分类；与时间筛选联动，避免显示不实的 0。
+    val categoryCounts = remember(ledger, filter.query, filter.period, filter.customRange, today) {
+        filterRecords(
+            ledger = ledger,
+            query = filter.query,
+            categories = emptySet(),
+            period = filter.period,
+            customRange = filter.customRange,
+            today = today,
+        ).groupingBy { Categories.normalize(it.category) }.eachCount()
+    }
+    val activeChips = remember(filter, categoryOptions, ledger) {
+        buildList {
+            if (filter.hasTimeFilter) {
+                add(ActiveFilterChip("time", rangeLabel(filter.period, filter.customRange)))
+            }
+            categoryOptions.filter { it in filter.categories }.forEach { name ->
+                add(
+                    ActiveFilterChip(
+                        key = "cat:$name",
+                        label = DataLabels.categoryFor(
+                            ledger,
+                            name,
+                            ledger.vehicle.energyProfile,
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
+    var sheetOpen by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf(filter) }
+    var showRangePicker by remember { mutableStateOf(false) }
+    val draftFiltered = remember(ledger, draft, today) {
+        filterRecords(
+            ledger = ledger,
+            query = draft.query,
+            categories = draft.categories,
+            period = draft.period,
+            customRange = draft.customRange,
+            today = today,
+        )
+    }
+    // 面板里的分类条数按「时间 + 搜索」算，不按已选分类，切换勾选时数字不会互相归零。
+    val draftBase = remember(ledger, draft.query, draft.period, draft.customRange, today) {
+        filterRecords(
+            ledger = ledger,
+            query = draft.query,
+            categories = emptySet(),
+            period = draft.period,
+            customRange = draft.customRange,
+            today = today,
+        )
+    }
+    val draftCounts = remember(draftBase) {
+        draftBase.groupingBy { Categories.normalize(it.category) }.eachCount()
+    }
+
+    fun openSheet() {
+        draft = filter
+        sheetOpen = true
+    }
+
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        // 水平留白仍由各 item 自带（月份 stickyHeader 需要通栏），这里只控制上下。
         contentPadding = PaddingValues(
             top = MileNoteDimens.CardGap,
             bottom = MileNoteDimens.PageBottom,
@@ -181,21 +240,35 @@ private fun RecordsContent(
         verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
     ) {
         item(key = "filters") {
-            RecordsSearchFilterRow(
-                query = query,
-                onQueryChange = { query = it },
-                period = state.period,
-                category = categoryFilter.ifEmpty { null },
-                categories = categoryOptions,
-                ledger = ledger,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCategory = { categoryFilter = it.orEmpty() },
-                onReset = {
-                    // 「重置筛选」只重置时间与分类，不清空搜索关键词。
-                    categoryFilter = ""
-                    onSelectPeriod(Period.ALL)
-                },
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = MileNoteDimens.PageHorizontal),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SearchFilterBar(
+                    query = filter.query,
+                    onQueryChange = { onFilterChange(filter.copy(query = it)) },
+                    placeholder = tr(
+                        "搜索备注、分类、金额或里程…",
+                        "Search notes, categories, amounts or mileage…",
+                    ),
+                    filterCount = filter.activeCount,
+                    onOpenFilter = { openSheet() },
+                )
+                ActiveFilterChips(
+                    chips = activeChips,
+                    onRemove = { key ->
+                        when {
+                            key == "time" -> onFilterChange(
+                                filter.copy(period = Period.ALL, customRange = null),
+                            )
+                            key.startsWith("cat:") -> onFilterChange(
+                                filter.copy(categories = filter.categories - key.removePrefix("cat:")),
+                            )
+                        }
+                    },
+                    onClearAll = { onFilterChange(filter.cleared()) },
+                )
+            }
         }
         item(key = "summary") {
             RecordsSummaryRow(count = filtered.size, total = filteredTotal)
@@ -205,14 +278,13 @@ private fun RecordsContent(
                 if (hasAnyRecord) {
                     EmptyState(
                         title = tr("没有匹配的记录", "No matching records"),
-                        description = tr("试试更换关键词，或清除分类与时间筛选。", "Try a different keyword, or clear the category and date filters."),
+                        description = tr(
+                            "试试更换关键词，或清除时间与分类筛选。",
+                            "Try a different keyword, or clear the date and category filters.",
+                        ),
                         icon = MileNoteIcons.Search,
-                        actionLabel = tr("清除筛选", "Clear filters"),
-                        onAction = {
-                            query = ""
-                            categoryFilter = ""
-                            onSelectPeriod(Period.ALL)
-                        },
+                        actionLabel = tr("清除全部筛选", "Clear all filters"),
+                        onAction = { onFilterChange(filter.cleared()) },
                     )
                 } else {
                     EmptyState(
@@ -240,107 +312,76 @@ private fun RecordsContent(
             }
         }
     }
-}
 
-/** 明细页顶部：左搜索（占剩余宽度）+ 右筛选胶囊（时间 / 分类 / 重置）。 */
-@Composable
-private fun RecordsSearchFilterRow(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    period: Period,
-    category: String?,
-    categories: List<String>,
-    ledger: Ledger,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCategory: (String?) -> Unit,
-    onReset: () -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = MileNoteDimens.PageHorizontal),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        CompactSearchField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = tr("搜索备注、日期、金额或里程…", "Search notes, dates, amounts or mileage…"),
-            modifier = Modifier.weight(1f),
-        )
-        FilterPill(
-            label = filterPillLabel(period = period, category = category, ledger = ledger),
-            expanded = expanded,
-            onToggle = { expanded = true },
-            onDismiss = { expanded = false },
-            contentDescription = tr("筛选记录", "Filter records"),
+    if (sheetOpen) {
+        FilterSheet(
+            resultCount = draftFiltered.size,
+            onDismiss = { sheetOpen = false },
+            onReset = { draft = draft.cleared() },
+            onApply = {
+                onFilterChange(draft)
+                sheetOpen = false
+            },
         ) {
-            FilterMenuGroupLabel(text = tr("时间", "Date"))
-            Period.entries.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text(item.filterLabel()) },
-                    trailingIcon = FilterMenuCheckIcon(item == period),
-                    onClick = {
-                        onSelectPeriod(item)
-                        expanded = false
-                    },
-                )
-            }
-            FilterMenuDivider()
-            FilterMenuGroupLabel(text = tr("分类", "Category"))
-            DropdownMenuItem(
-                text = { Text(tr("全部分类", "All categories")) },
-                trailingIcon = FilterMenuCheckIcon(category == null),
-                onClick = {
-                    onSelectCategory(null)
-                    expanded = false
+            FilterSection(title = tr("时间", "Date"))
+            RangePresetChips(
+                period = draft.period,
+                customRange = draft.customRange,
+                onSelectPeriod = { draft = draft.copy(period = it, customRange = null) },
+                onSelectCustom = { showRangePicker = true },
+            )
+            FilterSection(
+                title = tr("分类", "Category"),
+                trailing = if (draft.categories.isEmpty()) {
+                    tr("全部分类", "All categories")
+                } else {
+                    tr("已选 %d 项", "%d selected", draft.categories.size)
                 },
             )
-            categories.forEach { name ->
-                DropdownMenuItem(
-                    text = {
-                        Text(DataLabels.categoryFor(ledger, name, ledger.vehicle.energyProfile))
-                    },
-                    trailingIcon = FilterMenuCheckIcon(category == name),
-                    onClick = {
-                        onSelectCategory(name)
-                        expanded = false
-                    },
-                )
-            }
-            FilterMenuDivider()
-            DropdownMenuItem(
-                text = { Text(tr("重置筛选", "Reset filters")) },
-                onClick = {
-                    onReset()
-                    expanded = false
+            FilterOptionList(
+                options = listOf(
+                    FilterOption(
+                        key = "__all__",
+                        label = tr("全部分类", "All categories"),
+                        count = draftBase.size,
+                    ),
+                ),
+                selected = if (draft.categories.isEmpty()) setOf("__all__") else emptySet(),
+                onToggle = { draft = draft.copy(categories = emptySet()) },
+            )
+            FilterOptionList(
+                options = categoryOptions.map { name ->
+                    FilterOption(
+                        key = name,
+                        label = DataLabels.categoryFor(ledger, name, ledger.vehicle.energyProfile),
+                        count = draftCounts[name] ?: 0,
+                        color = categoryColorOf(name),
+                    )
+                },
+                selected = draft.categories,
+                onToggle = { name ->
+                    draft = draft.copy(
+                        categories = if (name in draft.categories) {
+                            draft.categories - name
+                        } else {
+                            draft.categories + name
+                        },
+                    )
                 },
             )
         }
     }
-}
 
-/** 筛选胶囊文案：无筛选「筛选」；否则「本月」「油费/电费」「本月 · 油费/电费」。 */
-private fun filterPillLabel(period: Period, category: String?, ledger: Ledger): String {
-    val parts = buildList {
-        when (period) {
-            Period.ALL -> Unit
-            Period.MONTH -> add(tr("本月", "This month"))
-            Period.YEAR -> add(tr("今年", "This year"))
-        }
-        category?.takeIf { it.isNotBlank() }?.let {
-            add(DataLabels.categoryFor(ledger, it, ledger.vehicle.energyProfile))
-        }
+    if (showRangePicker) {
+        CustomRangePickerDialog(
+            customRange = draft.customRange,
+            onDismiss = { showRangePicker = false },
+            onConfirm = { from, to ->
+                draft = draft.copy(customRange = DateRange(from, to))
+                showRangePicker = false
+            },
+        )
     }
-    return if (parts.isEmpty()) tr("筛选", "Filter") else parts.joinToString(" · ")
-}
-
-/** 时间选项文案。 */
-private fun Period.filterLabel(): String = when (this) {
-    Period.ALL -> tr("全部", "All")
-    Period.MONTH -> tr("本月", "This month")
-    Period.YEAR -> tr("今年", "This year")
 }
 
 /** 结果汇总：「共 N 条 · 合计金额」。 */
@@ -353,14 +394,17 @@ private fun RecordsSummaryRow(count: Int, total: Double) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = tr("共 %d 条记录", "%d records", count),
+            text = recordsCountLabel(count),
             style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Text(
             text = tr("筛选合计 %s %s", "Filtered total %s %s", Units.currencySymbol, Format.money(total)),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
         )
     }
 }
@@ -398,7 +442,7 @@ private fun MonthHeader(month: String, records: List<Record>, ledger: Ledger) {
                         color = scheme.onSurface,
                     )
                     Text(
-                        text = tr("%d 笔记录", "%d entries", records.size),
+                        text = entriesCountLabel(records.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -552,26 +596,40 @@ private fun recordSubtitle(record: Record): String {
 }
 
 /** 搜索 / 分类 / 期间三重筛选，并按日期倒序、同日里程倒序排列。 */
+/** 搜索 / 分类 / 期间三重筛选，并按日期倒序、同日里程倒序排列。 */
 internal fun filterRecords(
     ledger: Ledger,
     query: String,
-    category: String?,
-    period: Period,
+    categories: Set<String> = emptySet(),
+    period: Period = Period.ALL,
+    customRange: DateRange? = null,
     today: LocalDate,
 ): List<Record> {
-    val range = Dates.range(period, today)
+    val range = customRange ?: Dates.range(period, today)
     val keyword = query.trim()
+    val selectedCategories = categories
+        .map { Categories.normalize(it) }
+        .filter { it.isNotEmpty() }
+        .toSet()
     return ledger.records
         .filter { record ->
             val inPeriod = (range.from.isEmpty() || record.date >= range.from) &&
                 record.date <= range.to
-            val matchCategory = category == null ||
-                Categories.normalize(record.category) == Categories.normalize(category)
+            val normalizedCategory = Categories.normalize(record.category)
+            val matchCategory = selectedCategories.isEmpty() ||
+                normalizedCategory in selectedCategories
             val matchSearch = keyword.isEmpty() || buildString {
                 append(record.note).append(' ')
                 append(record.source).append(' ')
                 append(record.date).append(' ')
+                append(Dates.displayDots(record.date)).append(' ')
                 append(record.category).append(' ')
+                append(DataLabels.categoryFor(ledger, record.category, ledger.vehicle.energyProfile)).append(' ')
+                append(record.location.orEmpty()).append(' ')
+                record.projects?.let { raw ->
+                    append(raw).append(' ')
+                    raw.split("、").forEach { append(DataLabels.projectFor(ledger, it)).append(' ') }
+                }
                 // 金额与里程：同时给「格式化值」和「原始数字」，搜索 680 / 680.00 / 42,000 都能命中。
                 append(Format.money(record.amount)).append(' ')
                 append(Numbers.jsString(record.amount)).append(' ')

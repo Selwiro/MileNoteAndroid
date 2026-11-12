@@ -124,23 +124,47 @@ internal data class MileageBar(
 )
 
 /**
- * 趋势卡统一月份列表（里程折线 / 支出堆叠柱共用同一批月份，切 tab 时横轴不跳动）。
+ * 趋势卡图表窗口（里程折线 / 支出堆叠柱共用同一批月份，切 tab 时横轴不跳动）。
  *
- * - 未选范围（「全部」）→ 最近 12 个自然月（沿用里程趋势原口径）；
- * - 本月 / 今年 / 自定义 → 范围覆盖的自然月，防御性上限 [maxMonths]（默认 24，支出柱图上限）。
+ * [months] 是实际绘制的月份，[totalMonths] 是范围覆盖的自然月总数；两者不等时
+ * 卡头显示「近 N / M 个月」，不再用「全部」偷换语义。
  */
-internal fun trendMonthsFor(
+internal data class TrendWindow(
+    val months: List<YearMonth>,
+    val totalMonths: Int,
+) {
+    val truncated: Boolean get() = totalMonths > months.size
+}
+
+/**
+ * 按筛选范围计算图表窗口：
+ * - 「全部」→ 从最早一条记录所在月到本月；
+ * - 本月 / 上月 / 近 3 个月 / 今年 / 自定义 → 范围覆盖的自然月；
+ * - 超过 [maxMonths]（默认 24）时取**最近** 24 个月，而不是最早 24 个月。
+ *
+ * 无记录且无下界时退回最近 [maxMonths] 个月，保证空图表也有横轴。
+ */
+internal fun trendMonthWindow(
+    ledger: Ledger,
     range: DateRange,
     today: LocalDate = Dates.today(),
     maxMonths: Int = 24,
-): List<YearMonth> {
+): TrendWindow {
+    // 「全部」的 range.to 是 9999-12-31（表示无上界），图表窗口必须收在今天，而不是画到 9999 年。
+    val end = if (range.from.isEmpty()) today else Dates.parse(range.to) ?: today
     val start = Dates.parse(range.from)
-    val end = Dates.parse(range.to)
-    if (start == null || end == null) {
-        val last = YearMonth.from(today)
-        return (11 downTo 0).map { last.minusMonths(it.toLong()) }
+    val all = if (start != null) {
+        monthsCovered(YearMonth.from(start), YearMonth.from(end))
+    } else {
+        val earliest = ledger.records.mapNotNull { Dates.parse(it.date) }.minOrNull()
+        if (earliest != null) {
+            monthsCovered(YearMonth.from(earliest), YearMonth.from(end))
+        } else {
+            val last = YearMonth.from(today)
+            monthsCovered(last.minusMonths((maxMonths - 1).toLong()), last)
+        }
     }
-    return monthsCovered(YearMonth.from(start), YearMonth.from(end)).take(maxMonths)
+    return TrendWindow(months = all.takeLast(maxMonths), totalMonths = all.size)
 }
 
 /**

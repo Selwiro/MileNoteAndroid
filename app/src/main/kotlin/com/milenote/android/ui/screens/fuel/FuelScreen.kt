@@ -15,15 +15,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,7 +52,6 @@ import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.calc.Categories
-import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.data.fuelprice.FuelPriceCache
 import com.milenote.android.data.fuelprice.FuelPriceInfo
 import com.milenote.android.data.fuelprice.FuelPriceRepository
@@ -77,23 +71,18 @@ import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.FilterMenuCheckIcon
-import com.milenote.android.ui.components.FilterMenuDivider
-import com.milenote.android.ui.components.FilterMenuGroupLabel
-import com.milenote.android.ui.components.FilterPill
+import com.milenote.android.ui.components.HeaderTextTabs
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.SectionCard
+import com.milenote.android.ui.components.StatsRangeRow
 import com.milenote.android.ui.icons.MileNoteIcons
-import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
-import java.time.ZoneOffset
 
 /**
  * 能耗分析页（燃油=油耗分析，纯电/插混=能耗分析；页面名与路由名保留 `fuel`）。
@@ -238,9 +227,9 @@ fun FuelScreen(
     val electricEnergyCost = remember(overviewEnergyRecords, ledger) {
         overviewEnergyRecords.filter { it.kwh != null }.sumOf { costOf(it, ledger) }
     }
-    // 走势卡独立时间筛选：有效能耗区间按日期过滤，不影响概览 / 明细。
+    // 走势卡与概览共用页级统计范围（state.period / customRange）。
     // 纯电只统计 kwh 满电区间；历史手填油耗是燃油字段，不参与纯电统计。
-    // 插混两条流都算好，按右上角「筛选 → 能源」切换（默认油耗，进出页面后保持）。
+    // 插混两条流都算好，「油耗 / 电耗」是走势卡头的内容切换（不是筛选）。
     var chartKind by rememberSaveable { mutableStateOf(EnergyKind.FUEL) }
     val allIntervals = remember(ledger.records, ev, phev, chartKind) {
         when {
@@ -251,23 +240,16 @@ fun FuelScreen(
             else -> energyIntervals(ledger.records, EnergyKind.ELECTRIC)
         }.sortedBy { it.date }
     }
-    var chartPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
-    var chartCustomRange by remember { mutableStateOf<DateRange?>(null) }
-    val chartRange = chartCustomRange ?: Dates.range(chartPeriod, today)
-    val chartFilteredIntervals = remember(allIntervals, chartRange) {
+    val chartFilteredIntervals = remember(allIntervals, range) {
         allIntervals.filter { interval ->
-            interval.date >= chartRange.from && interval.date <= chartRange.to
+            interval.date >= range.from && interval.date <= range.to
         }
     }
-    val chartHasExplicitRange = chartCustomRange != null || chartPeriod != Period.ALL
+    val chartHasExplicitRange = customRange != null || period != Period.ALL
     // 展示筛选范围内的全部区间（不再固定截断为最近 12 个）。
     val intervals = remember(chartFilteredIntervals) { chartFilteredIntervals }
     // 明细列表（搜索 / 时间筛选 / 汇总 / 月度分组 / 满箱法能耗）已整体搬到推入页 EnergyDetailScreen，
     // 本页不保留任何明细 state，避免把 detailPeriod 等独立筛选误带进统计页。
-    var rangeMenuExpanded by remember { mutableStateOf(false) }
-    var showRangePicker by remember { mutableStateOf(false) }
-    var chartMenuExpanded by remember { mutableStateOf(false) }
-    var chartShowRangePicker by remember { mutableStateOf(false) }
 
     // 单页内容（页签与明细都已迁出）：今日油价 → 概览 → 走势 → 口径说明。
     LazyColumn(
@@ -306,53 +288,19 @@ fun FuelScreen(
             )
         }
         }
-        // ---- 油耗/能耗概览（卡内 2×2；插混 2×3 + 右上角时间筛选） ----
+        // ---- 页级统计范围（概览 + 走势共用，与总览同一个状态） ----
+        item(key = "stats-range") {
+            StatsRangeRow(
+                period = period,
+                customRange = customRange,
+                onSelectPeriod = vm::setPeriod,
+                onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
+            )
+        }
+        // ---- 油耗/能耗概览（卡内 2×2；插混 2×3） ----
         item(key = "overview") {
             SectionCard(
                 title = if (ev || phev) tr("能耗概览", "Energy overview") else tr("油耗概览", "Fuel overview"),
-                action = {
-                    FilterPill(
-                        label = rangeLabel(period, customRange),
-                        expanded = rangeMenuExpanded,
-                        onToggle = { rangeMenuExpanded = true },
-                        onDismiss = { rangeMenuExpanded = false },
-                        contentDescription = tr("选择统计范围", "Select date range"),
-                    ) {
-                        val presetSelected = customRange == null
-                        DropdownMenuItem(
-                            text = { Text(tr("全部", "All")) },
-                            trailingIcon = FilterMenuCheckIcon(presetSelected && period == Period.ALL),
-                            onClick = {
-                                vm.setPeriod(Period.ALL)
-                                rangeMenuExpanded = false
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(tr("本月", "This month")) },
-                            trailingIcon = FilterMenuCheckIcon(presetSelected && period == Period.MONTH),
-                            onClick = {
-                                vm.setPeriod(Period.MONTH)
-                                rangeMenuExpanded = false
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(tr("今年", "This year")) },
-                            trailingIcon = FilterMenuCheckIcon(presetSelected && period == Period.YEAR),
-                            onClick = {
-                                vm.setPeriod(Period.YEAR)
-                                rangeMenuExpanded = false
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(tr("自定义…", "Custom…")) },
-                            trailingIcon = FilterMenuCheckIcon(customRange != null),
-                            onClick = {
-                                rangeMenuExpanded = false
-                                showRangePicker = true
-                            },
-                        )
-                    }
-                },
             ) {
                 if (phev) {
                     PhevEnergyMetrics(
@@ -380,58 +328,18 @@ fun FuelScreen(
         item(key = "chart") {
             SectionCard(
                 title = if (ev || phev) tr("能耗走势", "Energy trend") else tr("油耗走势", "Fuel trend"),
-                action = {
-                    FilterPill(
-                        label = chartFilterLabel(
-                            period = chartPeriod,
-                            customRange = chartCustomRange,
-                            electric = phev && chartKind == EnergyKind.ELECTRIC,
-                        ),
-                        expanded = chartMenuExpanded,
-                        onToggle = { chartMenuExpanded = true },
-                        onDismiss = { chartMenuExpanded = false },
-                        contentDescription = tr("筛选走势", "Filter trend"),
-                    ) {
-                        // 时间分组：只控制走势区间（概览 / 明细不受影响）。
-                        FilterMenuGroupLabel(text = tr("时间", "Date"))
-                        Period.entries.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(item.filterLabel()) },
-                                trailingIcon = FilterMenuCheckIcon(chartCustomRange == null && chartPeriod == item),
-                                onClick = {
-                                    chartPeriod = item
-                                    chartCustomRange = null
-                                    chartMenuExpanded = false
-                                },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text(tr("自定义…", "Custom…")) },
-                            trailingIcon = FilterMenuCheckIcon(chartCustomRange != null),
-                            onClick = {
-                                chartMenuExpanded = false
-                                chartShowRangePicker = true
+                action = if (phev) {
+                    {
+                        HeaderTextTabs(
+                            labels = listOf(tr("油耗", "Fuel"), tr("电耗", "Electric")),
+                            selectedIndex = if (chartKind == EnergyKind.FUEL) 0 else 1,
+                            onSelect = { index ->
+                                chartKind = if (index == 0) EnergyKind.FUEL else EnergyKind.ELECTRIC
                             },
                         )
-                        // 能源分组：仅插混有两条流，选中即切换曲线数据源（默认油耗）。
-                        if (phev) {
-                            FilterMenuDivider()
-                            FilterMenuGroupLabel(text = tr("能源", "Energy"))
-                            listOf(
-                                EnergyKind.FUEL to tr("油耗", "Fuel"),
-                                EnergyKind.ELECTRIC to tr("电耗", "Electric"),
-                            ).forEach { (kind, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    trailingIcon = FilterMenuCheckIcon(chartKind == kind),
-                                    onClick = {
-                                        chartKind = kind
-                                        chartMenuExpanded = false
-                                    },
-                                )
-                            }
-                        }
                     }
+                } else {
+                    null
                 },
             ) {
                 // 插混：曲线数据源由右上角「筛选 → 能源」切换（单 Y 轴，单位随切换），空态与图表都跟随当前种类。
@@ -456,8 +364,8 @@ fun FuelScreen(
                 } else {
                     FuelTrendChart(
                         intervals = intervals,
-                        rangeStartIso = if (chartHasExplicitRange) chartRange.from else null,
-                        rangeEndIso = if (chartHasExplicitRange) chartRange.to else null,
+                        rangeStartIso = if (chartHasExplicitRange) range.from else null,
+                        rangeEndIso = if (chartHasExplicitRange) range.to else null,
                         modifier = Modifier.fillMaxWidth(),
                         unit = if (streamEv) Units.energyConsumption else Units.consumption,
                     )
@@ -471,26 +379,6 @@ fun FuelScreen(
         }
     }
 
-    if (showRangePicker) {
-        CustomRangePickerDialog(
-            customRange = customRange,
-            onDismiss = { showRangePicker = false },
-            onConfirm = { from, to ->
-                vm.setCustomRange(from, to)
-                showRangePicker = false
-            },
-        )
-    }
-    if (chartShowRangePicker) {
-        CustomRangePickerDialog(
-            customRange = chartCustomRange,
-            onDismiss = { chartShowRangePicker = false },
-            onConfirm = { from, to ->
-                chartCustomRange = DateRange(from, to)
-                chartShowRangePicker = false
-            },
-        )
-    }
 }
 
 /** 今日油价卡：车辆标号价格 + 下次调价/预测；无定位时默认北京。 */
@@ -791,124 +679,6 @@ internal fun StatCell(
         }
     }
 }
-
-// ---------------------------------------------------------------------------------------------
-// 时间筛选（与总览「用车统计」一致：全部 / 本月 / 今年 / 自定义）
-// 胶囊与勾选图标走 `ui/components` 的 FilterPill / FilterMenuCheckIcon，与「费用统计-明细」同一套控件。
-// ---------------------------------------------------------------------------------------------
-
-/** 时间胶囊文案：自定义优先，跨年时带年份。 */
-internal fun rangeLabel(period: Period, customRange: DateRange?): String =
-    customRangeLabel(customRange) ?: period.filterLabel()
-
-/** 自定义范围的短文案：同年 `10.01–10.18`，跨年 `2025.12.01–2026.01.02`；解析失败返回 null。 */
-internal fun customRangeLabel(customRange: DateRange?): String? {
-    val range = customRange ?: return null
-    val from = Dates.parse(range.from) ?: return null
-    val to = Dates.parse(range.to) ?: return null
-    return if (from.year == to.year) {
-        "${monthDay(from)}–${monthDay(to)}"
-    } else {
-        "${yearMonthDay(from)}–${yearMonthDay(to)}"
-    }
-}
-
-/** 时间分组选项文案（全部 / 本月 / 今年）。 */
-internal fun Period.filterLabel(): String = when (this) {
-    Period.ALL -> tr("全部", "All")
-    Period.MONTH -> tr("本月", "This month")
-    Period.YEAR -> tr("今年", "This year")
-}
-
-/**
- * 走势卡筛选胶囊文案：无筛选显示「筛选」；否则按「时间 · 能源」组合摘要，
- * 如 `本月`、`10.01–10.18`、`电耗`、`本月 · 电耗`（能源只在插混切到电耗时出现，默认油耗视为未筛选）。
- */
-private fun chartFilterLabel(period: Period, customRange: DateRange?, electric: Boolean): String {
-    val parts = buildList {
-        val custom = customRangeLabel(customRange)
-        if (custom != null) {
-            add(custom)
-        } else {
-            when (period) {
-                Period.ALL -> Unit
-                Period.MONTH -> add(tr("本月", "This month"))
-                Period.YEAR -> add(tr("今年", "This year"))
-            }
-        }
-        if (electric) add(tr("电耗", "Electric"))
-    }
-    return if (parts.isEmpty()) tr("筛选", "Filter") else parts.joinToString(" · ")
-}
-
-private fun monthDay(date: LocalDate): String =
-    "${date.monthValue.toString().padStart(2, '0')}.${date.dayOfMonth.toString().padStart(2, '0')}"
-
-private fun yearMonthDay(date: LocalDate): String = "${date.year}.${monthDay(date)}"
-
-/** 自定义统计范围：M3 DateRangePicker（闭区间，ISO 日期）。 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun CustomRangePickerDialog(
-    customRange: DateRange?,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit,
-) {
-    val initialStart = remember(customRange) { customRange?.from?.let(::toUtcMillis) }
-    val initialEnd = remember(customRange) { customRange?.to?.let(::toUtcMillis) }
-    val pickerState = rememberDateRangePickerState(
-        initialSelectedStartDateMillis = initialStart,
-        initialSelectedEndDateMillis = initialEnd,
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                enabled = pickerState.selectedStartDateMillis != null &&
-                    pickerState.selectedEndDateMillis != null,
-                onClick = {
-                    val start = pickerState.selectedStartDateMillis
-                    val end = pickerState.selectedEndDateMillis
-                    if (start != null && end != null) {
-                        onConfirm(fromUtcMillis(start), fromUtcMillis(end))
-                    }
-                },
-            ) {
-                Text(tr("确定", "OK"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) }
-        },
-    ) {
-        DateRangePicker(
-            state = pickerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(500.dp)
-                .padding(horizontal = 8.dp),
-            title = {
-                Text(
-                    text = tr("选择统计范围", "Select date range"),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, top = 16.dp),
-                )
-            },
-            showModeToggle = false,
-        )
-    }
-}
-
-/** `YYYY-MM-DD` → 当日 UTC 零点毫秒（DatePicker 的日期语义）。 */
-private fun toUtcMillis(isoDate: String): Long? = Dates.parse(isoDate)
-    ?.atStartOfDay(ZoneOffset.UTC)
-    ?.toInstant()
-    ?.toEpochMilli()
-
-/** DatePicker 返回的 UTC 零点毫秒 → `YYYY-MM-DD`。 */
-private fun fromUtcMillis(millis: Long): String =
-    Dates.iso(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
-
 
 // ---------------------------------------------------------------------------------------------
 // 页尾口径说明

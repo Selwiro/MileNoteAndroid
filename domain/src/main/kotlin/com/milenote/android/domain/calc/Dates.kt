@@ -4,8 +4,12 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-/** 统计时间范围（Web 的三个下拉选项）。 */
-enum class Period { ALL, MONTH, YEAR }
+/**
+ * 统计时间范围（全 App 唯一一套时间预设）。
+ *
+ * 顺序即筛选菜单 / 筛选面板的显示顺序；「自定义」不是枚举值，由 `DateRange` 单独承载。
+ */
+enum class Period { ALL, MONTH, LAST_MONTH, LAST_3_MONTHS, YEAR }
 
 /** 统计区间：ISO 日期字符串，闭区间（与 Web `stats(s,from,to)` 一致）。 */
 data class DateRange(val from: String, val to: String)
@@ -85,11 +89,29 @@ object Dates {
         return daysBetween(a, b)
     }
 
-    /** 统计区间：all → 全量；month → 本月至今；year → 今年至今。 */
+    /**
+     * 统计区间：
+     * - all → 全量；
+     * - month → 本月 1 日至今；
+     * - `LAST_MONTH` → 上月 1 日至上月末日；
+     * - `LAST_3_MONTHS` → 含本月在内的 3 个自然月（本月 1 日往前推 2 个月）至今；
+     * - year → 今年 1 月 1 日至今。
+     */
     fun range(period: Period, today: LocalDate = today()): DateRange = when (period) {
         Period.ALL -> DateRange("", "9999-12-31")
         Period.MONTH -> DateRange(
             iso(today.withDayOfMonth(1)),
+            iso(today),
+        )
+        Period.LAST_MONTH -> {
+            val lastMonth = today.minusMonths(1)
+            DateRange(
+                iso(lastMonth.withDayOfMonth(1)),
+                iso(lastMonth.withDayOfMonth(lastMonth.lengthOfMonth())),
+            )
+        }
+        Period.LAST_3_MONTHS -> DateRange(
+            iso(today.withDayOfMonth(1).minusMonths(2)),
             iso(today),
         )
         Period.YEAR -> DateRange(

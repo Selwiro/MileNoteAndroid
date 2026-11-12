@@ -55,7 +55,22 @@ class DatesTest {
         val today = d("2026-11-04")
         assertEquals(DateRange("", "9999-12-31"), Dates.range(Period.ALL, today))
         assertEquals(DateRange("2026-11-01", "2026-11-04"), Dates.range(Period.MONTH, today))
+        assertEquals(DateRange("2026-10-01", "2026-10-31"), Dates.range(Period.LAST_MONTH, today))
+        assertEquals(DateRange("2026-09-01", "2026-11-04"), Dates.range(Period.LAST_3_MONTHS, today))
         assertEquals(DateRange("2026-01-01", "2026-11-04"), Dates.range(Period.YEAR, today))
+    }
+
+    @Test
+    fun `last month crosses year boundary`() {
+        val today = d("2026-01-15")
+        assertEquals(DateRange("2025-12-01", "2025-12-31"), Dates.range(Period.LAST_MONTH, today))
+        assertEquals(DateRange("2025-11-01", "2026-01-15"), Dates.range(Period.LAST_3_MONTHS, today))
+    }
+
+    @Test
+    fun `last month handles leap february`() {
+        val today = d("2024-03-31")
+        assertEquals(DateRange("2024-02-01", "2024-02-29"), Dates.range(Period.LAST_MONTH, today))
     }
 
     @Test

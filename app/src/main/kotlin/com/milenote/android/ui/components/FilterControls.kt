@@ -1,6 +1,7 @@
 package com.milenote.android.ui.components
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -115,6 +116,17 @@ fun CompactSearchField(
                         )
                     }
                     innerTextField()
+                }
+                if (value.isNotEmpty()) {
+                    Icon(
+                        imageVector = MileNoteIcons.Close,
+                        contentDescription = tr("清空搜索", "Clear search"),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .clickable { onValueChange("") },
+                        tint = scheme.onSurfaceVariant,
+                    )
                 }
             }
         },

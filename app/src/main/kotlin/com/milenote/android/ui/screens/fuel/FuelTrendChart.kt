@@ -268,14 +268,18 @@ fun FuelTrendChart(
             // 横轴刻度：>31 天按月份（过多时抽稀），≤31 天按 5 天一个 MM-DD。
             val axisLabelStyle = axisStyle
             val axisY = topPad + plotHeight + 6.dp.toPx()
+            // 首个月份可能只落在月末几天（横轴按日期比例），与下一个月标签挤在一起；重叠时跳过后者。
+            var lastLabelRight = -Float.MAX_VALUE
             fun drawAxisLabel(text: String, centerX: Float) {
                 val layout = textMeasurer.measure(text, axisLabelStyle)
                 val labelX = (centerX - layout.size.width / 2f)
                     .coerceIn(leftPad, leftPad + plotWidth - layout.size.width)
+                if (labelX < lastLabelRight + 6.dp.toPx()) return
                 drawText(
                     textLayoutResult = layout,
                     topLeft = Offset(labelX, axisY),
                 )
+                lastLabelRight = labelX + layout.size.width
             }
             if (monthAxis) {
                 val monthStarts = mutableListOf<LocalDate>()

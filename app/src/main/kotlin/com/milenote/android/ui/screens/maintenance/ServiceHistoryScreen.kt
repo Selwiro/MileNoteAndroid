@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -17,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +24,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.calc.Categories
+import com.milenote.android.domain.calc.DateRange
+import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.calc.Numbers
+import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.currentKm
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
@@ -35,14 +37,25 @@ import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
+import com.milenote.android.ui.ListFilterPages
+import com.milenote.android.ui.ListFilterState
 import com.milenote.android.ui.MileNoteViewModel
+import com.milenote.android.ui.components.ActiveFilterChip
+import com.milenote.android.ui.components.ActiveFilterChips
 import com.milenote.android.ui.components.CategoryBadge
+import com.milenote.android.ui.components.CustomRangePickerDialog
 import com.milenote.android.ui.components.EmptyState
-import com.milenote.android.ui.components.FilterMenuCheckIcon
-import com.milenote.android.ui.components.FilterPill
+import com.milenote.android.ui.components.FilterOption
+import com.milenote.android.ui.components.FilterOptionList
+import com.milenote.android.ui.components.FilterSection
+import com.milenote.android.ui.components.FilterSheet
 import com.milenote.android.ui.components.LoadingState
 import com.milenote.android.ui.components.MoneySize
 import com.milenote.android.ui.components.MoneyText
+import com.milenote.android.ui.components.RangePresetChips
+import com.milenote.android.ui.components.serviceEntriesCountLabel
+import com.milenote.android.ui.components.SearchFilterBar
+import com.milenote.android.ui.components.rangeLabel
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteDimens
@@ -74,21 +87,53 @@ fun ServiceHistoryScreen(
     }
 
     val ev = ledger.isEv
+    val today = remember { Dates.today() }
     val km = remember(ledger) { currentKm(ledger) }
     val history = remember(ledger.records) {
         ledger.records
             .filter { it.category in SERVICE_RECORD_CATEGORIES }
             .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.odometer ?: 0.0 })
     }
-    var historyFilter by rememberSaveable { mutableStateOf("全部") }
-    // 记录筛选：旧分类「维修保养」先归一成「保养」再比较，「全部」不过滤。
-    val filteredHistory = remember(history, historyFilter) {
-        if (historyFilter == "全部") {
-            history
-        } else {
-            history.filter { Categories.normalize(it.category) == historyFilter }
+    val filter = state.listFilters[ListFilterPages.SERVICE_HISTORY] ?: ListFilterState()
+    val filteredHistory = remember(history, filter, today) {
+        filterServiceHistory(history, filter, today)
+    }
+    // 类型选项从记录里取（旧分类「维修保养」先归一成「保养」），固定顺序：保养 / 维修 / 汽车美容。
+    val typeOptions = remember(history) {
+        val present = history.map { Categories.normalize(it.category) }.toSet()
+        val preferred = listOf("保养", "维修", "汽车美容").filter { it in present }
+        preferred + present.filter { it !in preferred }.sorted()
+    }
+    val activeChips = remember(filter, typeOptions, ledger) {
+        buildList {
+            if (filter.hasTimeFilter) {
+                add(ActiveFilterChip("time", rangeLabel(filter.period, filter.customRange)))
+            }
+            typeOptions.filter { it in filter.types }.forEach { type ->
+                add(
+                    ActiveFilterChip(
+                        key = "type:$type",
+                        label = DataLabels.categoryFor(ledger, type, ledger.vehicle.energyProfile),
+                    ),
+                )
+            }
         }
     }
+
+    var sheetOpen by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf(filter) }
+    var showRangePicker by remember { mutableStateOf(false) }
+    val draftFiltered = remember(history, draft, today) {
+        filterServiceHistory(history, draft, today)
+    }
+    // 类型条数按「时间 + 搜索」算，不按已选类型。
+    val draftBase = remember(history, draft.query, draft.period, draft.customRange, today) {
+        filterServiceHistory(history, draft.copy(types = emptySet()), today)
+    }
+    val draftCounts = remember(draftBase) {
+        draftBase.groupingBy { Categories.normalize(it.category) }.eachCount()
+    }
+    val hasActiveFilter = filter.activeCount > 0 || filter.query.isNotBlank()
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -100,39 +145,71 @@ fun ServiceHistoryScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(MileNoteDimens.CardGap),
     ) {
-        item(key = "summary") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = tr(
-                        "%d 次 · 当前 %s",
-                        "%d entries · current %s",
-                        filteredHistory.size,
-                        distanceText(km),
+        item(key = "filters") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SearchFilterBar(
+                    query = filter.query,
+                    onQueryChange = {
+                        vm.setListFilter(
+                            ListFilterPages.SERVICE_HISTORY,
+                            filter.copy(query = it),
+                        )
+                    },
+                    placeholder = tr(
+                        "搜索项目、地点、备注或金额…",
+                        "Search items, places, notes or amounts…",
                     ),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
+                    filterCount = filter.activeCount,
+                    onOpenFilter = {
+                        draft = filter
+                        sheetOpen = true
+                    },
                 )
-                ServiceHistoryFilter(
-                    filter = historyFilter,
-                    ev = ev,
-                    onSelect = { historyFilter = it },
+                ActiveFilterChips(
+                    chips = activeChips,
+                    onRemove = { key ->
+                        when {
+                            key == "time" -> vm.setListFilter(
+                                ListFilterPages.SERVICE_HISTORY,
+                                filter.copy(period = Period.ALL, customRange = null),
+                            )
+                            key.startsWith("type:") -> vm.setListFilter(
+                                ListFilterPages.SERVICE_HISTORY,
+                                filter.copy(types = filter.types - key.removePrefix("type:")),
+                            )
+                        }
+                    },
+                    onClearAll = {
+                        vm.setListFilter(ListFilterPages.SERVICE_HISTORY, filter.cleared())
+                    },
                 )
             }
         }
+        item(key = "summary") {
+            Text(
+                text = tr(
+                    "%s · 当前 %s",
+                    "%s · current %s",
+                    serviceEntriesCountLabel(filteredHistory.size),
+                    distanceText(km),
+                ),
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
         if (filteredHistory.isEmpty()) {
             item(key = "empty") {
-                if (historyFilter != "全部" && history.isNotEmpty()) {
+                if (history.isNotEmpty() && hasActiveFilter) {
                     EmptyState(
                         icon = MileNoteIcons.FilterList,
                         title = tr("没有符合条件的记录", "No matching records"),
                         description = tr(
-                            "点右上角「筛选」可切回全部。",
-                            "Tap Filter at the top right to show all.",
+                            "清除筛选后可看到全部维修保养记录。",
+                            "Clear the filters to see all maintenance records.",
                         ),
+                        actionLabel = tr("清除全部筛选", "Clear all filters"),
+                        onAction = {
+                            vm.setListFilter(ListFilterPages.SERVICE_HISTORY, filter.cleared())
+                        },
                     )
                 } else {
                     EmptyState(
@@ -156,6 +233,101 @@ fun ServiceHistoryScreen(
             }
         }
     }
+
+    if (sheetOpen) {
+        FilterSheet(
+            resultCount = draftFiltered.size,
+            onDismiss = { sheetOpen = false },
+            onReset = { draft = draft.cleared() },
+            onApply = {
+                vm.setListFilter(ListFilterPages.SERVICE_HISTORY, draft)
+                sheetOpen = false
+            },
+        ) {
+            FilterSection(title = tr("时间", "Date"))
+            RangePresetChips(
+                period = draft.period,
+                customRange = draft.customRange,
+                onSelectPeriod = { draft = draft.copy(period = it, customRange = null) },
+                onSelectCustom = { showRangePicker = true },
+            )
+            if (typeOptions.isNotEmpty()) {
+                FilterSection(
+                    title = tr("类型", "Type"),
+                    trailing = if (draft.types.isEmpty()) {
+                        tr("全部类型", "All types")
+                    } else {
+                        tr("已选 %d 项", "%d selected", draft.types.size)
+                    },
+                )
+                FilterOptionList(
+                    options = typeOptions.map { type ->
+                        FilterOption(
+                            key = type,
+                            label = DataLabels.categoryFor(ledger, type, ledger.vehicle.energyProfile),
+                            count = draftCounts[type] ?: 0,
+                        )
+                    },
+                    selected = draft.types,
+                    onToggle = { type ->
+                        draft = draft.copy(
+                            types = if (type in draft.types) {
+                                draft.types - type
+                            } else {
+                                draft.types + type
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    if (showRangePicker) {
+        CustomRangePickerDialog(
+            customRange = draft.customRange,
+            onDismiss = { showRangePicker = false },
+            onConfirm = { from, to ->
+                draft = draft.copy(customRange = DateRange(from, to))
+                showRangePicker = false
+            },
+        )
+    }
+}
+
+/** 维修保养记录过滤：时间 + 类型 + 关键词（项目 / 地点 / 备注 / 金额 / 里程 / 日期）。 */
+private fun filterServiceHistory(
+    records: List<Record>,
+    filter: ListFilterState,
+    today: java.time.LocalDate,
+): List<Record> {
+    val range = filter.range(today)
+    val query = filter.query.trim()
+    val types = filter.types.map { Categories.normalize(it) }.toSet()
+    return records
+        .filter { it.date >= range.from && it.date <= range.to }
+        .filter { record ->
+            types.isEmpty() || Categories.normalize(record.category) in types
+        }
+        .filter { record -> query.isEmpty() || matchesServiceQuery(record, query) }
+}
+
+/** 维修保养记录搜索：项目、地点、备注、金额、里程、日期。 */
+private fun matchesServiceQuery(record: Record, query: String): Boolean {
+    val parts = buildList {
+        add(record.note)
+        add(record.location.orEmpty())
+        add(record.projects.orEmpty())
+        add(record.date)
+        add(Format.dateDots(record.date))
+        add(Format.money(record.amount))
+        add(Numbers.jsString(record.amount))
+        record.odometer?.let {
+            add(Format.fmt(it))
+            add(Numbers.jsString(it))
+        }
+    }
+    return parts.any { it.contains(query, ignoreCase = true) }
 }
 
 /** 卡片式记录（与费用 / 能耗明细同款：白底圆角卡、分类徽标 + 标题两行 + 金额）。 */
@@ -209,39 +381,6 @@ private fun ServiceHistoryCard(record: Record, ledger: Ledger, onClick: () -> Un
                 amount = Format.money(record.amount),
                 size = MoneySize.MEDIUM,
                 unit = Units.money,
-            )
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// 维修保养记录筛选
-// ---------------------------------------------------------------------------------------------
-
-/** 记录卡筛选选项（「全部」不过滤；旧分类「维修保养」先归一成「保养」再比较）。 */
-private val SERVICE_HISTORY_FILTERS = listOf("全部", "维修", "保养", "汽车美容")
-
-/** 记录页右上角筛选胶囊 + 下拉菜单（全部 / 维修 / 保养 / 汽车美容）。 */
-@Composable
-private fun ServiceHistoryFilter(filter: String, ev: Boolean, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    FilterPill(
-        label = if (filter == "全部") tr("筛选", "Filter") else DataLabels.category(filter, ev),
-        expanded = expanded,
-        onToggle = { expanded = true },
-        onDismiss = { expanded = false },
-        contentDescription = tr("筛选维修保养记录", "Filter maintenance records"),
-    ) {
-        SERVICE_HISTORY_FILTERS.forEach { option ->
-            DropdownMenuItem(
-                text = {
-                    Text(if (option == "全部") tr("全部", "All") else DataLabels.category(option, ev))
-                },
-                trailingIcon = FilterMenuCheckIcon(selected = option == filter),
-                onClick = {
-                    onSelect(option)
-                    expanded = false
-                },
             )
         }
     }
