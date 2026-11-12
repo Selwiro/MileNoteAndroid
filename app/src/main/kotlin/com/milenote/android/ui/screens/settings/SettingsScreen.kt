@@ -1662,8 +1662,8 @@ private fun AboutPage(
                     icon = MileNoteIcons.Lock,
                     title = tr("隐私与数据", "Privacy & data"),
                     subtitle = tr(
-                        "数据存在哪、用哪些权限、会连哪些服务",
-                        "Where data lives, which permissions are used, what connects to the network",
+                        "数据、权限与联网",
+                        "Data, permissions, network",
                     ),
                     onClick = onOpenPrivacy,
                 )
@@ -1671,7 +1671,7 @@ private fun AboutPage(
                 SettingsMenuRow(
                     icon = MileNoteIcons.Info,
                     title = tr("开源许可", "Open-source licenses"),
-                    subtitle = tr("本应用与第三方组件的许可证全文", "License texts for this app and its bundled components"),
+                    subtitle = tr("本应用与第三方许可", "App and third-party licenses"),
                     onClick = onOpenLicenses,
                 )
             }
