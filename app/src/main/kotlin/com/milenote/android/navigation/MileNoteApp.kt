@@ -207,6 +207,12 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         exitTransition = { ExitTransition.None },
         popEnterTransition = { EnterTransition.None },
         popExitTransition = { ExitTransition.None },
+        // 预测性返回（Android 14+ 边缘滑动、manifest 开了 enableOnBackInvokedCallback）有独立的一对
+        // 转场参数，不跟随上面四个；库默认是 predictivePopExit = scaleOut(0.7f) +
+        // predictivePopEnter = fadeIn，滑返时子页会缩成 70% 浮在上级页上，松手又瞬切，和「全部瞬切」的设计不一致。
+        // 这里一并关掉；不对应正常 pop 路径（顶栏返回箭头走 popExitTransition，本来就是 None）。
+        predictivePopEnterTransition = { EnterTransition.None },
+        predictivePopExitTransition = { ExitTransition.None },
     ) {
         composable(Routes.DASHBOARD) {
             TabsScaffold(
