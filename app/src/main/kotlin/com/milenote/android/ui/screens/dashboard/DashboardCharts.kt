@@ -82,7 +82,6 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -361,29 +360,15 @@ private val DonutSize = 150.dp
  * 总览「趋势」卡「图表区」高度：绘图区 + 底部月份轴。里程 / 支出两张图共用。
  *
  * 横轴对齐依赖这里：两张图都把月份标签放在本区块最后 [TrendAxisRowHeight] 里，
- * 轴下再统一放一块固定高度的信息区（里程 = 两行汇总，支出 = 图例），
- * 所以切 tab 时横轴、卡高都不动（2026-11-12 用户反馈「两图横坐标不在一行」）。
+ * 轴下不再放任何内容（支出图例收进卡头、点开查看），所以切 tab 时横轴、卡高都不动。
  */
-internal val TrendChartBlockHeight = 186.dp
+private val TrendChartBlockHeight = 236.dp
 
 /** 图表区底部月份轴行高：两张图都把标签居中画在这一行。 */
-internal val TrendAxisRowHeight = 20.dp
+private val TrendAxisRowHeight = 20.dp
 
 /** 轴行与绘图区之间的呼吸位。 */
 private val TrendAxisGap = 4.dp
-
-/**
- * 轴下信息区高度：默认 2 行；字号 ≥1.3× 时按 3 行（图例换行更多），两个 tab 共用同一高度。
- *
- * 行高取 `labelSmall` 的实际行高（含字体缩放），再加 12dp 顶部间距与 6dp 行距。
- */
-@Composable
-internal fun trendFooterHeight(): Dp {
-    val density = LocalDensity.current
-    val lineHeight = with(density) { MaterialTheme.typography.labelSmall.lineHeight.toDp() }
-    val rows = if (density.fontScale < 1.3f) 2 else 3
-    return 12.dp + lineHeight * rows + 6.dp * (rows - 1)
-}
 
 /** 单根柱占列宽的比例（月数 6–24 时自适应，避免固定宽度在 12/24 列时互相重叠）。 */
 private const val BarWidthFraction = 0.62f
@@ -645,84 +630,19 @@ internal fun ExpenseTrendChart(
 }
 
 /**
- * 里程 tab 的轴下信息区（两行，和支出图例同高）：合计 / 月均 / 最高 / 最低。
+ * 图例内容：支出分类的色点 + 名称（卡头「图例」按钮点开后的底部弹层）。
  *
- * 以前里程图没有这块，月份轴落在卡片底部；支出图的 2 行图例把柱区压短，
- * 两个 tab 的横轴差了约 44dp。现在两张图共用 [TrendChartBlockHeight] + 同高的信息区。
+ * 图例不再常驻在轴下，两张图的月份轴因此可以贴齐卡片底部；点柱段仍有分类气泡。
  */
 @Composable
-internal fun MileageTrendFooter(bars: List<MileageBar>, modifier: Modifier = Modifier) {
-    val total = bars.sumOf { it.km }
-    if (total <= 0.0) return
-    val driven = bars.filter { it.km > 0.0 }
-    if (driven.isEmpty()) return
-    val average = (total / driven.size).roundToInt()
-    val peak = driven.maxBy { it.km }
-    val low = driven.minBy { it.km }
-    val style = MaterialTheme.typography.labelSmall
-    val color = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = tr(
-                "合计 %s %s · 月均 %s %s",
-                "Total %s %s · avg %s %s",
-                Format.fmt(total), Units.distanceUnit, Format.fmt(average.toDouble()), Units.distanceUnit,
-            ),
-            style = style,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = if (peak.km > low.km) {
-                tr(
-                    "最高 %s %s（%s） · 最低 %s %s（%s）",
-                    "Peak %s %s (%s) · low %s %s (%s)",
-                    Format.fmt(peak.km), Units.distanceUnit, peak.label,
-                    Format.fmt(low.km), Units.distanceUnit, low.label,
-                )
-            } else {
-                tr(
-                    "最高 %s %s（%s）",
-                    "Peak %s %s (%s)",
-                    Format.fmt(peak.km), Units.distanceUnit, peak.label,
-                )
-            },
-            style = style,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/**
- * 支出 tab 的轴下信息区：分类图例（与里程 tab 的两行汇总同高）。
- *
- * 图例从绘图区内部挪到卡片层面的固定信息区后，柱区高度只由 [TrendChartBlockHeight] 决定，
- * 两个 tab 的月份轴才能落在同一行。
- */
-@Composable
-internal fun ExpenseTrendFooter(
+internal fun ExpenseLegend(
     bars: List<MonthBar>,
     ev: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val legend = remember(bars) { barLegendEntries(bars) }
     if (legend.isEmpty()) return
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-    ) {
-        CategoryLegend(entries = legend, ev = ev)
-    }
+    CategoryLegend(entries = legend, ev = ev, modifier = modifier)
 }
 
 /**
