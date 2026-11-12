@@ -916,7 +916,8 @@ private fun trendTabLabel(tab: TrendTab): String = when (tab) {
  *   与右上角范围胶囊拉开视觉层级（2026-11-12 用户反馈「两个胶囊像重复控件」）；
  * - 时间范围沿用全局 [period] / [customRange]（与「用车统计」联动），两张图共用
  *   [trendMonthsFor] 的同一批月份，切换 tab 时横轴不跳动；
- * - 两张图共用同一个固定高度（DashboardCharts 里的 TrendChartBodyHeight），切 tab 时卡片高度不变，
+ * - 两张图共用「图表区 + 轴下信息区」：图表区固定 [TrendChartBlockHeight]、月份轴都在区块最后一行，
+ *   轴下信息区同高（里程 = 两行汇总，支出 = 图例），所以切 tab 时横轴在同一行、卡高也不变，
  *   下方「爱车待办」不会被顶得上下跳（2026-11-12 用户反馈）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -971,9 +972,22 @@ private fun TrendCard(
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
+        // 轴下信息区固定高度：两个 tab 共用，月份轴才能严格对齐。
+        val footerHeight = trendFooterHeight()
         when (tab) {
-            TrendTab.MILEAGE -> MileageTrendChart(bars = mileageBars)
-            TrendTab.EXPENSE -> ExpenseTrendChart(bars = monthBars, ev = ledger.isEv)
+            TrendTab.MILEAGE -> Column(modifier = Modifier.fillMaxWidth()) {
+                MileageTrendChart(bars = mileageBars)
+                Box(modifier = Modifier.fillMaxWidth().height(footerHeight)) {
+                    MileageTrendFooter(bars = mileageBars)
+                }
+            }
+
+            TrendTab.EXPENSE -> Column(modifier = Modifier.fillMaxWidth()) {
+                ExpenseTrendChart(bars = monthBars, ev = ledger.isEv)
+                Box(modifier = Modifier.fillMaxWidth().height(footerHeight)) {
+                    ExpenseTrendFooter(bars = monthBars, ev = ledger.isEv)
+                }
+            }
         }
     }
 
