@@ -58,6 +58,7 @@ import com.milenote.android.data.fuelprice.FuelPriceRepository
 import com.milenote.android.data.fuelprice.FuelLocation
 import com.milenote.android.data.fuelprice.FuelRegions
 import com.milenote.android.platform.location.LocationResolver
+import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.EnergyKind
 import com.milenote.android.domain.calc.Period
@@ -96,7 +97,7 @@ import kotlinx.coroutines.launch
  *
  * 结构（自上→下，统一为 SectionCard 卡片风格，卡内只有标题、无副标题）：
  * 1. 「今日油价」卡（有油箱且非英文界面时）：标号油价 + 刷新 / 定位；
- * 2. 「油耗/能耗概览」卡：右上角时间筛选（全部 / 本月 / 今年 / 自定义 DateRangePicker）+ 卡内 2×2（插混 2×3）纯文字指标；
+ * 2. 「油耗/能耗概览」卡：右上角范围胶囊（6 档预设 + 自定义 DateRangePicker）+ 卡内 2×2（插混 2×3）纯文字指标；
  * 3. 「油耗/能耗走势」卡：右上角「筛选」胶囊（时间分组；插混另有能源分组，选中即切换曲线数据源）+
  *    平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
  * 4. 底部可折叠「满箱法 / 满电+累计 / 双口径说明」。
@@ -207,11 +208,21 @@ fun FuelScreen(
     LaunchedEffect(ev) { if (!ev) refreshPrice(reLocate = false) }
 
     val today = Dates.today()
-    val period = state.period
-    val customRange = state.customRange
-    val range = remember(period, customRange, today) { state.effectiveRange(today) }
-    val statsResult = remember(ledger, range) { stats(ledger, range.from, range.to) }
-    // 概览指标 / 走势跟随顶部筛选（state.period / customRange）。
+    // 概览卡与走势卡各自一份范围，互不关联；插混「油耗 / 电耗」两个 tab 共用走势卡这一份。
+    var overviewPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
+    var overviewCustomRange by remember { mutableStateOf<DateRange?>(null) }
+    var trendPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
+    var trendCustomRange by remember { mutableStateOf<DateRange?>(null) }
+    val overviewRange = remember(overviewPeriod, overviewCustomRange, today) {
+        overviewCustomRange ?: Dates.range(overviewPeriod, today)
+    }
+    val trendRange = remember(trendPeriod, trendCustomRange, today) {
+        trendCustomRange ?: Dates.range(trendPeriod, today)
+    }
+    val statsResult = remember(ledger, overviewRange) {
+        stats(ledger, overviewRange.from, overviewRange.to)
+    }
+    // 概览指标使用概览卡自己的范围。
     val overviewEnergyRecords = remember(statsResult) {
         statsResult.records
             .filter { Categories.isEnergy(it.category) }
@@ -227,7 +238,7 @@ fun FuelScreen(
     val electricEnergyCost = remember(overviewEnergyRecords, ledger) {
         overviewEnergyRecords.filter { it.kwh != null }.sumOf { costOf(it, ledger) }
     }
-    // 走势卡与概览共用页级统计范围（state.period / customRange）。
+    // 走势卡使用自己的范围，与概览卡互不关联。
     // 纯电只统计 kwh 满电区间；历史手填油耗是燃油字段，不参与纯电统计。
     // 插混两条流都算好，「油耗 / 电耗」是走势卡头的内容切换（不是筛选）。
     var chartKind by rememberSaveable { mutableStateOf(EnergyKind.FUEL) }
@@ -240,12 +251,12 @@ fun FuelScreen(
             else -> energyIntervals(ledger.records, EnergyKind.ELECTRIC)
         }.sortedBy { it.date }
     }
-    val chartFilteredIntervals = remember(allIntervals, range) {
+    val chartFilteredIntervals = remember(allIntervals, trendRange) {
         allIntervals.filter { interval ->
-            interval.date >= range.from && interval.date <= range.to
+            interval.date >= trendRange.from && interval.date <= trendRange.to
         }
     }
-    val chartHasExplicitRange = customRange != null || period != Period.ALL
+    val chartHasExplicitRange = trendCustomRange != null || trendPeriod != Period.ALL
     // 展示筛选范围内的全部区间（不再固定截断为最近 12 个）。
     val intervals = remember(chartFilteredIntervals) { chartFilteredIntervals }
     // 明细列表（搜索 / 时间筛选 / 汇总 / 月度分组 / 满箱法能耗）已整体搬到推入页 EnergyDetailScreen，
@@ -288,16 +299,16 @@ fun FuelScreen(
             )
         }
         }
-        // ---- 油耗/能耗概览（卡内 2×2；插混 2×3；范围胶囊在卡头，概览 + 走势共用） ----
+        // ---- 油耗/能耗概览（卡内 2×2；插混 2×3；范围胶囊在卡头，只影响概览卡） ----
         item(key = "overview") {
             SectionCard(
                 title = if (ev || phev) tr("能耗概览", "Energy overview") else tr("油耗概览", "Fuel overview"),
                 action = {
                     RangeFilterAction(
-                        period = period,
-                        customRange = customRange,
-                        onSelectPeriod = vm::setPeriod,
-                        onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
+                        period = overviewPeriod,
+                        customRange = overviewCustomRange,
+                        onSelectPeriod = { overviewPeriod = it; overviewCustomRange = null },
+                        onSelectCustomRange = { from, to -> overviewCustomRange = DateRange(from, to) },
                     )
                 },
             ) {
@@ -327,18 +338,27 @@ fun FuelScreen(
         item(key = "chart") {
             SectionCard(
                 title = if (ev || phev) tr("能耗走势", "Energy trend") else tr("油耗走势", "Fuel trend"),
-                action = if (phev) {
-                    {
-                        HeaderTextTabs(
-                            labels = listOf(tr("油耗", "Fuel"), tr("电耗", "Electric")),
-                            selectedIndex = if (chartKind == EnergyKind.FUEL) 0 else 1,
-                            onSelect = { index ->
-                                chartKind = if (index == 0) EnergyKind.FUEL else EnergyKind.ELECTRIC
-                            },
+                action = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (phev) {
+                            HeaderTextTabs(
+                                labels = listOf(tr("油耗", "Fuel"), tr("电耗", "Electric")),
+                                selectedIndex = if (chartKind == EnergyKind.FUEL) 0 else 1,
+                                onSelect = { index ->
+                                    chartKind = if (index == 0) EnergyKind.FUEL else EnergyKind.ELECTRIC
+                                },
+                            )
+                        }
+                        RangeFilterAction(
+                            period = trendPeriod,
+                            customRange = trendCustomRange,
+                            onSelectPeriod = { trendPeriod = it; trendCustomRange = null },
+                            onSelectCustomRange = { from, to -> trendCustomRange = DateRange(from, to) },
                         )
                     }
-                } else {
-                    null
                 },
             ) {
                 // 插混：曲线数据源由右上角「筛选 → 能源」切换（单 Y 轴，单位随切换），空态与图表都跟随当前种类。
@@ -363,8 +383,8 @@ fun FuelScreen(
                 } else {
                     FuelTrendChart(
                         intervals = intervals,
-                        rangeStartIso = if (chartHasExplicitRange) range.from else null,
-                        rangeEndIso = if (chartHasExplicitRange) range.to else null,
+                        rangeStartIso = if (chartHasExplicitRange) trendRange.from else null,
+                        rangeEndIso = if (chartHasExplicitRange) trendRange.to else null,
                         modifier = Modifier.fillMaxWidth(),
                         unit = if (streamEv) Units.energyConsumption else Units.consumption,
                     )

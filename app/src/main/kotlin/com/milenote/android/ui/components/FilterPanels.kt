@@ -255,24 +255,24 @@ fun FilterButton(
         shape = CircleShape,
         color = scheme.surfaceContainerHigh,
         contentColor = scheme.onSurface,
-        modifier = modifier.height(32.dp),
+        modifier = modifier.height(56.dp),
     ) {
         Row(
-            modifier = Modifier.padding(start = 12.dp, end = 8.dp),
+            modifier = Modifier.padding(start = 20.dp, end = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 160.dp),
+                modifier = Modifier.widthIn(max = 150.dp),
             )
             Icon(
                 imageVector = MileNoteIcons.ChevronDown,
                 contentDescription = contentDescription,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
     }

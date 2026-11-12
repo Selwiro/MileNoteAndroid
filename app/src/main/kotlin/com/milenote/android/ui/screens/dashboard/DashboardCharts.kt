@@ -484,8 +484,10 @@ internal fun ExpenseTrendChart(
     var selection by remember(bars) { mutableStateOf<BarSelection?>(null) }
     var bubbleSize by remember(bars) { mutableStateOf(IntSize.Zero) }
     val maxTotal = remember(bars) { maxOf(1.0, bars.maxOfOrNull { it.total } ?: 0.0) }
-    // 月数较多（一年 / 自定义）时隐藏柱顶总额与隔月标签，避免 12–24 列时文字互相重叠。
+    // 月数较多（一年 / 自定义）时隐藏柱顶总额，避免 12–24 列时文字互相重叠。
     val dense = bars.size > 8
+    val axisTextMeasurer = rememberTextMeasurer()
+    val axisStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
     // 本月 / 近两个月只有 1–2 根柱，按 0.62 列宽会变成巨柱，收窄到 0.28 列宽。
     val barFill = if (bars.size <= 2) 0.28f else BarWidthFraction
 
@@ -606,18 +608,33 @@ internal fun ExpenseTrendChart(
                                     }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(TrendAxisGap))
-                            Box(
-                                modifier = Modifier.height(TrendAxisRowHeight),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = if (dense && index % 2 == 1) "" else bar.label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = scheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                            }
+                        }
+                    }
+                }
+                // 月份轴单独一层 Canvas：24 个月时按列放标签只能挤成单字母，这里按整行宽度定位并抽稀。
+                Spacer(modifier = Modifier.height(TrendAxisGap))
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(TrendAxisRowHeight),
+                ) {
+                    val count = bars.size
+                    if (count > 0) {
+                        val step = maxOf(1, (count + 5) / 6)
+                        val cell = size.width / count
+                        val indices = (0 until count step step).toMutableSet()
+                        indices.add(count - 1)
+                        var lastRight = -Float.MAX_VALUE
+                        indices.sorted().forEach { monthIndex ->
+                            val layout = axisTextMeasurer.measure(bars[monthIndex].label, axisStyle)
+                            val x = ((monthIndex + 0.5f) * cell - layout.size.width / 2f)
+                                .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
+                            if (x < lastRight + 2.dp.toPx()) return@forEach
+                            drawText(
+                                textLayoutResult = layout,
+                                topLeft = Offset(x, (size.height - layout.size.height) / 2f),
+                            )
+                            lastRight = x + layout.size.width
                         }
                     }
                 }
@@ -627,7 +644,7 @@ internal fun ExpenseTrendChart(
             val bar = current?.let { bars.getOrNull(it.monthIndex) }
             val category = current?.let { bar?.categories?.getOrNull(it.categoryIndex) }
             if (current != null && bar != null && category != null) {
-                val plotHeightPx = (plotRowHeightPx - with(density) { 48.dp.toPx() }).coerceAtLeast(1f)
+                val plotHeightPx = (plotRowHeightPx - with(density) { 24.dp.toPx() }).coerceAtLeast(1f)
                 val barHeightPx = plotHeightPx * (bar.total / maxTotal).toFloat() * reveal
                 val barTopPx = plotTopPx + plotHeightPx - barHeightPx
                 val before = bar.categories.take(current.categoryIndex).sumOf { it.value }

@@ -118,12 +118,12 @@ private val HeroCarArtWidth = 170.dp
  * 总览页：紧凑 Hero 车辆卡 + 用车统计大卡（2×2 指标 + 右上时间筛选）+ 趋势卡 + 爱车待办。
  *
  * 页面不自带 Scaffold / 顶栏 / 底栏 / FAB；只输出滚动内容，并按 [MileNoteDimens.PageBottom]
- * 预留底部空间。统计范围使用 [UiState.effectiveRange]（自定义范围优先），只影响指标 / 趋势；
- * 底栏 v4 起「支出趋势」并回本页（费用统计页取消），2026-11-12 起与原「里程趋势」合并成
- * 一张卡、卡头文字 tab 切换；「费用构成」留到月报 / 年报。
+ * 预留底部空间。**用车统计卡与趋势卡各自持有范围胶囊，互不关联**；趋势卡内「支出 / 里程」
+ * 两个 tab 共用趋势卡自己的范围（默认支出）。底栏 v4 起「支出趋势」并回本页（费用统计页取消），
+ * 2026-11-12 起与原「里程趋势」合并成一张卡；「费用构成」留到月报 / 年报。
  * 本页图表 / 待办与统计卡统一为同一种 SectionCard 版式。
  *
- * @param vm 全局 ViewModel（期间 / 自定义范围 / 编辑记录 / 演示）。
+ * @param vm 全局 ViewModel（账本 / 编辑记录 / 演示）。
  * @param onNavigate 顶层路由跳转（记录、油耗、保养、设置）。
  */
 @Composable
@@ -148,8 +148,6 @@ fun DashboardScreen(
         ledger = ledger,
         onNavigate = onNavigate,
         onAddRecord = { vm.openEditor() },
-        onSelectPeriod = vm::setPeriod,
-        onSelectCustomRange = { from, to -> vm.setCustomRange(from, to) },
         onEnterDemo = vm::enterDemo,
         onExitDemo = vm::exitDemo,
         onReloadLedger = vm::reloadLedger,
@@ -163,16 +161,24 @@ private fun DashboardContent(
     ledger: Ledger,
     onNavigate: (String) -> Unit,
     onAddRecord: () -> Unit,
-    onSelectPeriod: (Period) -> Unit,
-    onSelectCustomRange: (String, String) -> Unit,
     onEnterDemo: () -> Unit,
     onExitDemo: () -> Unit,
     onReloadLedger: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = remember { Dates.today() }
-    val range = remember(state.period, state.customRange, today) { state.effectiveRange(today) }
-    val periodStats = remember(ledger, range) { stats(ledger, range.from, range.to) }
+    // 每张卡片各自一份范围，互不关联；趋势卡内的「支出 / 里程」两个 tab 共用趋势卡这一份。
+    var statsPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
+    var statsCustomRange by remember { mutableStateOf<DateRange?>(null) }
+    var trendPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
+    var trendCustomRange by remember { mutableStateOf<DateRange?>(null) }
+    val statsRange = remember(statsPeriod, statsCustomRange, today) {
+        statsCustomRange ?: Dates.range(statsPeriod, today)
+    }
+    val trendRange = remember(trendPeriod, trendCustomRange, today) {
+        trendCustomRange ?: Dates.range(trendPeriod, today)
+    }
+    val statsResult = remember(ledger, statsRange) { stats(ledger, statsRange.from, statsRange.to) }
     val nearReminders = remember(ledger.reminders, today) {
         groupReminders(ledger.reminders, today).near.take(3)
     }
@@ -245,21 +251,25 @@ private fun DashboardContent(
 
         item(key = "stats") {
             VehicleStatsCard(
-                period = state.period,
-                customRange = state.customRange,
-                statsResult = periodStats,
+                period = statsPeriod,
+                customRange = statsCustomRange,
+                statsResult = statsResult,
                 ev = ledger.isEv,
                 phev = ledger.vehicle.energyProfile == EnergyProfile.DUAL,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCustomRange = onSelectCustomRange,
+                onSelectPeriod = { statsPeriod = it; statsCustomRange = null },
+                onSelectCustomRange = { from, to -> statsCustomRange = DateRange(from, to) },
             )
         }
-        // 2026-11-12：原「里程趋势 + 支出趋势」两张卡合并成一张「趋势」卡，
-        // 卡头文字 tab 切换里程 / 支出，时间范围与「用车统计」共用同一全局状态。
+        // 2026-11-12：原「里程趋势 + 支出趋势」两张卡合并成一张「趋势」卡；
+        // 趋势卡自己一份范围，与「用车统计」互不关联，卡内「支出 / 里程」两个 tab 共享。
         item(key = "trend") {
             TrendCard(
                 ledger = ledger,
-                range = range,
+                period = trendPeriod,
+                customRange = trendCustomRange,
+                range = trendRange,
+                onSelectPeriod = { trendPeriod = it; trendCustomRange = null },
+                onSelectCustomRange = { from, to -> trendCustomRange = DateRange(from, to) },
             )
         }
         item(key = "reminders") {
@@ -792,8 +802,8 @@ private fun VehicleStatsCard(
 
 /** 趋势卡的图表类型（卡头文字 tab）。 */
 private enum class TrendTab {
-    MILEAGE,
     EXPENSE,
+    MILEAGE,
 }
 
 /** 趋势卡 tab 文案（纯 UI 文案，数据值不翻译）。 */
@@ -817,11 +827,15 @@ private fun trendTabLabel(tab: TrendTab): String = when (tab) {
 @Composable
 private fun TrendCard(
     ledger: Ledger,
+    period: Period,
+    customRange: DateRange?,
     range: DateRange,
+    onSelectPeriod: (Period) -> Unit,
+    onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showLegend by remember { mutableStateOf(false) }
-    var tabName by rememberSaveable { mutableStateOf(TrendTab.MILEAGE.name) }
+    var tabName by rememberSaveable { mutableStateOf(TrendTab.EXPENSE.name) }
     val tab = TrendTab.entries.firstOrNull { it.name == tabName } ?: TrendTab.MILEAGE
     val window = remember(ledger, range) { trendMonthWindow(ledger, range) }
     val months = window.months
@@ -868,6 +882,12 @@ private fun TrendCard(
                     )
                 }
             }
+            RangeFilterAction(
+                period = period,
+                customRange = customRange,
+                onSelectPeriod = onSelectPeriod,
+                onSelectCustomRange = onSelectCustomRange,
+            )
             // 图例只在支出 tab 出现；图标按钮 32dp，不改变卡头高度。
             if (tab == TrendTab.EXPENSE) {
                 TrendLegendButton(onClick = { showLegend = true })

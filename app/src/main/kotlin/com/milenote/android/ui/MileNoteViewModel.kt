@@ -26,9 +26,7 @@ import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.CategoryConfig
-import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
-import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.applyServicePlan
 import com.milenote.android.domain.calc.completeService
 import com.milenote.android.domain.calc.restoreServiceRemindersAfterRecordDelete
@@ -178,7 +176,6 @@ data class UiState(
     val loadError: String? = null,
     /** 读取失败且原始文件无法隔离：本次会话停止落盘（总览显示「已暂停保存」）。 */
     val persistenceBlocked: Boolean = false,
-    val period: Period = Period.ALL,
     val editor: EditorTarget? = null,
     val vehicleSwitcher: Boolean = false,
     val confirm: PendingConfirm? = null,
@@ -190,8 +187,6 @@ data class UiState(
     val showImporter: Boolean = false,
     val sharedImport: SharedImport? = null,
     val webDav: WebDavUiState = WebDavUiState(),
-    /** 总览自定义时间范围；非空时覆盖 [period]。 */
-    val customRange: DateRange? = null,
     /** 列表页筛选：页面 key（[ListFilterPages]）→ 条件；切车 / 进出演示账本时清空。 */
     val listFilters: Map<String, ListFilterState> = emptyMap(),
     /** 最近一次读取失败被隔离的原始账本；仅用于设置页导出入口。 */
@@ -199,9 +194,6 @@ data class UiState(
     /** 最近一次整体覆盖（WebDAV 下载 / 还原）前的本地快照；非空时设置页显示回滚入口。 */
     val replaceSnapshot: QuarantinedRaw? = null,
 ) {
-    /** 总览实际使用的统计范围（自定义优先）。 */
-    fun effectiveRange(today: java.time.LocalDate = Dates.today()): DateRange =
-        customRange ?: Dates.range(period, today)
     val activeCar: Ledger? get() = garage?.activeCar
     val vehicle: Vehicle? get() = activeCar?.vehicle
 }
@@ -292,18 +284,6 @@ class MileNoteViewModel(
     }
 
     // ---------- 基础操作 ----------
-
-    fun setPeriod(period: Period) {
-        _state.value = _state.value.copy(period = period, customRange = null)
-    }
-
-    /** 总览「自定义」时间范围（闭区间 ISO 日期）。 */
-    fun setCustomRange(from: String, to: String) {
-        val start = Dates.dateValue(from)
-        val end = Dates.dateValue(to)
-        if (start.isEmpty() || end.isEmpty() || start > end) return
-        _state.value = _state.value.copy(customRange = DateRange(start, end))
-    }
 
     /** 写入指定页面的列表筛选（页面只读写自己的 key）。 */
     fun setListFilter(page: String, filter: ListFilterState) {
