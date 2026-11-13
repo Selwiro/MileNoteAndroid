@@ -498,7 +498,15 @@ private fun FuelPriceCard(
                     else -> null
                 }
                 val updatedText = if (statusError == null) {
-                    lastUpdatedMillis?.let { tr("更新于 %s", "Updated %s", formatFuelPriceTime(it)) }
+                    lastUpdatedMillis?.let { millis ->
+                        val time = formatFuelPriceTime(millis)
+                        // 城市价 = 省均价 + 城市固定差价：只补一个短后缀说明口径，不单独占一行。
+                        if (info.cityEstimated) {
+                            tr("更新于 %s · 差价推算", "Updated %s · regional estimate", time)
+                        } else {
+                            tr("更新于 %s", "Updated %s", time)
+                        }
+                    }
                 } else {
                     null
                 }
@@ -587,18 +595,6 @@ private fun FuelPriceCard(
                                 color = trendColor,
                             )
                         }
-                    }
-                    // 城市价是用省价 + 城市固定差价推出来的：单独一行注明，不挤「更新于 / 预计涨跌」那一行。
-                    if (info.cityEstimated && statusError == null) {
-                        Text(
-                            text = tr(
-                                "城市价按省价与地区差价推算",
-                                "City price estimated from the provincial price plus the regional difference",
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 28.dp, top = 2.dp),
-                        )
                     }
                 }
             }
