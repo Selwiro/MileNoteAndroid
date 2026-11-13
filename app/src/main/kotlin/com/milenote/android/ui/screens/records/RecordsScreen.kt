@@ -203,11 +203,11 @@ private fun RecordsContent(
     var selecting by remember(ledger.id) { mutableStateOf(false) }
     var selectedIds by remember(ledger.id) { mutableStateOf<Set<String>>(emptySet()) }
     val visibleIds = remember(filtered) { filtered.mapTo(LinkedHashSet()) { it.id } }
-    LaunchedEffect(visibleIds) { selectedIds = selectedIds.intersect(visibleIds) }
-    val selection = remember(selectedIds, visibleIds) { selectedIds.intersect(visibleIds) }
+    LaunchedEffect(visibleIds) { selectedIds = pruneSelection(selectedIds, visibleIds) }
+    val selection = remember(selectedIds, visibleIds) { pruneSelection(selectedIds, visibleIds) }
     val selectedRecords = remember(filtered, selection) { filtered.filter { it.id in selection } }
     val selectedTotal = remember(selectedRecords, ledger) { selectedRecords.sumOf { costOf(it, ledger) } }
-    val allSelected = visibleIds.isNotEmpty() && visibleIds.all { it in selection }
+    val allSelected = isAllSelected(selection, visibleIds)
 
     fun startSelection(recordId: String? = null) {
         selecting = true
@@ -220,7 +220,7 @@ private fun RecordsContent(
     }
 
     fun toggle(recordId: String) {
-        selectedIds = if (recordId in selectedIds) selectedIds - recordId else selectedIds + recordId
+        selectedIds = toggleSelection(selectedIds, recordId)
     }
 
     // 多选时系统返回先退出多选，而不是离开页面。
@@ -311,7 +311,7 @@ private fun RecordsContent(
             onCancelSelection = { exitSelection() },
             onStartSelection = { startSelection() },
             onToggleSelectAll = {
-                selectedIds = if (allSelected) emptySet() else visibleIds
+                selectedIds = toggleSelectAll(selectedIds, visibleIds)
             },
             selectable = true,
         )

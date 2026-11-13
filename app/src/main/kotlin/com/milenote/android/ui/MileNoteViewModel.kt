@@ -451,10 +451,9 @@ class MileNoteViewModel(
         val ids = records.map { it.id }.toSet()
         val existing = active.records.filter { it.id in ids }
         if (existing.isEmpty()) return
-        val reminderTitles = active.reminders
-            .filter { it.done == true && it.recordId in ids }
-            .map { it.title }
-            .distinct()
+        val linkedReminders = active.reminders.filter { it.done == true && it.recordId in ids }
+        val reminderTitles = linkedReminders.map { it.title }.distinct()
+        val linkedRecordCount = existing.count { record -> linkedReminders.any { it.recordId == record.id } }
         when {
             existing.size == 1 && reminderTitles.isNotEmpty() -> {
                 _state.value = _state.value.copy(
@@ -472,7 +471,7 @@ class MileNoteViewModel(
                         tr(
                             "其中 %d 条完成了保养提醒，删除后提醒会恢复为未完成。删除后可在底部提示里撤销。",
                             "%d of them completed service reminders; those reminders will be restored. You can undo from the message below.",
-                            reminderTitles.size,
+                            linkedRecordCount,
                         )
                     } else {
                         tr(
