@@ -904,15 +904,9 @@ private fun TrendCard(
                     },
                 )
             }
-            RangeFilterAction(
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCustomRange = onSelectCustomRange,
-                caption = rangeCaption,
-            )
-            // 视图开关只在支出 tab 出现；放在范围胶囊**右侧**：英文「Expense / Mileage」两个
-            // 文字 tab 需要完整宽度，夹在 tab 与胶囊之间会把「Mileage」裁成「Milea」（2026-11-13 实拍发现）。
+            // 视图开关只在支出 tab 出现，放在范围胶囊左侧；范围胶囊始终贴卡头最右
+            // （2026-11-13 用户反馈「筛选按钮怎么不在卡片最右边了」）。
+            // 英文 tab 截断靠紧凑胶囊文案解决：`Nov` / `Sep–Nov` 比 `This month` 窄约 45dp。
             if (tab == TrendTab.EXPENSE) {
                 ExpenseViewToggle(
                     view = view,
@@ -926,6 +920,13 @@ private fun TrendCard(
                     },
                 )
             }
+            RangeFilterAction(
+                period = period,
+                customRange = customRange,
+                onSelectPeriod = onSelectPeriod,
+                onSelectCustomRange = onSelectCustomRange,
+                caption = rangeCaption,
+            )
         }
         Spacer(modifier = Modifier.height(10.dp))
         when (tab) {
