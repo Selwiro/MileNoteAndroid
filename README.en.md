@@ -102,7 +102,7 @@ Due items appear in the in-app to-do list (since 0.39.0 to-dos and the plan shar
 
 - **Overview**: vehicle stats (total spend, recorded mileage, cost per kilometre, average fuel economy — all following the selected range), mileage trend, and expense trend (stacked monthly bars showing how each category changes).
 - **Expense details**: open from the Overview top-right icon; search plus time (all / this month / this year / custom) and category filters, "N records / filtered total", grouped by month, with edit and delete.
-- The expense breakdown donut is temporarily retired with the old Analytics page and is planned for the upcoming monthly / annual report feature.
+- The expense breakdown now lives in **Me → Monthly / yearly / all-time report**: pick a natural month, a natural year, or everything since the first entry to see total spend, month-over-month and year-over-year comparison, the category breakdown, refueling and fuel economy, trends, and the most memorable entries.
 
 Cost per kilometre is based on recorded spending and recorded mileage. Unrecorded costs such as depreciation or loan interest are not included automatically.
 
@@ -169,6 +169,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 | Home-screen shortcuts | Long-press the app icon to add an entry or scan a receipt |
 | System integration | System share intake, SAF file picking and in-app update checks |
 | Demo ledger | Two virtual vehicles with sample records; exiting the demo restores your real ledger automatically |
+| Monthly / yearly / all-time report | Open from **Me**: total spend with month/year comparisons, category breakdown, refueling and fuel economy, trends and highlights; share as text or as a portrait summary image |
 
 Today's fuel price is only available for fuel vehicles in the Chinese interface. It is fetched in order from daily-updated public fuel-price datasets → free HTTPS JSON APIs → the local cache, and is reference data only. A successful fetch is cached on the device, not re-requested on the same day, refreshed automatically the next day, and can be refreshed manually from the card.
 
