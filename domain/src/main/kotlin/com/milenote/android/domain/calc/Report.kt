@@ -172,7 +172,11 @@ data class ReportData(
  */
 fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today()): ReportData {
     val fullRange = period.range()
-    val firstRecordDate = ledger.records.mapNotNull { Dates.parse(it.date) }.minOrNull()
+    // 未来日期的记录（预录）不参与「累计」的起点：否则跨度会是 0 / 负数。
+    val firstRecordDate = ledger.records
+        .mapNotNull { Dates.parse(it.date) }
+        .minOrNull()
+        ?.coerceAtMost(today)
     val inProgress = period.kind != ReportKind.ALL && period.isCurrent(today)
 
     // 实际区间：进行中截到今天；累计 = 首条记录 → 今天；未来期保留完整自然期（自然查不到记录）。
@@ -263,6 +267,9 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
         firstRecordDate = firstRecordDate,
         today = today,
         spanMonths = spanMonths,
+        // 累计用 stats(ledger) 全量口径（不筛日期，与总览「全部」一致）；
+        // 月 / 年用实际区间过滤，避免当前月的趋势柱把未来日期的记录也画进去。
+        filterRange = if (fullRange == null) null else range,
     )
 
     return ReportData(
@@ -337,6 +344,9 @@ private fun energyLine(
     } else {
         null
     }
+    // 这一期没有任何能源记录（金额、量、区间、估算都没有）时不返回值：报告页整张能源卡不画，
+    // 而不是显示「加油 0 次 / 油耗 — / 本期没有加满记录」。
+    if (counted.isEmpty() && rate == null && estimated == null && previous == null) return null
     return ReportEnergyLine(
         count = counted.size,
         amount = amount,
@@ -356,10 +366,15 @@ private fun buildTrends(
     firstRecordDate: LocalDate?,
     today: LocalDate,
     spanMonths: Int?,
+    filterRange: DateRange?,
 ): Pair<List<MonthlyTotal>, List<YearlyTotal>> {
+    val filterFrom = filterRange?.let { Dates.parse(it.from) }
+    val filterTo = filterRange?.let { Dates.parse(it.to) }
     val totals = linkedMapOf<YearMonth, Double>()
     ledger.records.forEach { record ->
         val date = Dates.parse(record.date) ?: return@forEach
+        if (filterFrom != null && date < filterFrom) return@forEach
+        if (filterTo != null && date > filterTo) return@forEach
         val key = YearMonth.of(date.year, date.monthValue)
         totals[key] = (totals[key] ?: 0.0) + costOf(record, ledger)
     }

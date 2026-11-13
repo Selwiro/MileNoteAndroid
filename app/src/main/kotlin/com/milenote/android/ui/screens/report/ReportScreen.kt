@@ -51,7 +51,6 @@ import com.milenote.android.domain.calc.ReportKind
 import com.milenote.android.domain.calc.ReportPeriod
 import com.milenote.android.domain.calc.report
 import com.milenote.android.domain.format.Format
-import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.energyProfile
@@ -110,7 +109,13 @@ fun ReportScreen(vm: MileNoteViewModel, modifier: Modifier = Modifier) {
         }
         return
     }
-    ReportContent(vm = vm, ledger = ledger, demo = state.demo, modifier = modifier)
+    ReportContent(
+        vm = vm,
+        ledger = ledger,
+        demo = state.demo,
+        loadError = state.loadError,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -118,6 +123,7 @@ private fun ReportContent(
     vm: MileNoteViewModel,
     ledger: Ledger,
     demo: Boolean,
+    loadError: String?,
     modifier: Modifier = Modifier,
 ) {
     val today = remember { Dates.today() }
@@ -149,6 +155,7 @@ private fun ReportContent(
     val data = remember(ledger, period, today) { report(ledger, period, today) }
 
     val dates = remember(ledger) { ledger.records.mapNotNull { Dates.parse(it.date) } }
+    val firstDateIso = remember(dates) { dates.minOrNull()?.let { Dates.iso(it) } }
     val firstYear = remember(dates) { dates.minOrNull()?.year ?: today.year }
     val monthsWithData = remember(dates) { dates.map { "%04d-%02d".format(it.year, it.monthValue) }.toSet() }
     val yearsWithData = remember(dates) { dates.map { it.year }.toSet() }
@@ -164,7 +171,9 @@ private fun ReportContent(
     }
     val canPrev = when (kind) {
         ReportKind.ALL -> false
-        else -> prevPeriod?.range()?.let { range -> dates.isEmpty() || range.to >= dates.min().let { Dates.iso(it) } } ?: false
+        else -> prevPeriod?.range()?.let { range ->
+            firstDateIso == null || range.to >= firstDateIso
+        } ?: false
     }
     val canNext = nextPeriod?.let { !it.isFuture(today) } ?: false
 
@@ -197,6 +206,26 @@ private fun ReportContent(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (loadError != null) {
+            item(key = "load-error") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MessageBar(
+                        message = tr(
+                            "本地账本读取异常，原始数据已另存。当前为空账本，可继续使用或重新读取。",
+                            "The local ledger could not be read and a copy of the original was saved. You are on an empty ledger — keep using it or re-read the original.",
+                        ),
+                        kind = MessageKind.ERROR,
+                        actionLabel = tr("重新读取账本", "Re-read the ledger"),
+                        onAction = vm::reloadLedger,
+                    )
+                    Text(
+                        text = loadError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         if (demo) {
             item(key = "demo") {
                 MessageBar(
@@ -734,8 +763,12 @@ private fun BreakdownCard(ledger: Ledger, data: ReportData) {
 
 @Composable
 private fun EnergyCard(ledger: Ledger, data: ReportData) {
-    val ev = ledger.vehicle.energyProfile == EnergyProfile.ELECTRIC_ONLY
-    SectionCard(title = if (ev) tr("充电与电耗", "Charging") else tr("加油与油耗", "Refueling")) {
+    val title = when {
+        data.fuel != null && data.electric != null -> tr("加油、充电与能耗", "Fuel, charging & energy")
+        data.electric != null -> tr("充电与电耗", "Charging")
+        else -> tr("加油与油耗", "Refueling")
+    }
+    SectionCard(title = title) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             data.fuel?.let { line ->
                 EnergyFlow(
@@ -808,17 +841,20 @@ private fun EnergyFlow(
         )
         val currentRate = line.rate
         val estimate = line.estimated
-        Text(
-            text = when {
-                currentRate == null && estimate == null -> tr("%s —", "%s —", rateLabel)
-                currentRate != null -> tr("%s %s %s", "%s %s %s", rateLabel, Format.fmt(currentRate), rateUnit)
-                else -> tr("累计估算约 %s %s", "Rough estimate %s %s", Format.fmt(estimate), rateUnit)
-            },
-            style = MaterialTheme.typography.bodyLarge,
-            color = scheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // 完全没有能耗数字时不画「油耗 —」这一行，只留下面那句解释，避免同一件事说两遍。
+        if (currentRate != null || estimate != null) {
+            Text(
+                text = if (currentRate != null) {
+                    tr("%s %s %s", "%s %s %s", rateLabel, Format.fmt(currentRate), rateUnit)
+                } else {
+                    tr("累计估算约 %s %s", "Rough estimate %s %s", Format.fmt(estimate), rateUnit)
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = scheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         // 样本说明单独一行（段数 + 「样本少」）：塞在油耗同一行时 1.3× 英文会被裁成「smal」。
         if (line.intervals > 0) {
             Text(

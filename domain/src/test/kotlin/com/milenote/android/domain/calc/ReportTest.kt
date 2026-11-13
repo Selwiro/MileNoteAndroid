@@ -466,6 +466,28 @@ class ReportTest {
     }
 
     @Test
+    fun `current month trend ignores records dated after today`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-11-03", "保险", 100.0),
+                plain("2026-11-20", "保险", 900.0), // 预录的未来日期：不进本月合计，也不进趋势柱
+            ),
+        )
+        val data = report(ledger, month(2026, 11), today)
+        assertEquals(100.0, data.total, 1e-9)
+        val currentBar = data.monthlyTrend.last { it.year == 2026 && it.month == 11 }
+        assertEquals(100.0, currentBar.total, 1e-9)
+    }
+
+    @Test
+    fun `month without energy records has no energy flow`() {
+        val ledger = ledgerWith(listOf(plain("2026-10-03", "保险", 100.0)))
+        val data = report(ledger, month(2026, 10), today)
+        assertNull(data.fuel)
+        assertNull(data.electric)
+    }
+
+    @Test
     fun `previous energy line exposes sample count for the delta row`() {
         val ledger = ledgerWith(
             listOf(

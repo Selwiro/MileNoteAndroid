@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +80,11 @@ internal fun ReportShareOverlay(
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var pendingImage by remember { mutableStateOf<Bitmap?>(null) }
+    // 待保存的图片先落成临时文件：SAF 是另一个 Activity，期间旋转 / 进程重建会丢组合内状态，
+    // 文件在回调里再读，保存不会静默失败。
+    val pendingFile = remember {
+        java.io.File(context.cacheDir, "exports/pending-report.png")
+    }
     // 卡片在窗口里的像素范围（PixelCopy 用）。放在组合内即可，读到时一定已布局。
     var cardBounds by remember { mutableStateOf<Rect?>(null) }
     val fileName = reportFileName(data)
@@ -121,14 +126,15 @@ internal fun ReportShareOverlay(
     val saveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
     ) { uri ->
-        val pending = pendingImage
-        if (uri != null && pending != null) {
-            runCatching { FileExporter.writeTo(context, uri, pngBytes(pending)) }
-                .onFailure {
-                    error = tr("写入图片失败，请换一个位置重试", "Could not save the image; try another location")
-                }
+        if (uri != null) {
+            runCatching {
+                val bytes = pendingFile.readBytes()
+                FileExporter.writeTo(context, uri, bytes)
+            }.onFailure {
+                error = tr("写入图片失败，请换一个位置重试", "Could not save the image; try another location")
+            }
         }
-        pendingImage = null
+        pendingFile.delete()
     }
 
     Box(
@@ -160,7 +166,16 @@ internal fun ReportShareOverlay(
                 TextButton(
                     onClick = {
                         capture { bitmap ->
-                            pendingImage = bitmap
+                            pendingFile.parentFile?.mkdirs()
+                            runCatching { pendingFile.writeBytes(pngBytes(bitmap)) }
+                                .onFailure {
+                                    error = tr(
+                                        "图片生成失败，已改为分享文本",
+                                        "Image could not be generated; sharing text instead",
+                                    )
+                                    shareText()
+                                    return@capture
+                                }
                             saveLauncher.launch("$fileName.png")
                         }
                     },
@@ -236,7 +251,9 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
     val total = data.categories.sumOf { it.value }
     Column(
         modifier = modifier
-            .width(330.dp)
+            // 小屏（320dp 宽）也放得下：卡片最多 330dp，屏幕更窄时占满可用宽度。
+            .widthIn(max = 330.dp)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(scheme.surfaceContainerLow)
             .padding(14.dp),
@@ -259,10 +276,12 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
             )
         }
         Text(
-            text = if (data.inProgress) {
-                tr("截至 %s", "Through %s", shortDate(data.range.to))
-            } else {
-                shortDate(data.range.from) + " – " + shortDate(data.range.to)
+            // 分享图要脱离页面也能读懂：区间一律带年份；累计的起点看 firstDate（range.from 是空串）。
+            text = when {
+                data.period.kind == ReportKind.ALL && data.firstDate != null ->
+                    longDate(data.firstDate!!) + " – " + longDate(data.range.to)
+                data.inProgress -> tr("截至 %s", "Through %s", longDate(data.range.to))
+                else -> longDate(data.range.from) + " – " + longDate(data.range.to)
             },
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
@@ -365,13 +384,21 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
     }
 }
 
+/** 括号按语言：中文全角、英文半角并留一个空格。 */
+private fun parenthesize(text: String): String =
+    if (I18n.english) " (" + text + ")" else "\uFF08" + text + "\uFF09"
+
 /** 纯文本版报告（分享到聊天 / 备忘录）。 */
 internal fun buildReportText(data: ReportData, ledger: Ledger): String {
     val profile = ledger.energyProfile
     val sb = StringBuilder()
-    sb.append(tr("里程志", "MileNote")).append(" · ").append(reportPeriodTitle(data)).append('\n')
+    sb.append(tr("里程志", "MileNote")).append(" · ").append(reportPeriodTitle(data))
+    if (data.inProgress) {
+        sb.append(parenthesize(tr("截至 %s", "through %s", shortDate(data.range.to))))
+    }
+    sb.append('\n')
     sb.append(tr("支出 %s", "Spending %s", moneyText(data.total)))
-    shareDeltaLine(data).takeIf { it.isNotBlank() }?.let { sb.append("（").append(it).append("）") }
+    shareDeltaLine(data).takeIf { it.isNotBlank() }?.let { sb.append(parenthesize(it)) }
     sb.append('\n')
     sb.append(shareMetricLine(data)).append('\n')
     if (data.categories.isNotEmpty()) {
@@ -380,7 +407,7 @@ internal fun buildReportText(data: ReportData, ledger: Ledger): String {
         data.categories.forEach { item ->
             sb.append(DataLabels.categoryFor(ledger, item.name, profile))
                 .append(' ').append(moneyText(item.value))
-                .append('（').append(percentLabel(item.value, total)).append('）').append('\n')
+                .append(parenthesize(percentLabel(item.value, total))).append('\n')
         }
     }
     val fuel = data.fuel
@@ -391,14 +418,16 @@ internal fun buildReportText(data: ReportData, ledger: Ledger): String {
             sb.append(energySummary(line, electric = false)).append('\n')
             val rate = line.rate ?: line.estimated
             if (rate != null) {
+                val detail = listOf(spanLabel(line.intervals, false), energyDelta(line, data))
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
                 sb.append(
                     tr(
-                        "油耗 %s %s（%s%s）",
-                        "Fuel economy %s %s (%s%s)",
+                        "油耗 %s %s%s",
+                        "Fuel economy %s %s%s",
                         Format.fmt(rate),
                         Units.consumption,
-                        spanLabel(line.intervals, false),
-                        energyDeltaSuffix(line, data),
+                        parenthesize(detail),
                     ),
                 ).append('\n')
             }
@@ -407,14 +436,16 @@ internal fun buildReportText(data: ReportData, ledger: Ledger): String {
             sb.append(energySummary(line, electric = true)).append('\n')
             val rate = line.rate ?: line.estimated
             if (rate != null) {
+                val detail = listOf(spanLabel(line.intervals, true), energyDelta(line, data))
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
                 sb.append(
                     tr(
-                        "电耗 %s %s（%s%s）",
-                        "Energy use %s %s (%s%s)",
+                        "电耗 %s %s%s",
+                        "Energy use %s %s%s",
                         Format.fmt(rate),
                         Units.energyConsumption,
-                        spanLabel(line.intervals, true),
-                        energyDeltaSuffix(line, data),
+                        parenthesize(detail),
                     ),
                 ).append('\n')
             }
@@ -476,7 +507,10 @@ private fun shareMetricLine(data: ReportData): String {
         tr("里程 %s %s", "Distance %s %s", data.distance?.let { Format.fmt(it) } ?: "—", Units.distanceUnit),
     )
     data.perKm?.let { parts += tr("每公里 %s", "%s per km", moneyText(it)) }
-    data.monthlyAvg?.let { parts += tr("月均 %s", "%s a month", moneyText(it)) }
+    // 累计的「月均」已经在上面的 delta 行里，这里不再重复。
+    if (data.period.kind != ReportKind.ALL) {
+        data.monthlyAvg?.let { parts += tr("月均 %s", "%s a month", moneyText(it)) }
+    }
     return parts.joinToString(" · ")
 }
 
@@ -493,27 +527,21 @@ private fun energySummary(line: com.milenote.android.domain.calc.ReportEnergyLin
     return parts.joinToString(" · ")
 }
 
-private fun energyDeltaSuffix(
+private fun energyDelta(
     line: com.milenote.android.domain.calc.ReportEnergyLine,
     data: ReportData,
 ): String {
     val prev = line.previous?.rate ?: return ""
     val current = line.rate ?: return ""
     val diff = current - prev
-    if (kotlin.math.abs(diff) < 0.05) return tr("，基本持平", ", about the same")
+    if (kotlin.math.abs(diff) < 0.05) return tr("基本持平", "about the same")
     val arrow = if (diff > 0) "↑" else "↓"
     val label = when (data.period.kind) {
         ReportKind.MONTH -> if (data.inProgress) tr("较上月同期", "vs same span last month") else tr("较上月", "vs last month")
         ReportKind.YEAR -> if (data.inProgress) tr("较去年同期", "vs same span last year") else tr("较上年", "vs last year")
         ReportKind.ALL -> ""
     }
-    return tr(
-        "，%s %s %s",
-        ", %s %s %s",
-        label,
-        arrow,
-        Format.fmt(kotlin.math.abs(diff)),
-    )
+    return tr("%s %s %s", "%s %s %s", label, arrow, Format.fmt(kotlin.math.abs(diff)))
 }
 
 private fun spanLabel(intervals: Int, electric: Boolean): String = when {
@@ -547,6 +575,16 @@ private fun percentLabel(value: Double, total: Double): String {
 
 private fun monthName(month: Int): String =
     java.time.Month.of(month).getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH)
+
+/** `2026 年 11 月 13 日` / `Nov 13, 2026`：分享图独立可读，必须带年份。 */
+private fun longDate(iso: String): String {
+    val date = com.milenote.android.domain.calc.Dates.parse(iso) ?: return iso
+    return if (I18n.english) {
+        "${monthName(date.monthValue)} ${date.dayOfMonth}, ${date.year}"
+    } else {
+        "${date.year} 年 ${date.monthValue} 月 ${date.dayOfMonth} 日"
+    }
+}
 
 private fun shortDate(iso: String): String {
     val date = com.milenote.android.domain.calc.Dates.parse(iso) ?: return iso
