@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -387,7 +389,10 @@ private val DonutSize = 150.dp
  * 总览「趋势」卡「图表区」高度：绘图区 + 底部月份轴。里程 / 支出两张图共用。
  *
  * 横轴对齐依赖这里：两张图都把月份标签放在本区块最后 [TrendAxisRowHeight] 里，
- * 轴下不再放任何内容（支出图例收进卡头、点开查看），所以切 tab 时横轴、卡高都不动。
+ * 轴下不放任何内容，所以切 tab 时横轴、卡高都不动。
+ *
+ * 2026-11-13 起支出的「分类」视图也钉在这个高度里（合计行 + 最多 7 行排行），
+ * 「月度 / 分类」来回切换时卡片高度不变。
  */
 private val TrendChartBlockHeight = 236.dp
 
@@ -396,6 +401,12 @@ private val TrendAxisRowHeight = 20.dp
 
 /** 轴行与绘图区之间的呼吸位。 */
 private val TrendAxisGap = 4.dp
+
+/** 分类视图：最多显示几行，其余折成「其他 N 类」。 */
+private const val CategoryRowLimit = 7
+
+/** 分类排行单行高度：合计行 + 7 行正好铺满 [TrendChartBlockHeight]。 */
+private val CategoryRowHeight = 30.dp
 
 /** 单根柱占列宽的比例（月数 6–24 时自适应，避免固定宽度在 12/24 列时互相重叠）。 */
 private const val BarWidthFraction = 0.62f
@@ -459,18 +470,22 @@ internal fun percentText(value: Double, total: Double): String {
 }
 
 /**
- * 支出趋势卡内容：按所选月份区间的分类堆叠柱。
+ * 支出趋势卡「月度」视图：按所选月份区间的分类堆叠柱。
  *
  * 点击柱段后，不显示底部整宽信息条，而是在该段旁边弹出气泡（分类 / 金额 / 占比），
  * 气泡水平位置随柱子夹取在卡片内；点击其它段切换、点空白关闭。柱段高亮保持不变。
  *
  * @param bars [buildMonthBars] 的结果。
+ * @param highlight 从「分类」视图点选回来的分类名：只保留该分类的色块，其余降到 22%；
+ *   null 表示不高亮。点空白会通过 [onClearHighlight] 清掉。
  */
 @Composable
 internal fun ExpenseTrendChart(
     bars: List<MonthBar>,
     modifier: Modifier = Modifier,
     ev: Boolean = false,
+    highlight: String? = null,
+    onClearHighlight: () -> Unit = {},
 ) {
     if (bars.isEmpty() || bars.all { it.total <= 0.0 }) {
         EmptyChartHint(
@@ -525,8 +540,11 @@ internal fun ExpenseTrendChart(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .pointerInput(bars) {
-                        detectTapGestures { selection = null }
+                    .pointerInput(bars, highlight) {
+                        detectTapGestures {
+                            selection = null
+                            onClearHighlight()
+                        }
                     },
             )
             Column(modifier = Modifier.fillMaxSize()) {
@@ -602,6 +620,7 @@ internal fun ExpenseTrendChart(
                                                     selectedIndex = selection
                                                         ?.takeIf { it.monthIndex == index }
                                                         ?.categoryIndex,
+                                                    highlight = highlight,
                                                 )
                                             }
                                         }
@@ -674,19 +693,208 @@ internal fun ExpenseTrendChart(
 }
 
 /**
- * 图例内容：支出分类的色点 + 名称（卡头「图例」按钮点开后的底部弹层）。
+ * 「分类」视图的聚合：把趋势窗口里各月的分类段按名称合并，金额从大到小。
  *
- * 图例不再常驻在轴下，两张图的月份轴因此可以贴齐卡片底部；点柱段仍有分类气泡。
+ * 金额相同的分类按 9 类固定顺序（自定义分类排在最后、再按名称）稳定排序，
+ * 避免每次重组都换位置。金额为 0 的分类不出现（与堆叠柱的口径一致）。
+ */
+internal fun categoryTotalsOf(bars: List<MonthBar>): List<CategoryValue> {
+    val totals = linkedMapOf<String, Double>()
+    bars.forEach { bar ->
+        bar.categories.forEach { category ->
+            if (category.value > 0.0) {
+                totals[category.name] = (totals[category.name] ?: 0.0) + category.value
+            }
+        }
+    }
+    if (totals.isEmpty()) return emptyList()
+    val order: (String) -> Int = { name ->
+        val normalized = if (name == "维修保养") "保养" else name
+        MileNoteCategoryNames.indexOf(normalized).takeIf { it >= 0 } ?: MileNoteCategoryNames.size
+    }
+    return totals.entries
+        .sortedWith(compareByDescending<Map.Entry<String, Double>> { it.value }
+            .thenBy { order(it.key) }
+            .thenBy { it.key })
+        .map { CategoryValue(it.key, it.value) }
+}
+
+/**
+ * 支出趋势卡「分类」视图：当前范围按分类聚合的排行（色点 + 名称 + 占比条 + 金额 + 百分比）。
+ *
+ * 与「月度」视图共用 [TrendChartBlockHeight]：合计行 20dp + 最多 [CategoryRowLimit] 行 30dp，
+ * 所以卡内切换视图时卡片高度不变。最多 6 类 + 「其他 N 类」，避免自定义分类把列表撑破；
+ * 点某一行交给调用方切回月度并高亮该类柱段。
+ *
+ * @param bars [buildMonthBars] 的结果。
+ * @param onPick 点分类行（「其他」行不可点）。
  */
 @Composable
-internal fun ExpenseLegend(
+internal fun ExpenseCategoryBreakdown(
     bars: List<MonthBar>,
-    ev: Boolean = false,
+    onPick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    ev: Boolean = false,
 ) {
-    val legend = remember(bars) { barLegendEntries(bars) }
-    if (legend.isEmpty()) return
-    CategoryLegend(entries = legend, ev = ev, modifier = modifier)
+    val totals = remember(bars) { categoryTotalsOf(bars) }
+    val total = remember(totals) { totals.sumOf { it.value } }
+    if (totals.isEmpty() || total <= 0.0) {
+        EmptyChartHint(
+            text = tr("当前范围还没有支出", "No expenses in this range"),
+            modifier = modifier,
+            height = TrendChartBlockHeight,
+        )
+        return
+    }
+    val scheme = MaterialTheme.colorScheme
+    val palette = LocalMileNoteCategoryColors.current
+    val darkTheme = LocalMileNoteDarkTheme.current
+    val maxValue = totals.first().value
+    val shown = if (totals.size <= CategoryRowLimit) totals else totals.take(CategoryRowLimit - 1)
+    val otherCount = totals.size - shown.size
+    val otherValue = totals.drop(shown.size).sumOf { it.value }
+    val summary = tr(
+        "支出分类，合计 %s %s，共 %d 类",
+        "Expenses by category, %s %s in %d categories",
+        Format.money(total), Units.money, totals.size,
+    )
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TrendChartBlockHeight)
+            .semantics { contentDescription = summary },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = tr("合计", "Total"),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "${Units.currencySymbol}${Format.money(total)}",
+                style = MaterialTheme.typography.moneySmall,
+                color = scheme.onSurface,
+                maxLines = 1,
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = tr("%d 类", "%d categories", totals.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        shown.forEach { item ->
+            CategoryRankRow(
+                label = DataLabels.category(item.name, ev),
+                value = item.value,
+                total = total,
+                maxValue = maxValue,
+                color = chartColorOf(item.name, palette, darkTheme),
+                onClick = { onPick(item.name) },
+            )
+        }
+        if (otherCount > 0) {
+            CategoryRankRow(
+                label = tr("其他 %d 类", "Other %d", otherCount),
+                value = otherValue,
+                total = total,
+                maxValue = maxValue,
+                color = scheme.onSurfaceVariant,
+                onClick = null,
+            )
+        }
+    }
+}
+
+/**
+ * 「分类」视图的一行：色点 + 名称 + 占比条 + 金额 + 百分比。
+ *
+ * [onClick] 为 null 时不可点（「其他 N 类」）。整行合成一个无障碍节点，
+ * 读屏读「油费，8,830 元，占 65.2%」，不用逐个数字去听。
+ */
+@Composable
+private fun CategoryRankRow(
+    label: String,
+    value: Double,
+    total: Double,
+    maxValue: Double,
+    color: Color,
+    onClick: (() -> Unit)?,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val percent = percentText(value, total)
+    val amount = "${Units.currencySymbol}${Format.money(value)}"
+    val description = tr(
+        "%s，%s %s，占 %s",
+        "%s, %s %s, %s",
+        label, Format.money(value), Units.money, percent,
+    )
+    val clickable = if (onClick != null) {
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(CategoryRowHeight)
+            .then(clickable)
+            .semantics(mergeDescendants = true) { contentDescription = description }
+            .padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color, CircleShape),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1.1f),
+        )
+        Box(
+            modifier = Modifier
+                .weight(0.9f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(scheme.surfaceContainerHigh),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth((value / maxValue).toFloat().coerceIn(0.02f, 1f))
+                    .height(6.dp)
+                    .background(color, RoundedCornerShape(3.dp)),
+            )
+        }
+        Text(
+            text = amount,
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurface,
+            maxLines = 1,
+        )
+        Text(
+            text = percent,
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+            maxLines = 1,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(40.dp),
+        )
+    }
 }
 
 /**
@@ -980,18 +1188,6 @@ private fun EmptyChartHint(
     }
 }
 
-/** 柱图图例：近 6 个月出现过的分类，按 9 类固定顺序排列。 */
-private fun barLegendEntries(bars: List<MonthBar>): List<Pair<String, Color>> {
-    val present = linkedMapOf<String, Color>()
-    bars.forEach { bar ->
-        bar.categories.forEach { category -> present.putIfAbsent(category.name, category.color) }
-    }
-    return present.entries.sortedBy { (name, _) ->
-        val index = MileNoteCategoryNames.indexOf(if (name == "维修保养") "保养" else name)
-        if (index >= 0) index else MileNoteCategoryNames.size
-    }.map { it.toPair() }
-}
-
 /**
  * 堆叠柱自绘：顶部 6dp 圆角，每段用分类色做纵向渐变（0.95 → 0.65），
  * 选中段保持原亮度、其余降透明度（设计规范 §2.7 选中态）。
@@ -1000,6 +1196,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStackedBar(
     categories: List<ChartCategory>,
     total: Double,
     selectedIndex: Int?,
+    highlight: String? = null,
 ) {
     if (total <= 0.0) return
     val radius = 6.dp.toPx()
@@ -1019,9 +1216,19 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStackedBar(
         var top = 0f
         categories.forEachIndexed { index, category ->
             val height = (category.value / total * size.height).toFloat()
+            // 分类高亮优先：不匹配的分类整个压到 22%；否则只压暗非选中段（点柱气泡态）。
+            val mismatch = highlight != null && category.name != highlight
             val dimmed = selectedIndex != null && selectedIndex != index
-            val startAlpha = if (dimmed) 0.5f else 0.95f
-            val endAlpha = if (dimmed) 0.35f else 0.65f
+            val startAlpha = when {
+                mismatch -> 0.22f
+                dimmed -> 0.5f
+                else -> 0.95f
+            }
+            val endAlpha = when {
+                mismatch -> 0.15f
+                dimmed -> 0.35f
+                else -> 0.65f
+            }
             drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(

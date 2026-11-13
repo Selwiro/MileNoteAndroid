@@ -30,11 +30,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -813,15 +813,27 @@ private fun trendTabLabel(tab: TrendTab): String = when (tab) {
 }
 
 /**
+ * 「支出」tab 的两种读图方式（2026-11-13 替换掉原来的「图例」按钮 + 底部弹层）：
+ * 月度 = 分类堆叠柱；分类 = 当前范围的分类排行。
+ *
+ * 只影响支出 tab，状态留在卡片内（切到里程再回来还是原视图）；切到分类时清掉柱段高亮。
+ */
+private enum class ExpenseChartView {
+    MONTH,
+    CATEGORY,
+}
+
+/**
  * 总览「趋势」卡：原「里程趋势」折线 + 「支出趋势」堆叠柱合并成一张卡。
  *
  * - 切换控件放在卡头左侧的**文字 tab**（选中加粗 + 3dp 下划线），不再用通栏段控：
  *   与右上角范围胶囊拉开视觉层级（2026-11-12 用户反馈「两个胶囊像重复控件」）；
  * - 时间范围沿用全局 [period] / [customRange]（与「用车统计」联动），两张图共用
  *   [trendMonthWindow] 的同一批月份，切换 tab 时横轴不跳动；
- * - 两张图共用同一「图表区」（绘图 + 底部月份轴）：轴下不再放信息区，支出图例收进卡头的
- *   「图例」按钮、点开底部弹层查看，所以切 tab 时横轴在同一行、卡高也不变，
- *   下方「爱车待办」不会被顶得上下跳（2026-11-12 用户反馈）。
+ * - 两张图共用同一「图表区」（绘图 + 底部月份轴）：轴下不放信息区，所以切 tab 时横轴在同一行、
+ *   卡高也不变，下方「爱车待办」不会被顶得上下跳（2026-11-12 用户反馈）；
+ * - 2026-11-13：支出 tab 的「图例」弹层换成卡头视图开关（月度 / 分类）。分类视图在同一高度内
+ *   给出金额与占比排行，点某类回到月度并高亮它的柱段——不再用一张颜色对照表让人回忆。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -834,9 +846,12 @@ private fun TrendCard(
     onSelectCustomRange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showLegend by remember { mutableStateOf(false) }
     var tabName by rememberSaveable { mutableStateOf(TrendTab.EXPENSE.name) }
+    var viewName by rememberSaveable { mutableStateOf(ExpenseChartView.MONTH.name) }
+    // 从分类视图点选回来要高亮的分类；点空白 / 切视图 / 数据换了就清掉，属临时态，不跨配置保存。
+    var highlight by remember { mutableStateOf<String?>(null) }
     val tab = TrendTab.entries.firstOrNull { it.name == tabName } ?: TrendTab.MILEAGE
+    val view = ExpenseChartView.entries.firstOrNull { it.name == viewName } ?: ExpenseChartView.MONTH
     val window = remember(ledger, range) { trendMonthWindow(ledger, range) }
     val months = window.months
     // 「全部」在图表里只画最近 24 个月；轴下不放信息，窗口说明放在卡头右侧。
@@ -856,6 +871,20 @@ private fun TrendCard(
     val monthBars = remember(ledger, palette, darkTheme, months) {
         buildMonthBars(ledger, palette, darkTheme, months)
     }
+    // 换范围 / 切车后高亮的分类可能已经不在了：别让整张图全暗着不给解释。
+    LaunchedEffect(monthBars, highlight) {
+        val name = highlight ?: return@LaunchedEffect
+        if (monthBars.none { bar -> bar.categories.any { it.name == name } }) highlight = null
+    }
+    val highlightLabel = highlight
+        ?.takeIf { tab == TrendTab.EXPENSE && view == ExpenseChartView.MONTH }
+        ?.let {
+            tr(
+                "仅高亮：%s · 点空白取消",
+                "%s only · tap blank to clear",
+                DataLabels.category(it, ledger.isEv),
+            )
+        }
 
     SectionCard(modifier = modifier) {
         Row(
@@ -863,24 +892,29 @@ private fun TrendCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.weight(1f)) {
                 HeaderTextTabs(
                     labels = TrendTab.entries.map { trendTabLabel(it) },
                     selectedIndex = tab.ordinal,
                     onSelect = { index ->
                         tabName = TrendTab.entries[index].name
-                        showLegend = false
+                        highlight = null
                     },
                 )
-                if (windowLabel != null) {
-                    Text(
-                        text = windowLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+            }
+            // 视图开关只在支出 tab 出现；32dp 圆底，与范围胶囊同高，不改变卡头高度。
+            if (tab == TrendTab.EXPENSE) {
+                ExpenseViewToggle(
+                    view = view,
+                    onToggle = {
+                        highlight = null
+                        viewName = if (view == ExpenseChartView.MONTH) {
+                            ExpenseChartView.CATEGORY.name
+                        } else {
+                            ExpenseChartView.MONTH.name
+                        }
+                    },
+                )
             }
             RangeFilterAction(
                 period = period,
@@ -888,56 +922,68 @@ private fun TrendCard(
                 onSelectPeriod = onSelectPeriod,
                 onSelectCustomRange = onSelectCustomRange,
             )
-            // 图例只在支出 tab 出现；图标按钮 32dp，不改变卡头高度。
-            if (tab == TrendTab.EXPENSE) {
-                TrendLegendButton(onClick = { showLegend = true })
-            }
+        }
+        // 说明行单独占满卡片宽度（不再挤在 tab 右侧的窄列里）：高亮提示 + 「近 N 个月」都要完整可读。
+        val subtitle = highlightLabel ?: windowLabel
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+            )
         }
         Spacer(modifier = Modifier.height(10.dp))
         when (tab) {
             TrendTab.MILEAGE -> MileageTrendChart(bars = mileageBars)
-            TrendTab.EXPENSE -> ExpenseTrendChart(bars = monthBars, ev = ledger.isEv)
-        }
-    }
-
-    if (showLegend && tab == TrendTab.EXPENSE) {
-        ModalBottomSheet(onDismissRequest = { showLegend = false }) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(tr("图例", "Legend"), style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    text = tr(
-                        "支出柱段按分类着色；点柱段可看分类、金额与占比。",
-                        "Segments are colored by category; tap one for its name, amount and share.",
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            TrendTab.EXPENSE -> when (view) {
+                ExpenseChartView.MONTH -> ExpenseTrendChart(
+                    bars = monthBars,
+                    ev = ledger.isEv,
+                    highlight = highlight,
+                    onClearHighlight = { highlight = null },
                 )
-                ExpenseLegend(bars = monthBars, ev = ledger.isEv)
-                TextButton(onClick = { showLegend = false }) { Text(tr("关闭", "Close")) }
+                ExpenseChartView.CATEGORY -> ExpenseCategoryBreakdown(
+                    bars = monthBars,
+                    ev = ledger.isEv,
+                    onPick = { name ->
+                        highlight = name
+                        viewName = ExpenseChartView.MONTH.name
+                    },
+                )
             }
         }
     }
 }
 
-/** 卡头「图例」按钮：圆形小底、18dp 调色板图标，高度与右侧范围胶囊一致（不改变卡头高度）。 */
+/**
+ * 支出 tab 的视图开关：月度（分类堆叠柱）↔ 分类（金额与占比排行）。
+ *
+ * 图标表示「点下去会看到什么」：月度态显示排行图标，分类态显示柱状图标；
+ * 分类态用 primaryContainer 底表示「当前在分类视图」。
+ */
 @Composable
-private fun TrendLegendButton(onClick: () -> Unit) {
+private fun ExpenseViewToggle(view: ExpenseChartView, onToggle: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val toCategory = view == ExpenseChartView.MONTH
     Surface(
-        onClick = onClick,
+        onClick = onToggle,
         shape = CircleShape,
-        color = scheme.surfaceContainerHigh,
-        contentColor = scheme.onSurface,
+        color = if (toCategory) scheme.surfaceContainerHigh else scheme.primaryContainer,
+        contentColor = if (toCategory) scheme.onSurface else scheme.onPrimaryContainer,
     ) {
         Box(modifier = Modifier.padding(7.dp)) {
             Icon(
-                imageVector = MileNoteIcons.Palette,
-                contentDescription = tr("图例", "Legend"),
+                imageVector = if (toCategory) MileNoteIcons.Rank else MileNoteIcons.Chart,
+                contentDescription = if (toCategory) {
+                    tr("按分类查看", "View by category")
+                } else {
+                    tr("按月份查看", "View by month")
+                },
                 modifier = Modifier.size(18.dp),
             )
         }

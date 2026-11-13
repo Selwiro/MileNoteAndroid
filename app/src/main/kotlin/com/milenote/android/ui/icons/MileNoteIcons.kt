@@ -432,6 +432,11 @@ object MileNoteIcons {
         strokeIcon(name = "MileNote.FilterList", "M4 6h16M7 12h10M10 18h4")
     }
 
+    /** 分类排行 / 明细列表（三条左对齐、长度递减的横条，区别于居中的 [FilterList]）。 */
+    val Rank: ImageVector by lazy {
+        strokeIcon(name = "MileNote.Rank", "M4 6h16M4 12h11M4 18h6")
+    }
+
     /** 锁定（WebDAV 加密）。 */
     val Lock: ImageVector by lazy {
         strokeIcon(name = "MileNote.Lock", "M6 10h12v11H6zM9 10V7a3 3 0 0 1 6 0v3")
