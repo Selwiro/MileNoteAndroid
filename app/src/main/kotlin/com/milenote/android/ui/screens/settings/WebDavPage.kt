@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.BuildConfig
+import com.milenote.android.data.webdav.WebDavProblemKind
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.WebDavConflictChoice
 import com.milenote.android.ui.WebDavUiState
@@ -266,6 +267,20 @@ internal fun WebDavPage(
                 message = error,
                 kind = MessageKind.ERROR,
                 onDismiss = onDismissMessage,
+            )
+        }
+
+        // 上次同步异常（跨会话保留）：本会话没有新错误时也把原因显示出来，
+        // 否则从「我的」看到「同步失败」进来却找不到解释（重启后内存里的 error 已清空）。
+        if (state.error == null && state.problem != null) {
+            val problem = state.problem
+            MessageBar(
+                message = if (problem.at > 0L) {
+                    tr("%s（%s）", "%s (%s)", problem.message, formatSyncTime(problem.at))
+                } else {
+                    problem.message
+                },
+                kind = if (problem.kind == WebDavProblemKind.ERROR) MessageKind.ERROR else MessageKind.WARNING,
             )
         }
 

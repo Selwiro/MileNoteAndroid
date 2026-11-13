@@ -94,13 +94,21 @@ fun MineScreen(
     val backupMissing = backupDays == null
     // 超期只做页面内提醒（≥30 天）；未备份走「尚未备份」的既有警告色，不叠加。
     val overdueDays = remember(lastBackupAt) { backupOverdueDays(lastBackupAt) }
-    val syncOn = state.webDav.configured
-    val syncText = if (syncOn) tr("同步已开启", "Sync on") else tr("同步未开启", "Sync off")
-    val statusText = when {
-        backupMissing -> tr("尚未备份 · %s", "No backup yet · %s", syncText)
-        overdueDays != null -> tr("已 %d 天未备份 · %s", "%d days without a backup · %s", overdueDays, syncText)
-        else -> tr("上次备份 %s · %s", "Last backup %s · %s", backupLabel, syncText)
+    // 同步异常（失败 / 冲突 / 缺加密密码）跨会话保留：状态行转警示色，完整原因在 WebDAV 同步页。
+    val syncStatus = mineSyncStatus(
+        configured = state.webDav.configured,
+        problemKind = state.webDav.problem?.kind,
+    )
+    val backupText = when {
+        backupMissing -> tr("尚未备份", "No backup yet")
+        overdueDays != null -> tr("已 %d 天未备份", "%d days without a backup", overdueDays)
+        else -> tr("上次备份 %s", "Last backup %s", backupLabel)
     }
+    val statusLine = mineStatusLine(
+        backupText = backupText,
+        backupWarn = backupMissing || overdueDays != null,
+        sync = syncStatus,
+    )
 
     Box(modifier = modifier.fillMaxSize()) {
         SettingsPageList(narrow = true) {
@@ -139,8 +147,8 @@ fun MineScreen(
                         recordsCount = cars.sumOf { it.records.size },
                         companionDays = companionDays,
                         sinceLabel = sinceLabel,
-                        statusText = statusText,
-                        statusWarn = backupMissing || overdueDays != null,
+                        statusText = statusLine.text,
+                        statusWarn = statusLine.warn,
                         showStatus = !state.demo,
                     )
                 }
@@ -233,7 +241,7 @@ fun MineScreen(
  * @param companionDays 最早相伴日到今天的天数；null 时显示 `—`。
  * @param sinceLabel 起记时间 `yyyy.MM`；null（空账本）时不显示右上角。
  * @param statusText 数据安全状态行（上次备份 / 同步）。
- * @param statusWarn 尚未备份时状态行用警告色（文字与圆点一起变色）。
+ * @param statusWarn 备份缺失·超期或同步异常时状态行用警告色（文字与圆点一起变色）。
  * @param showStatus 演示账本下隐藏状态行，避免与本机真实备份/同步状态混搭。
  */
 @Composable
@@ -314,7 +322,8 @@ private fun MineDataCard(
                     text = statusText,
                     style = MaterialTheme.typography.bodySmall,
                     color = statusColor,
-                    maxLines = 1,
+                    // 允许折成两行：1.3× 字号下「已 31 天未备份 · 同步失败」单行会被截断，异常反而看不全。
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

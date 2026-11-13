@@ -17,6 +17,7 @@ import com.milenote.android.data.webdav.AutoSyncOutcome
 import com.milenote.android.data.webdav.RemoteLedger
 import com.milenote.android.data.webdav.WebDavAutoSyncEngine
 import com.milenote.android.data.webdav.WebDavFetchResult
+import com.milenote.android.data.webdav.WebDavProblem
 import com.milenote.android.data.webdav.WebDavRemoteMeta
 import com.milenote.android.data.webdav.WebDavRepository
 import com.milenote.android.i18n.DataLabels
@@ -144,6 +145,13 @@ data class WebDavUiState(
     val lastAutoSyncAt: Long? = null,
     /** 最近一次自动同步结果。 */
     val lastAutoSyncResult: String? = null,
+    /**
+     * 最近一次同步异常（跨会话持久化，正常时为 null）。
+     *
+     * 「我的 → 数据概览」状态行据此显示「同步失败 / 同步冲突 / 同步需密码」并转警告色，
+     * 详情（完整说明）在 WebDAV 同步页。
+     */
+    val problem: WebDavProblem? = null,
 )
 
 /** 最近一次被隔离的损坏账本文件（设置页「导出原始账本」用）。 */
@@ -258,6 +266,7 @@ class MileNoteViewModel(
                             lastSyncAt = sync.lastSyncAt,
                             lastAutoSyncAt = sync.lastAutoSyncAt,
                             lastAutoSyncResult = sync.lastAutoSyncResult,
+                            problem = sync.problem,
                         ),
                     )
                 }

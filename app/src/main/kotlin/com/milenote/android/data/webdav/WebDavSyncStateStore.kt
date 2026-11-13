@@ -24,6 +24,9 @@ class WebDavSyncStateStore(private val context: Context) {
         val lastSyncAt = longPreferencesKey("last_sync_at")
         val lastAutoSyncAt = longPreferencesKey("last_auto_sync_at")
         val lastAutoSyncResult = stringPreferencesKey("last_auto_sync_result")
+        val lastProblemKind = stringPreferencesKey("last_problem_kind")
+        val lastProblemMessage = stringPreferencesKey("last_problem_message")
+        val lastProblemAt = longPreferencesKey("last_problem_at")
     }
 
     /** 当前同步状态；从未同步过时返回全空 [WebDavSyncState]。 */
@@ -35,6 +38,9 @@ class WebDavSyncStateStore(private val context: Context) {
             lastSyncAt = prefs[Keys.lastSyncAt],
             lastAutoSyncAt = prefs[Keys.lastAutoSyncAt],
             lastAutoSyncResult = prefs[Keys.lastAutoSyncResult],
+            lastProblemKind = prefs[Keys.lastProblemKind],
+            lastProblemMessage = prefs[Keys.lastProblemMessage],
+            lastProblemAt = prefs[Keys.lastProblemAt],
         )
     }
 
@@ -47,6 +53,9 @@ class WebDavSyncStateStore(private val context: Context) {
             state.lastSyncAt?.let { prefs[Keys.lastSyncAt] = it } ?: prefs.remove(Keys.lastSyncAt)
             state.lastAutoSyncAt?.let { prefs[Keys.lastAutoSyncAt] = it } ?: prefs.remove(Keys.lastAutoSyncAt)
             state.lastAutoSyncResult?.let { prefs[Keys.lastAutoSyncResult] = it } ?: prefs.remove(Keys.lastAutoSyncResult)
+            state.lastProblemKind?.let { prefs[Keys.lastProblemKind] = it } ?: prefs.remove(Keys.lastProblemKind)
+            state.lastProblemMessage?.let { prefs[Keys.lastProblemMessage] = it } ?: prefs.remove(Keys.lastProblemMessage)
+            state.lastProblemAt?.let { prefs[Keys.lastProblemAt] = it } ?: prefs.remove(Keys.lastProblemAt)
         }
     }
 

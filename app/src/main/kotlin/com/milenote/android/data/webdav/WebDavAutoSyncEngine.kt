@@ -158,7 +158,10 @@ class WebDavAutoSyncEngine(
             }
             consecutiveFailures = 0
             nextAttemptAtMillis = 0L
-            if (recordAutoResult) webDav.markAutoSyncResult(outcome.message)
+            webDav.recordSyncOutcome(
+                problem = outcome.problemOrNull(),
+                autoResult = outcome.message.takeIf { recordAutoResult },
+            )
             outcome
         } catch (t: Throwable) {
             consecutiveFailures += 1
@@ -168,8 +171,29 @@ class WebDavAutoSyncEngine(
                 "Auto sync failed: %s",
                 t.message ?: tr("网络或服务器错误", "Network or server error"),
             )
-            if (recordAutoResult) runCatching { webDav.markAutoSyncResult(message) }
+            val problem = WebDavProblem(WebDavProblemKind.ERROR, message, System.currentTimeMillis())
+            if (recordAutoResult) {
+                runCatching { webDav.recordSyncOutcome(problem, autoResult = message) }
+            } else {
+                runCatching { webDav.recordSyncOutcome(problem) }
+            }
             AutoSyncOutcome(AutoSyncOutcome.Kind.ERROR, message)
         }
+    }
+
+    /**
+     * 结果为异常时返回持久化的异常快照（供「我的」页跨会话显示），成功 / 跳过时为 null。
+     *
+     * 「跳过」不算异常：未配置、演示账本、本机账本读取异常（另有提示）都在更早的分支返回，
+     * 而「上次失败、N 秒后重试」的跳过由上一次失败已经记录过异常。
+     */
+    private fun AutoSyncOutcome.problemOrNull(): WebDavProblem? {
+        val kind = when (this.kind) {
+            AutoSyncOutcome.Kind.SUCCESS, AutoSyncOutcome.Kind.SKIPPED -> return null
+            AutoSyncOutcome.Kind.ERROR -> WebDavProblemKind.ERROR
+            AutoSyncOutcome.Kind.CONFLICT -> WebDavProblemKind.CONFLICT
+            AutoSyncOutcome.Kind.NEEDS_PASSWORD -> WebDavProblemKind.NEEDS_PASSWORD
+        }
+        return WebDavProblem(kind, message, System.currentTimeMillis())
     }
 }

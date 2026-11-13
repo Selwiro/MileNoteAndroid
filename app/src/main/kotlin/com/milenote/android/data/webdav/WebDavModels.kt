@@ -35,6 +35,36 @@ data class WebDavRemoteMeta(
 )
 
 /**
+ * 同步异常类别（**跨会话**展示用的稳定口径）。
+ *
+ * 只持久化名称、不持久化本地化文案：[message][WebDavProblem.message] 是异常发生时的界面语言，
+ * 「我的」页每次渲染时按 [kind][WebDavProblem.kind] 重新取当前语言短标签。
+ */
+enum class WebDavProblemKind {
+    /** 网络 / 服务器 / 权限等错误：本次同步没有成功。 */
+    ERROR,
+
+    /** 本地与远端都有修改，自动同步已暂停，等待用户手动选择保留哪一边。 */
+    CONFLICT,
+
+    /** 远端账本已加密而本机没有加密密码：已阻止明文上传，等待用户输入密码。 */
+    NEEDS_PASSWORD,
+}
+
+/**
+ * 最近一次同步异常快照（任何一次同步成功后被清空）。
+ *
+ * @property kind 异常类别（稳定口径，界面据此显示「同步失败 / 同步冲突 / 同步需密码」）。
+ * @property message 面向用户的说明（异常发生时的界面语言，用于设置页详情）。
+ * @property at 异常发生时刻（epoch 毫秒）。
+ */
+data class WebDavProblem(
+    val kind: WebDavProblemKind,
+    val message: String,
+    val at: Long,
+)
+
+/**
  * 上次同步状态（用于三向比较与条件请求）。
  *
  * @property lastEtag 上次同步成功时的远端 ETag（服务器不提供 ETag 时为 null）。
@@ -51,6 +81,68 @@ data class WebDavSyncState(
     val lastAutoSyncAt: Long? = null,
     /** 最近一次自动同步结果（成功/冲突/失败的中文说明）。 */
     val lastAutoSyncResult: String? = null,
+    /** 最近一次同步异常类别（[WebDavProblemKind] 名称）；正常时为 null。 */
+    val lastProblemKind: String? = null,
+    /** 最近一次同步异常说明；正常时为 null。 */
+    val lastProblemMessage: String? = null,
+    /** 最近一次同步异常时刻（毫秒）；正常时为 null。 */
+    val lastProblemAt: Long? = null,
+) {
+    /**
+     * 最近一次同步异常；正常时为 null。
+     *
+     * 类别名无法识别（旧版本写入 / 数据被改）但仍有说明时按 [WebDavProblemKind.ERROR] 处理，
+     * 宁可在「我的」页多提醒一次，也不要静默藏掉一次失败。
+     */
+    val problem: WebDavProblem?
+        get() {
+            val message = lastProblemMessage ?: return null
+            val kind = lastProblemKind
+                ?.let { name -> WebDavProblemKind.entries.firstOrNull { it.name == name } }
+                ?: WebDavProblemKind.ERROR
+            return WebDavProblem(kind = kind, message = message, at = lastProblemAt ?: 0L)
+        }
+}
+
+/**
+ * 一次**成功**同步后的新状态：写入 ETag / hash / 时间，并清空上次异常。
+ *
+ * 纯函数（时间戳由调用方传入）便于单测：成功即代表「同步恢复正常」，
+ * 「我的」页状态行的异常提示随之消失；「上次自动同步」记录保持不变（手动同步不会抹掉它）。
+ */
+fun WebDavSyncState.afterSynced(
+    etag: String?,
+    localHash: String,
+    remoteHash: String?,
+    now: Long,
+): WebDavSyncState = copy(
+    lastEtag = etag,
+    lastLocalHash = localHash,
+    lastRemoteHash = remoteHash,
+    lastSyncAt = now,
+    lastProblemKind = null,
+    lastProblemMessage = null,
+    lastProblemAt = null,
+)
+
+/**
+ * 一次同步结果后的新状态：失败 / 冲突 / 缺密码写入异常，成功（problem = null）清空异常。
+ *
+ * 纯函数（时间戳由调用方传入）便于单测。
+ *
+ * @param problem 本次同步的异常；null = 正常。
+ * @param autoResult 自动同步的结果说明；null = 本次不是自动同步，保留原有「上次自动同步」记录。
+ */
+fun WebDavSyncState.afterSyncOutcome(
+    problem: WebDavProblem?,
+    autoResult: String?,
+    now: Long,
+): WebDavSyncState = copy(
+    lastAutoSyncAt = if (autoResult != null) now else lastAutoSyncAt,
+    lastAutoSyncResult = autoResult ?: lastAutoSyncResult,
+    lastProblemKind = problem?.kind?.name,
+    lastProblemMessage = problem?.message,
+    lastProblemAt = problem?.at,
 )
 
 /**

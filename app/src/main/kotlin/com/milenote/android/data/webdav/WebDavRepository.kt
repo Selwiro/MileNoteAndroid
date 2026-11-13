@@ -235,32 +235,30 @@ class WebDavRepository(
     fun plainHash(text: String): String = plainLedgerHash(text)
 
     /**
-     * 记录一次成功同步。
+     * 记录一次成功同步（同时清空上次异常）。
+     *
+     * 成功即代表「同步恢复正常」：「我的」页状态行的异常提示随之消失；
+     * 自动同步的「上次时间 / 结果」沿用已存值，不会被手动同步抹掉。
      *
      * @param etag 本次同步后远端 ETag（服务器不提供则为 null）。
      * @param localHash 本次同步的本地**明文**内容 SHA-256（[plainHash] 计算）。
      * @param remoteHash 本次同步的远端**明文**内容 SHA-256（用于兼容无 ETag 的服务器）。
      */
     suspend fun markSynced(etag: String?, localHash: String, remoteHash: String?) {
-        syncStateStore.save(
-            WebDavSyncState(
-                lastEtag = etag,
-                lastLocalHash = localHash,
-                lastRemoteHash = remoteHash,
-                lastSyncAt = System.currentTimeMillis(),
-            ),
-        )
+        // 读持久层的**最新**值（而不是可能滞后的 StateFlow），避免把刚写入的 etag/hash 覆盖回旧值。
+        val current = syncStateStore.state.first()
+        syncStateStore.save(current.afterSynced(etag, localHash, remoteHash, System.currentTimeMillis()))
     }
 
-    /** 记录一次自动同步的结果（不改变 ETag/hash 同步状态）。 */
-    suspend fun markAutoSyncResult(result: String) {
-        val current = syncState.value
-        syncStateStore.save(
-            current.copy(
-                lastAutoSyncAt = System.currentTimeMillis(),
-                lastAutoSyncResult = result,
-            ),
-        )
+    /**
+     * 记录一次同步的结果与健康度（自动同步与手动同步共用）。
+     *
+     * @param problem 本次同步的异常；null = 恢复正常（清空上次异常）。
+     * @param autoResult 自动同步的结果说明；null = 本次不是自动同步，保留原有「上次自动同步」记录。
+     */
+    suspend fun recordSyncOutcome(problem: WebDavProblem?, autoResult: String? = null) {
+        val current = syncStateStore.state.first()
+        syncStateStore.save(current.afterSyncOutcome(problem, autoResult, System.currentTimeMillis()))
     }
 
     /** 仅清空同步状态（例如用户选择「重新同步」）。 */
