@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 费用工作簿口径：列定义与 CSV 一致（17 / 18 列）、金额/里程写成数字单元格、
+ * 费用工作簿口径：列定义与 CSV 一致（18 / 19 列）、金额/里程写成数字单元格、
  * 插混充电行只在「充电量」列出现、分类汇总的合计等于 `costOf` 合计。
  */
 class ExpenseWorkbookTest {
@@ -26,10 +26,10 @@ class ExpenseWorkbookTest {
     )
 
     @Test
-    fun `fuel workbook has 17 columns and numeric amount cell`() {
+    fun `fuel workbook has 18 columns and numeric amount cell`() {
         val sheets = ExpenseWorkbook.sheets(fuelLedger())
         val detail = sheets.first { it.name == "费用明细" }
-        assertEquals(17, detail.rows.first().size)
+        assertEquals(18, detail.rows.first().size)
         assertEquals("日期", (detail.rows.first().first() as XlsxCell.Text).value)
         // 表头 + 两条记录
         assertEquals(3, detail.rows.size)
@@ -38,6 +38,9 @@ class ExpenseWorkbookTest {
         assertTrue(firstRow[4] is XlsxCell.Number)
         assertEquals(300.0, (firstRow[4] as XlsxCell.Number).value, 1e-9)
         assertEquals("加满 40L", (firstRow[15] as XlsxCell.Text).value)
+        // 末列「记录编号」= 原记录 id（CSV 回灌锚点）。
+        assertEquals("记录编号", (detail.rows.first()[17] as XlsxCell.Text).value)
+        assertEquals("r1", (firstRow[17] as XlsxCell.Text).value)
     }
 
     @Test
@@ -57,13 +60,16 @@ class ExpenseWorkbookTest {
             ),
         )
         val detail = ExpenseWorkbook.sheets(ledger).first { it.name == "费用明细" }
-        assertEquals(18, detail.rows.first().size)
-        assertEquals("充电量", (detail.rows.first()[17] as XlsxCell.Text).value)
+        assertEquals(19, detail.rows.first().size)
+        assertEquals("记录编号", (detail.rows.first()[17] as XlsxCell.Text).value)
+        assertEquals("充电量", (detail.rows.first()[18] as XlsxCell.Text).value)
 
         val fuelRow = detail.rows.first { (it[16] as XlsxCell.Text).value == "fuel-row" }
-        assertEquals(XlsxCell.Blank, fuelRow[17])
+        assertEquals("fuel", (fuelRow[17] as XlsxCell.Text).value)
+        assertEquals(XlsxCell.Blank, fuelRow[18])
         val chargeRow = detail.rows.first { (it[16] as XlsxCell.Text).value == "charge-row" }
-        assertEquals(30.0, (chargeRow[17] as XlsxCell.Number).value, 1e-9)
+        assertEquals("charge", (chargeRow[17] as XlsxCell.Text).value)
+        assertEquals(30.0, (chargeRow[18] as XlsxCell.Number).value, 1e-9)
         // 充电行燃油标号留空
         assertEquals("", (chargeRow[8] as XlsxCell.Text).value)
     }
@@ -73,8 +79,9 @@ class ExpenseWorkbookTest {
         val ledger = evLedger(records = listOf(Record(id = "c1", date = "2026-11-01", category = "油费", amount = 60.0, kwh = 30.0)))
         val headers = ExpenseWorkbook.sheets(ledger).first { it.name == "费用明细" }.rows.first()
             .map { (it as XlsxCell.Text).value }
-        assertEquals(17, headers.size)
+        assertEquals(18, headers.size)
         assertEquals("充电量", headers[10])
+        assertEquals("记录编号", headers[17])
         assertEquals("电价", headers[7])
     }
 

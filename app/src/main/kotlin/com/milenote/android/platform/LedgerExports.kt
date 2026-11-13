@@ -15,8 +15,9 @@ import java.time.format.DateTimeFormatter
  * 与 Web 版一致的文本导出：费用 CSV、费用 Excel 与保养提醒 ICS。
  *
  * CSV 为 UTF-8 BOM + CRLF，全部单元格加引号并防公式注入；
- * 列定义与 Excel 导出共用 [ExpenseWorkbook.headers]（燃油 / 纯电 17 列、插混 18 列），
- * 与导入别名表 [com.milenote.android.domain.import.FIELDS] 中对应字段互相映射。
+ * 列定义与 Excel 导出共用 [ExpenseWorkbook.headers]（燃油 / 纯电 18 列、插混 19 列），
+ * 与导入别名表 [com.milenote.android.domain.import.FIELDS] 中对应字段互相映射；
+ * 末列「记录编号」（插混在「充电量」之前）是回灌锚点：改完 CSV 再导入时按 id 更新原记录。
  * ICS 为全天事件 + 提前一天 DISPLAY 提醒；支持单条与「一次性导出全部」。
  */
 object LedgerExports {
@@ -24,9 +25,9 @@ object LedgerExports {
     /**
      * 当前车辆全部记录 → CSV 字节（含 BOM）；表头与能量列按动力类型切换。
      *
-     * - 燃油 / HEV：17 列，能量列「加油量」；
-     * - 纯电：17 列，能量列「充电量」；
-     * - 插混：18 列，加油行写「加油量」、充电行写末尾「充电量」（互斥）。
+     * - 燃油 / HEV：18 列，能量列「加油量」；
+     * - 纯电：18 列，能量列「充电量」；
+     * - 插混：19 列，加油行写「加油量」、充电行写末尾「充电量」（互斥）。
      */
     fun csv(ledger: Ledger): ByteArray {
         val profile = ledger.vehicle.energyProfile
@@ -66,6 +67,7 @@ object LedgerExports {
                     add(r.distance?.let { numberCell(it) } ?: "")
                     add(r.note)
                     add(r.source)
+                    add(r.id)
                     if (dual) add(if (charging) r.kwh?.let { numberCell(it) } ?: "" else "")
                 }
                 append(values.joinToString(",") { cell(it) })

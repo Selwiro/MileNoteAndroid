@@ -85,7 +85,7 @@ import com.milenote.android.ui.theme.MileNoteDimens
 /**
  * 导入向导（二级页）：三步完成从文件到账本的导入。
  *
- * 1. 选择来源：小熊油耗 XLS / 钱迹 XLSX-JSON（纯电当前车隐藏小熊）；
+ * 1. 选择来源：里程志 CSV（回灌）/ 小熊油耗 XLS / 钱迹 XLSX-JSON（纯电当前车隐藏小熊）；
  * 2. 读取与预览：SAF 选文件（≤10 MB）→ 字段映射 → 逐行预览 / 排除 →
  *    油费冲突选择（默认小熊；纯电不显示，字段改用电价 / 充电量）→ 钱迹默认分类；
  * 3. 确认：调用 `vm.applyImport` / `vm.restoreBackup`，展示结果。
@@ -333,6 +333,7 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
                         Button(
                             onClick = {
                                 if (wizard.source != ImportSource.BACKUP &&
+                                    !wizard.csvWriteBack &&
                                     wizard.duplicateTableCount() > 0
                                 ) {
                                     showDuplicatePrompt = true
@@ -458,18 +459,20 @@ private fun SourceStep(wizard: ImportWizardState, ev: Boolean, onPick: () -> Uni
             Text(
                 text = if (ev) {
                     tr(
-                        "钱迹：XLSX / JSON；账本备份 JSON（version 2 多车或旧版单车）" +
-                            "仅在系统分享导入时自动识别。纯电车辆不提供小熊油耗（加油记录）导入。",
-                        "Qianji: XLSX / JSON. Ledger backup JSON (version 2 multi-car or legacy " +
-                            "single-car) is only auto-detected when imported via system share. Bear fuel " +
-                            "imports aren't available for EVs.",
+                        "里程志 CSV：先在「备份与还原」导出费用 CSV，改完再导入；" +
+                            "钱迹：XLSX / JSON；账本备份 JSON 仅在系统分享导入时自动识别。" +
+                            "纯电车辆不提供小熊油耗（加油记录）导入。",
+                        "MileNote CSV: export the expense CSV from Backup & restore, edit it, then import " +
+                            "it here. Qianji: XLSX / JSON. Ledger backup JSON is only auto-detected when " +
+                            "imported via system share. Bear fuel imports aren't available for EVs.",
                     )
                 } else {
                     tr(
-                        "小熊油耗：XLS；钱迹：XLSX / JSON；账本备份 JSON（version 2 多车或旧版单车）" +
-                            "仅在系统分享导入时自动识别。",
-                        "Bear: XLS; Qianji: XLSX / JSON. Ledger backup JSON (version 2 multi-car " +
-                            "or legacy single-car) is only auto-detected when imported via system share.",
+                        "里程志 CSV：先在「备份与还原」导出费用 CSV，改完再导入；" +
+                            "小熊油耗：XLS；钱迹：XLSX / JSON；账本备份 JSON 仅在系统分享导入时自动识别。",
+                        "MileNote CSV: export the expense CSV from Backup & restore, edit it, then import " +
+                            "it here. Bear: XLS; Qianji: XLSX / JSON. Ledger backup JSON is only " +
+                            "auto-detected when imported via system share.",
                     )
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -515,6 +518,7 @@ private fun ImportSource.icon(): ImageVector = when (this) {
     ImportSource.BACKUP -> MileNoteIcons.Import
     ImportSource.BEAR -> MileNoteIcons.CategoryFuel
     ImportSource.QIANJI -> MileNoteIcons.Wallet
+    ImportSource.CSV -> MileNoteIcons.Records
 }
 
 /** 系统分享进入时的顶部提示：文件名 + 识别来源 + 重新选择来源。 */
@@ -584,7 +588,7 @@ private fun PreviewStep(
                 item { BackupSummaryCard(wizard = wizard) }
             }
 
-            ImportSource.BEAR, ImportSource.QIANJI -> {
+            ImportSource.BEAR, ImportSource.QIANJI, ImportSource.CSV -> {
                 item { TableOptionsCard(wizard = wizard, ledger = ledger, ev = ev) }
                 item {
                     MappingCard(
@@ -732,6 +736,32 @@ private fun TableOptionsCard(
     ev: Boolean,
 ) {
     SectionCard(title = tr("导入选项", "Import options")) {
+        if (wizard.source == ImportSource.CSV) {
+            val missingIds = wizard.sheetData?.headers?.none { it.trim() == "记录编号" } == true
+            Text(
+                text = tr(
+                    "按表格里的「记录编号」原位更新原记录（日期、金额、分类、地点等都会写回），" +
+                        "没有编号的行按判重规则新增或跳过。",
+                    "Rows are updated in place by their record ID (date, amount, category, location and " +
+                        "more are written back); rows without an ID are added or skipped by the duplicate rules.",
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (missingIds) {
+                Spacer(modifier = Modifier.height(8.dp))
+                MessageBar(
+                    message = tr(
+                        "这个文件缺少「记录编号」列（旧版导出）：未改动的行会被判重跳过，改过的行会新增而不是更新。" +
+                            "建议先用当前版本重新导出 CSV。",
+                        "This file has no Record ID column (older export): unchanged rows are skipped as " +
+                            "duplicates and edited rows are added instead of updated. Re-export the CSV " +
+                            "with the current version first.",
+                    ),
+                    kind = MessageKind.WARNING,
+                )
+            }
+        }
         if (wizard.source == ImportSource.QIANJI) {
             WizardDropdown(
                 label = tr("无法识别的分类统一归入", "Group unrecognized categories as"),
@@ -741,7 +771,9 @@ private fun TableOptionsCard(
             )
             Spacer(modifier = Modifier.height(12.dp))
         }
-        if (ev) {
+        if (wizard.source == ImportSource.CSV) {
+            // 回灌不做油费口径重算：导入什么就是什么。
+        } else if (ev) {
             // 纯电：导入的是充电支出，不存在「油费按哪个来源计成本」的口径选择。
             Text(
                 text = tr(
@@ -881,21 +913,36 @@ private fun TableStatsCard(wizard: ImportWizardState) {
             }
             if (wizard.duplicateTableCount() > 0) {
                 StatusPill(
-                    text = tr("重复 %d", "%d duplicates", wizard.duplicateTableCount()),
+                    text = if (wizard.csvWriteBack) {
+                        tr("更新 %d", "%d updated", wizard.duplicateTableCount())
+                    } else {
+                        tr("重复 %d", "%d duplicates", wizard.duplicateTableCount())
+                    },
                     status = StatusKind.SOON,
                 )
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = tr(
-                "勾选要导入的行；带错误的行不可导入。「有效」包含重复行，确认时可选择忽略或覆盖；" +
-                    "确认后的结果以「导入完成」提示为准；仅显示前 %d 行。",
-                "Tick the rows to import; rows with errors can't be imported. \"Valid\" includes " +
-                    "duplicates — ignore or overwrite them on confirmation. The final result follows " +
-                    "the \"import submitted\" summary; only the first %d rows are shown.",
-                PREVIEW_ROW_LIMIT,
-            ),
+            text = if (wizard.csvWriteBack) {
+                tr(
+                    "勾选要导入的行；带错误的行不可导入。带「记录编号」且与账本一致的行会在确认后原位更新，" +
+                        "其余行按判重规则处理；仅显示前 %d 行。",
+                    "Tick the rows to import; rows with errors can't be imported. Rows whose record ID " +
+                        "exists are updated in place on confirmation; the rest follow the duplicate rules. " +
+                        "Only the first %d rows are shown.",
+                    PREVIEW_ROW_LIMIT,
+                )
+            } else {
+                tr(
+                    "勾选要导入的行；带错误的行不可导入。「有效」包含重复行，确认时可选择忽略或覆盖；" +
+                        "确认后的结果以「导入完成」提示为准；仅显示前 %d 行。",
+                    "Tick the rows to import; rows with errors can't be imported. \"Valid\" includes " +
+                        "duplicates — ignore or overwrite them on confirmation. The final result follows " +
+                        "the \"import submitted\" summary; only the first %d rows are shown.",
+                    PREVIEW_ROW_LIMIT,
+                )
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -930,6 +977,8 @@ private fun TablePreviewRow(
     val edited = wizard.rowEdit(item.row) != null
     val note = when {
         hasError -> item.error
+        duplicate && wizard.csvWriteBack ->
+            tr("同编号记录，确认后原位更新", "Same record ID — updated in place on confirmation")
         duplicate -> tr("与现有账本重复，确认时选择忽略或覆盖", "Duplicate of the current ledger — ignore or overwrite on confirmation")
         !item.record.note.isNullOrBlank() -> item.record.note.orEmpty()
         else -> tr("可导入", "Ready to import")

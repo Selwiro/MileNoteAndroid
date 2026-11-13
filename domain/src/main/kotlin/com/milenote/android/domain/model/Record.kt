@@ -50,7 +50,12 @@ data class Record(
     val missed: Boolean = false,
     /** 备注，≤ 1000 字。 */
     val note: String = "",
-    /** 服务类记录的地点，≤ 200 字。 */
+    /**
+     * 地点，≤ 200 字。
+     *
+     * 服务类记录 = 门店 / 修理厂；油费 / 电费记录 = 加油站 / 充电站（用于按站点比价与汇总），
+     * 其余分类不写。CSV 导出的「地点」列与它一一对应，可导出改完再回灌。
+     */
     val location: String? = null,
     /** 服务类记录的项目，顿号分隔。 */
     val projects: String? = null,

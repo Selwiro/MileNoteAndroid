@@ -87,8 +87,11 @@ class ImportWizardSupportTest {
 
         assertTrue(fuel.contains(ImportSource.BEAR))
         assertTrue(fuel.contains(ImportSource.QIANJI))
+        assertTrue(fuel.contains(ImportSource.CSV))
         assertFalse(ev.contains(ImportSource.BEAR))
         assertTrue(ev.contains(ImportSource.QIANJI))
+        // CSV 回灌与动力类型无关：纯电也能用。
+        assertTrue(ev.contains(ImportSource.CSV))
     }
 
     // ---------- 来源格式限制（内容判定） ----------
@@ -119,6 +122,81 @@ class ImportWizardSupportTest {
     @Test
     fun `backup import keeps content based validation`() {
         assertNull(sourceFileError(ImportSource.BACKUP, csvBytes))
+    }
+
+    @Test
+    fun `milenote csv accepts exported text and rejects excel or json`() {
+        val exported = "\uFEFF\"日期\",\"地点\",\"分类\",\"金额\",\"来源\",\"记录编号\"\r\n" +
+            "\"2026-11-01\",\"中石化\",\"油费\",\"300\",\"手动记录\",\"r1\"\r\n"
+        assertNull(sourceFileError(ImportSource.CSV, exported.toByteArray()))
+        // 带 BOM 的文本同样可以。
+        assertNull(sourceFileError(ImportSource.CSV, exported.toByteArray(Charsets.UTF_8)))
+        assertNotNull(sourceFileError(ImportSource.CSV, xlsxBytes))
+        assertNotNull(sourceFileError(ImportSource.CSV, xlsBytes))
+        assertNotNull(sourceFileError(ImportSource.CSV, jsonBytes))
+        // 文本表格但缺表头（比如别的记账 App 的 CSV）给可读提示。
+        assertNotNull(sourceFileError(ImportSource.CSV, csvBytes))
+    }
+
+    @Test
+    fun `milenote csv header check requires date category and amount`() {
+        assertNull(
+            mileNoteCsvHeaderError(
+                listOf("日期", "地点", "项目", "分类", "金额", "来源", "记录编号"),
+            ),
+        )
+        assertNotNull(mileNoteCsvHeaderError(listOf("日期", "分类", "来源")))
+        assertNotNull(mileNoteCsvHeaderError(listOf("分类", "金额")))
+        assertNotNull(mileNoteCsvHeaderError(emptyList()))
+    }
+
+    @Test
+    fun `milenote source key aliases and title`() {
+        assertEquals(ImportSource.CSV, ImportSource.fromKey("milenote"))
+        assertEquals(ImportSource.CSV, ImportSource.fromKey("csv"))
+        assertEquals(ImportSource.CSV, ImportSource.fromKey("回灌"))
+        assertTrue(ImportSource.CSV.title.contains("CSV"))
+    }
+
+    @Test
+    fun `shared import detects milenote csv before bear because of shared headers`() {
+        // 里程志 CSV 同样有「总里程 / 加油量」，必须靠「记录编号」或「来源 + 分类 + 日期」先识别。
+        assertEquals(
+            ImportSource.CSV,
+            detectSharedImportSource("里程志-2026-11-13.csv", listOf("日期", "分类", "金额", "总里程", "加油量", "来源", "记录编号"), "text/csv"),
+        )
+        assertEquals(
+            ImportSource.CSV,
+            detectSharedImportSource("milenote.csv", listOf("日期", "分类", "金额", "总里程", "加油量", "来源", "记录编号"), null),
+        )
+        // 旧版导出没有记录编号，但有来源 + 分类 + 日期。
+        assertEquals(
+            ImportSource.CSV,
+            detectSharedImportSource("old.csv", listOf("日期", "地点", "分类", "金额", "总里程", "加油量", "来源"), "text/csv"),
+        )
+    }
+
+    @Test
+    fun `shared import still detects bear and qianji`() {
+        assertEquals(
+            ImportSource.BEAR,
+            detectSharedImportSource("小熊油耗.xls", listOf("日期时间", "总里程", "加油量"), "application/vnd.ms-excel"),
+        )
+        assertEquals(
+            ImportSource.QIANJI,
+            detectSharedImportSource("qianji.xlsx", listOf("时间", "类型", "金额"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        )
+        assertEquals(
+            ImportSource.QIANJI,
+            detectSharedImportSource("unknown.csv", listOf("a", "b"), "text/csv"),
+        )
+    }
+
+    @Test
+    fun `milenote hidden columns stay out of field mapping`() {
+        val order = importFieldOrder(ev = false)
+        assertFalse(order.contains("recordId"))
+        assertFalse(order.contains("exportSource"))
     }
 
     @Test

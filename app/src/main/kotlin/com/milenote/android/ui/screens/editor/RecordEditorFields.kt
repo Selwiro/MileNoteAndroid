@@ -359,6 +359,21 @@ internal fun FuelFields(
                 )
             }
         }
+        FormField(
+            value = form.location,
+            onValueChange = { form.location = it.take(200) },
+            label = if (form.electricView) {
+                tr("充电站 / 地点（选填）", "Charging station / place (optional)")
+            } else {
+                tr("加油站 / 地点（选填）", "Fuel station / place (optional)")
+            },
+            placeholder = if (form.electricView) {
+                tr("例如：国网充电站", "e.g. State Grid charging station")
+            } else {
+                tr("例如：中石化 · 人民路站", "e.g. Sinopec Renmin Road")
+            },
+            leadingIcon = MileNoteIcons.Location,
+        )
     }
 }
 

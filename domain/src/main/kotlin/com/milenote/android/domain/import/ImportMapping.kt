@@ -59,6 +59,10 @@ val FIELDS: Map<String, List<String>> = linkedMapOf(
     "type" to listOf("类型", "收支", "收支类型", "type"),
     "sourceId" to listOf("key", "id"),
     "currency" to listOf("币种", "currency"),
+    // 以下是里程志自家 CSV 回灌用的两列（不参与手动字段映射界面）：
+    // 记录编号 = 原记录 id（同编号更新原记录）；来源 = 导出时的来源标签（保留「手动记录 / 小熊油耗」等）。
+    "recordId" to listOf("记录编号", "record id", "recordId"),
+    "exportSource" to listOf("来源", "source"),
 )
 
 /** 表头 → 字段列下标；缺失字段为 null（Web `detectMap`）。 */
@@ -123,8 +127,10 @@ fun importRows(
     val amount = Numbers.parse(rawCell(row, map, "amount"))
     // 小熊油耗只有加油记录；钱迹 / 通用表格按行判断是加油还是充电。
     val electric = source != "bear" && rowIsCharging(row, map, powertrain)
+    // 里程志 CSV 带「记录编号」：沿用原 id，回灌时按 id 更新而不是新增。
+    val recordId = textCell(row, map, "recordId").trim().take(200)
     var record = Record(
-        id = Ids.newId(),
+        id = recordId.ifEmpty { Ids.newId() },
         date = Dates.dateValue(rawCell(row, map, "date")),
         category = if (source == "bear") {
             "油费"
@@ -256,10 +262,16 @@ fun normalizeImport(
         var record = inferServiceNote(
             item.record.copy(
                 projects = textOrEmpty(rows[i], map, "projects"),
-                location = textOrEmpty(rows[i], map, "location"),
+                location = textOrEmpty(rows[i], map, "location").take(200),
             ),
             powertrain = powertrain,
         )
+        // 里程志 CSV：保留导出时的来源标签（手动记录 / 小熊油耗…），缺失时标为「里程志 CSV」。
+        if (source == "milenote") {
+            record = record.copy(
+                source = textOrEmpty(rows[i], map, "exportSource").trim().take(40).ifEmpty { "里程志 CSV" },
+            )
+        }
         record = record.copy(
             sourceId = textCell(rows[i], map, "sourceId"),
             missed = MISSED_TRUE.matches(textCell(rows[i], map, "missed")),

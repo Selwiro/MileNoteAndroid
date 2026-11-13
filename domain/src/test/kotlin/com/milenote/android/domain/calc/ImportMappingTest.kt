@@ -309,4 +309,42 @@ class ImportMappingTest {
         val fuel = inferServiceNote(Record(category = "保养", note = "三电诊断、制动液"))
         assertEquals("制动液", fuel.projects)
     }
+
+    @Test
+    fun `milenote csv keeps record id source and fuel station`() {
+        val headers = listOf(
+            "日期", "地点", "项目", "分类", "金额",
+            "总里程", "加油量", "加满", "来源", "记录编号",
+        )
+        val items = normalizeImport(
+            listOf(
+                listOf(
+                    "2026-11-01", "中石化人民路站", "", "油费", 300,
+                    12345, 40, "是", "手动记录", "rec-1",
+                ),
+            ),
+            detectMap(headers),
+            "milenote",
+        )
+        val record = items.single().record
+        assertEquals("", items.single().error)
+        assertEquals("rec-1", record.id)
+        assertEquals("手动记录", record.source)
+        assertEquals("中石化人民路站", record.location)
+        assertEquals("油费", record.category)
+        assertTrue(record.full)
+    }
+
+    @Test
+    fun `milenote csv without record id generates a fresh one`() {
+        val headers = listOf("日期", "分类", "金额", "来源")
+        val items = normalizeImport(
+            listOf(listOf("2026-11-02", "停车费", 8, "里程志 CSV")),
+            detectMap(headers),
+            "milenote",
+        )
+        val record = items.single().record
+        assertTrue(record.id.isNotBlank())
+        assertEquals("里程志 CSV", record.source)
+    }
 }

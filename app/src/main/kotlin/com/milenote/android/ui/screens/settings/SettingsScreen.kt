@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -75,6 +76,7 @@ import com.milenote.android.BuildConfig
 import com.milenote.android.R
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
+import com.milenote.android.data.settings.backupOverdueDays
 import com.milenote.android.data.settings.formatBackupAt
 import com.milenote.android.data.update.UpdateCheckResult
 import com.milenote.android.data.update.UpdateChecker
@@ -1319,6 +1321,17 @@ private fun ExternalImportPage(
             SectionCard(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             ) {
+                // 里程志 CSV 回灌：先导出费用 CSV，改完再导入；同「记录编号」原位更新。
+                SettingsMenuRow(
+                    icon = MileNoteIcons.Records,
+                    title = tr("里程志 CSV（回灌）", "MileNote CSV (write-back)"),
+                    subtitle = tr(
+                        "导出 → 修改 → 再导入，同编号记录原位更新",
+                        "Export → edit → import; same-ID records update in place",
+                    ),
+                    onClick = { onOpenImporter("milenote") },
+                )
+                SectionDivider()
                 // 小熊油耗只有加油记录（XLS），纯电车辆不适用；钱迹等入口保持不变。
                 if (!ev) {
                     SettingsMenuRow(
@@ -1343,9 +1356,12 @@ private fun ExternalImportPage(
             Text(
                 text = tr(
                     "导入的记录会标记来源；重复记录按现有合并规则处理（合并或跳过）；" +
-                        "表格文件上限 10 MB，只在本机解析，不会上传。",
-                    "Imported records keep their source label; duplicates follow the usual merge rules (merge or skip). " +
-                        "Spreadsheets are limited to 10 MB and are parsed on this device only — nothing is uploaded.",
+                        "里程志 CSV 带「记录编号」，改完再导入会原位更新原记录。表格文件上限 10 MB，" +
+                        "只在本机解析，不会上传。",
+                    "Imported records keep their source label; duplicates follow the usual merge rules " +
+                        "(merge or skip). MileNote CSVs carry a record ID, so editing and re-importing updates " +
+                        "the original record in place. Spreadsheets are limited to 10 MB and are parsed on " +
+                        "this device only — nothing is uploaded.",
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1382,6 +1398,8 @@ private fun BackupRestorePage(
     onExitDemo: () -> Unit,
     onDismissMessage: () -> Unit,
 ) {
+    // 距上次备份 ≥ 阈值时在页内提醒（纯展示，不引入通知 / 后台任务）。
+    val overdueDays = remember(lastBackupAt) { backupOverdueDays(lastBackupAt) }
     // 每次进入本页都重新检查：被隔离的损坏账本、以及可回滚的「覆盖前快照」。
     LaunchedEffect(Unit) {
         onRefreshQuarantinedRaw()
@@ -1412,6 +1430,18 @@ private fun BackupRestorePage(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (overdueDays != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    MessageBar(
+                        message = tr(
+                            "已有 %d 天没有备份。本机是唯一副本，建议现在导出一次（JSON 或 CSV / Excel 均可）。",
+                            "No backup for %d days. This device holds the only copy — export one now " +
+                                "(JSON, CSV or Excel).",
+                            overdueDays,
+                        ),
+                        kind = MessageKind.WARNING,
+                    )
+                }
                 Text(
                     text = tr(
                         "数据只保存在本机；JSON 备份包含全部车辆、图片与提醒，可跨设备还原。",

@@ -45,12 +45,16 @@ fun signature(record: Record): String = listOf(
 
 /**
  * 判重（Web `duplicateOf`，顺序敏感）：
+ * 0. 记录 id 相同（里程志 CSV 回灌带「记录编号」，优先按 id 命中）；
  * 1. 已有记录的 `importedKeys` 含 `来源:编号`；
  * 2. 同来源且都有 `sourceId`，编号相同；
  * 3. 业务签名相同；
  * 4. 双方均为油费、同一天、金额差 < 0.005、来源不同（跨源同额视为同一笔）。
  */
 fun duplicateOf(records: List<Record>, record: Record): Record? {
+    if (record.id.isNotEmpty()) {
+        records.firstOrNull { it.id == record.id }?.let { return it }
+    }
     val sourceId = record.sourceId
     val key = if (!sourceId.isNullOrEmpty()) "${record.source}:$sourceId" else ""
     for (x in records) {
@@ -103,8 +107,28 @@ fun mergeImported(records: List<Record>, items: List<ImportItem>): MergeResult {
             continue
         }
         val r = item.record
-        val old = if (item.force) null else duplicateOf(result, r)
+        // 同编号（里程志 CSV 回灌）永远原位更新，即使勾了「独立的一笔」也不能写出重复 id。
+        val sameId = if (r.id.isNotEmpty()) result.firstOrNull { it.id == r.id } else null
+        val old = if (sameId == null && !item.force) duplicateOf(result, r) else sameId
         if (old != null) {
+            if (sameId != null) {
+                // 回灌更新：保留账本级 id 与 CSV 没导出的字段（计入成本口径 / 合并键 / 来源编号 / 旧时刻）。
+                val index = indexOfSame(result, old)
+                val key = if (!r.sourceId.isNullOrEmpty()) "${r.source}:${r.sourceId}" else ""
+                val keys = LinkedHashSet(old.importedKeys.orEmpty())
+                if (key.isNotEmpty()) keys.add(key)
+                val oldKey = if (!old.sourceId.isNullOrEmpty()) "${old.source}:${old.sourceId}" else ""
+                if (oldKey.isNotEmpty()) keys.add(oldKey)
+                result[index] = r.copy(
+                    id = old.id,
+                    fuelCounted = r.fuelCounted ?: old.fuelCounted,
+                    importedKeys = keys.toList().ifEmpty { null },
+                    sourceId = r.sourceId?.takeIf { it.isNotBlank() } ?: old.sourceId,
+                    time = r.time ?: old.time,
+                )
+                merged++
+                continue
+            }
             val key = if (!r.sourceId.isNullOrEmpty()) "${r.source}:${r.sourceId}" else ""
             val keys = LinkedHashSet(old.importedKeys.orEmpty())
             if (key.isNotEmpty()) keys.add(key)

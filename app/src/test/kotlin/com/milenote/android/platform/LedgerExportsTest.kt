@@ -2,6 +2,7 @@ package com.milenote.android.platform
 
 import com.milenote.android.domain.calc.parseDelimited
 import com.milenote.android.domain.import.detectMap
+import com.milenote.android.domain.import.normalizeImport
 import com.milenote.android.domain.import.importRows
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.POWERTRAIN_EV
@@ -22,7 +23,7 @@ class LedgerExportsTest {
     private val expectedHeaders = listOf(
         "日期", "地点", "项目", "分类", "金额",
         "应付金额", "优惠金额", "油价", "燃油标号",
-        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源",
+        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "记录编号",
     )
 
     private fun ledger(record: Record): Ledger = Ledger(id = "car-test", records = listOf(record))
@@ -86,6 +87,8 @@ class LedgerExportsTest {
         assertEquals("40", row[10])
         assertEquals("是", row[11])
         assertEquals("手动记录", row[16])
+        // 末列是回灌锚点：原记录 id 原样导出。
+        assertEquals("r-fuel", row[17])
     }
 
     @Test
@@ -118,16 +121,39 @@ class LedgerExportsTest {
         assertEquals("95#", item.record.fuelGrade)
         assertEquals(12345.0, item.record.odometer!!, 1e-9)
         assertEquals(40.0, item.record.liters!!, 1e-9)
+        // 「记录编号」直接还原成记录 id，回灌时按 id 原位更新。
+        assertEquals("r-fuel", item.record.id)
     }
 
     @Test
-    fun `ev csv header switches energy columns and keeps 17 columns`() {
+    fun `milenote csv normalization keeps record id and source label`() {
+        val rows = parseDelimited(csvText(ledger(fuelRecord())))
+        val item = normalizeImport(rows.drop(1), detectMap(rows.first()), "milenote").single()
+        assertEquals("", item.error)
+        assertEquals("r-fuel", item.record.id)
+        assertEquals("手动记录", item.record.source)
+        assertEquals("油费", item.record.category)
+    }
+
+    @Test
+    fun `milenote csv without source column falls back to the csv label`() {
+        val rows = parseDelimited(csvText(ledger(fuelRecord())))
+        val headers = rows.first().map { if (it == "来源") "别的列" else it }
+        val dataRows = rows.drop(1).mapIndexed { i, row ->
+            row.mapIndexed { j, cell -> if (headers[j] == "别的列") "" else cell }
+        }
+        val item = normalizeImport(dataRows, detectMap(headers), "milenote").single()
+        assertEquals("里程志 CSV", item.record.source)
+    }
+
+    @Test
+    fun `ev csv header switches energy columns and keeps 18 columns`() {
         val headers = parseDelimited(csvText(evLedger(evRecord()))).first()
         assertEquals(
             listOf(
                 "日期", "地点", "项目", "分类", "金额",
                 "应付金额", "优惠金额", "电价", "标号",
-                "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源",
+                "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源", "记录编号",
             ),
             headers,
         )
@@ -151,7 +177,7 @@ class LedgerExportsTest {
         assertTrue(item.record.full)
     }
 
-    // ---- 插混：18 列 = 燃油 17 列 + 末尾「充电量」 ----
+    // ---- 插混：19 列 = 燃油 18 列，末尾「充电量」在「记录编号」之后 ----
 
     private fun phevLedger(): Ledger = Ledger(
         id = "car-phev",
@@ -192,11 +218,11 @@ class LedgerExportsTest {
             listOf(
                 "日期", "地点", "项目", "分类", "金额",
                 "应付金额", "优惠金额", "单价", "燃油标号",
-                "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "充电量",
+                "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "记录编号", "充电量",
             ),
             headers,
         )
-        assertEquals(18, headers.size)
+        assertEquals(19, headers.size)
     }
 
     @Test
@@ -208,12 +234,14 @@ class LedgerExportsTest {
         assertEquals("0.64", charge[7])
         assertEquals("", charge[8])
         assertEquals("", charge[10])
-        assertEquals("45", charge[17])
+        assertEquals("r-phev-charge", charge[17])
+        assertEquals("45", charge[18])
         // 加油行：单价 = 油价，加油量有值，标号有值，末尾充电量空
         assertEquals("7.5", fuel[7])
         assertEquals("95#", fuel[8])
         assertEquals("40", fuel[10])
-        assertEquals("", fuel[17])
+        assertEquals("r-phev-fuel", fuel[17])
+        assertEquals("", fuel[18])
     }
 
     @Test

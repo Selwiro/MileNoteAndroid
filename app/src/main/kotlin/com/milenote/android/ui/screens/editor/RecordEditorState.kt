@@ -407,7 +407,12 @@ internal class RecordEditorState(
             full = isFuel && full,
             missed = isFuel && missed,
             note = note.trim().take(1000),
-            location = if (isService) location.trim().take(200) else null,
+            // 服务类=门店；油费/电费=加油站/充电站（用于按站点比价与汇总）；其余分类不写。
+            location = when {
+                isService -> location.trim().take(200)
+                isFuel -> location.trim().take(200).takeIf { it.isNotEmpty() }
+                else -> null
+            },
             // 保险项目同样保存到 projects（顿号分隔），但不参与服务类校验/提醒逻辑。
             projects = if ((isService || isInsurance) && projects.isNotEmpty()) {
                 projects.joinToString("、")

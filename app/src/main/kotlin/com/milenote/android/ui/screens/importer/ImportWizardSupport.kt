@@ -30,11 +30,12 @@ import java.io.InputStream
 // 来源
 // ---------------------------------------------------------------------------------------------
 
-/** 导入向导的来源：账本备份 JSON / 小熊 / 钱迹。 */
+/** 导入向导的来源：账本备份 JSON / 小熊 / 钱迹 / 里程志 CSV。 */
 internal enum class ImportSource(val key: String) {
     BACKUP(key = "backup"),
     BEAR(key = "bear"),
     QIANJI(key = "qianji"),
+    CSV(key = "milenote"),
     ;
 
     /** 用户可见的来源名（随语言切换）。 */
@@ -43,6 +44,7 @@ internal enum class ImportSource(val key: String) {
             BACKUP -> tr("账本备份 JSON", "Ledger backup JSON")
             BEAR -> tr("小熊油耗 XLS", "Bear XLS")
             QIANJI -> tr("钱迹 XLSX / JSON", "Qianji XLSX / JSON")
+            CSV -> tr("里程志 CSV（回灌）", "MileNote CSV (write-back)")
         }
 
     /** 用户可见的来源说明（随语言切换）。 */
@@ -60,6 +62,10 @@ internal enum class ImportSource(val key: String) {
                 "支出记录 → 费用，可自动完成保养待办",
                 "Expense records → expenses; can auto-complete service to-dos",
             )
+            CSV -> tr(
+                "导出的费用 CSV 改完再导入，同编号记录原位更新",
+                "Re-import an edited expense CSV; same-ID records are updated in place",
+            )
         }
 
     companion object {
@@ -70,6 +76,7 @@ internal enum class ImportSource(val key: String) {
                 "backup", "json", "restore", "ledger_backup", "账本备份" -> BACKUP
                 "bear", "xiaoxiong", "fuel", "小熊", "小熊油耗" -> BEAR
                 "qianji", "qianji_records", "钱迹", "钱迹记账" -> QIANJI
+                "milenote", "csv", "回灌", "里程志", "里程志 csv" -> CSV
                 else -> entries.firstOrNull { it.key == key }
             }
         }
@@ -77,15 +84,54 @@ internal enum class ImportSource(val key: String) {
 }
 
 /**
- * 「手动选择来源」列表：只列小熊 / 钱迹。
+ * 「手动选择来源」列表：里程志 CSV（回灌）/ 小熊 / 钱迹。
  *
  * 账本备份（[ImportSource.BACKUP]）枚举保留，仅用于系统分享 JSON 的自动识别，
  * 不出现在手动来源列表里。
  */
 internal val MANUAL_IMPORT_SOURCES: List<ImportSource> = listOf(
+    ImportSource.CSV,
     ImportSource.BEAR,
     ImportSource.QIANJI,
 )
+
+/**
+ * 系统分享（ACTION_SEND）进来的文件 → 来源识别（纯函数，便于单测）。
+ *
+ * 顺序：里程志 CSV（有「记录编号」，或「来源 + 分类 + 日期」）→ 小熊（总里程 / 加油量 / 日期时间）
+ * → 钱迹（时间 / 类型 / 金额）→ 文件名与 MIME 兜底 → 默认钱迹（界面可切回来源选择）。
+ */
+internal fun detectSharedImportSource(
+    fileName: String,
+    headers: List<String>,
+    mimeType: String?,
+): ImportSource {
+    val trimmedHeaders = headers.map { it.trim() }
+    // 里程志 CSV 先判：它同样有「总里程 / 加油量」，靠「记录编号 / 来源」区分。
+    if (trimmedHeaders.any { it == "记录编号" } ||
+        (trimmedHeaders.contains("来源") && trimmedHeaders.contains("分类") && trimmedHeaders.contains("日期"))
+    ) {
+        return ImportSource.CSV
+    }
+    if (trimmedHeaders.any { it == "总里程" || it == "加油量" || it == "日期时间" }) {
+        return ImportSource.BEAR
+    }
+    if (trimmedHeaders.any { it == "时间" || it == "类型" || it == "金额" }) {
+        return ImportSource.QIANJI
+    }
+    val lowerName = fileName.lowercase()
+    val mime = mimeType.orEmpty().lowercase()
+    if (lowerName.contains("小熊") || lowerName.endsWith(".xls") || mime.contains("vnd.ms-excel")) {
+        return ImportSource.BEAR
+    }
+    if (lowerName.contains("钱迹") || lowerName.contains("qianji") ||
+        lowerName.endsWith(".json") || mime.contains("json") || mime.contains("csv")
+    ) {
+        return ImportSource.QIANJI
+    }
+    // 无法判断时默认钱迹，界面可切回来源选择。
+    return ImportSource.QIANJI
+}
 
 /**
  * 「手动选择来源」列表（按动力类型过滤）。
@@ -301,6 +347,49 @@ internal fun sourceFileError(source: ImportSource, bytes: ByteArray): String? = 
             "Qianji imports accept only XLSX or JSON files. This file is neither — export Excel or JSON from Qianji and try again",
         )
     }
+
+    ImportSource.CSV -> when {
+        isXlsxSignature(bytes) || isOle2Signature(bytes) -> tr(
+            "里程志 CSV 只接受文本表格（.csv / .tsv）：请先在「我的 → 备份与还原」里导出费用 CSV，改完再导入",
+            "MileNote CSV accepts text tables only (.csv / .tsv). Export the expense CSV from " +
+                "Me → Backup & restore, edit it, then import it here",
+        )
+        !looksLikeMileNoteCsv(bytes) -> tr(
+            "这不是里程志导出的费用 CSV（缺少「日期 / 分类 / 金额」表头）；请先导出 CSV 再修改导入",
+            "This isn't a MileNote expense CSV (missing Date / Category / Amount headers). " +
+                "Export the CSV first, then edit and import it",
+        )
+        else -> null
+    }
+}
+
+/**
+ * 里程志 CSV 表头校验（读取后按列名判定，扩展名不可信）。
+ *
+ * @return 可直接展示的错误文案；null 表示通过。
+ */
+internal fun mileNoteCsvHeaderError(headers: List<String>): String? {
+    val names = headers.map { it.trim() }.toSet()
+    val missing = buildList {
+        if ("日期" !in names) add(tr("日期", "Date"))
+        if ("分类" !in names) add(tr("分类", "Category"))
+        if ("金额" !in names) add(tr("金额", "Amount"))
+    }
+    if (missing.isNotEmpty()) {
+        return tr(
+            "里程志 CSV 缺少列：%s；请用「备份与还原 → 导出费用 CSV」生成的文件",
+            "The MileNote CSV is missing these columns: %s — use the file from " +
+                "Backup & restore → Export expense CSV",
+            missing.joinToString(tr("、", ", ")),
+        )
+    }
+    return null
+}
+
+/** 文本前缀是否像里程志费用 CSV（BOM + 表头一定在开头，只解前 4 KB）。 */
+private fun looksLikeMileNoteCsv(bytes: ByteArray): Boolean {
+    val prefix = decodeText(bytes.copyOfRange(0, minOf(bytes.size, 4096)))
+    return prefix.contains("日期") && prefix.contains("分类") && prefix.contains("金额")
 }
 
 /** XLSX（ZIP）文件头 `PK\x03\x04`。 */
@@ -439,6 +528,7 @@ internal fun importSourceLabel(source: String?): String {
     return when (raw) {
         "小熊油耗" -> tr("小熊油耗", "Bear")
         "钱迹", "钱迹记账" -> tr("钱迹记账", "Qianji")
+        "里程志 CSV" -> tr("里程志 CSV", "MileNote CSV")
         else -> raw
     }
 }
@@ -452,8 +542,13 @@ internal fun headerLabel(headers: List<String>, index: Int): String {
     return if (header.isNullOrBlank()) tr("第 %d 列", "Column %d", index + 1) else header
 }
 
-/** 费用导入字段键顺序（与 Web fieldNames 一致）；按动力类型隐藏另一动力类型的专属字段。 */
+/**
+ * 费用导入字段键顺序（与 Web fieldNames 一致）；按动力类型隐藏另一动力类型的专属字段。
+ *
+ * `recordId` / `exportSource` 是里程志 CSV 回灌的隐藏列，不进入手动字段映射界面
+ * （读文件时按表头自动识别）。
+ */
 internal fun importFieldOrder(ev: Boolean = false): List<String> {
     val hidden = if (ev) setOf("liters", "fuelGrade") else setOf("kwh")
-    return FIELDS.keys.filter { it !in hidden }
+    return FIELDS.keys.filter { it !in hidden && it != "recordId" && it != "exportSource" }
 }

@@ -37,6 +37,41 @@ class MergeImportTest {
     }
 
     @Test
+    fun `csv write back updates the same record id in place`() {
+        val existing = Record(
+            id = "r1", date = "2026-01-01", category = "油费", amount = 300.0,
+            liters = 40.0, full = true, source = "手动记录", fuelCounted = true,
+            importedKeys = listOf("钱迹:k1"),
+        )
+        // 用户在 CSV 里改了金额与备注；导出不含 fuelCounted / importedKeys，更新时必须保留。
+        val edited = existing.copy(amount = 310.0, note = "改过金额", fuelCounted = null, importedKeys = null)
+
+        val result = mergeImported(listOf(existing), listOf(importedItem(edited, force = true)))
+
+        assertEquals(1, result.records.size)
+        val updated = result.records.single()
+        assertEquals("r1", updated.id)
+        assertEquals(310.0, updated.amount, 1e-9)
+        assertEquals("改过金额", updated.note)
+        assertEquals(true, updated.fuelCounted)
+        assertEquals(listOf("钱迹:k1"), updated.importedKeys)
+        assertEquals(0, result.added)
+        assertEquals(1, result.merged)
+    }
+
+    @Test
+    fun `csv write back adds rows whose id is unknown`() {
+        val existing = Record(id = "r1", date = "2026-01-01", category = "停车费", amount = 10.0)
+        val added = Record(id = "new-id", date = "2026-02-01", category = "停车费", amount = 12.0)
+
+        val result = mergeImported(listOf(existing), listOf(importedItem(added)))
+
+        assertEquals(2, result.records.size)
+        assertEquals(1, result.added)
+        assertTrue(result.records.any { it.id == "new-id" })
+    }
+
+    @Test
     fun `same day same amount with different qianji ids stays two records`() {
         val a = Record(
             id = "1", date = "2026-01-01", category = "过路费", amount = 25.0,
@@ -45,7 +80,11 @@ class MergeImportTest {
         val b = a.copy(id = "2", sourceId = "b")
         assertNull(duplicateOf(listOf(a), b))
         assertEquals(2, mergeImported(listOf(a), listOf(importedItem(b))).records.size)
-        assertEquals(2, mergeImported(listOf(a), listOf(importedItem(a, force = true))).records.size)
+        // 「独立的一笔」可以跳过判重，但同一 id 永远原位更新：账本里不允许出现重复记录 id
+        // （保养提醒与记录的关联靠 id，重复 id 会让删除 / 关联错乱）。
+        val forced = mergeImported(listOf(a), listOf(importedItem(a, force = true)))
+        assertEquals(1, forced.records.size)
+        assertEquals(1, forced.merged)
     }
 
     @Test

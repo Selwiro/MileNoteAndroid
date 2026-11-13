@@ -280,7 +280,7 @@ internal class ImportWizardState(
             val data = withContext(Dispatchers.IO) {
                 readSpreadsheet(bytes, name, allowJsonFallback = true)
             }
-            val detected = detectSharedSource(name, data.headers, mimeType)
+            val detected = detectSharedImportSource(name, data.headers, mimeType)
             // 纯电当前车拒绝小熊（加油）来源，避免把升/油费口径的数据导入纯电账本。
             if (isEv && detected == ImportSource.BEAR) {
                 throw ImportFileException(
@@ -292,6 +292,9 @@ internal class ImportWizardState(
             }
             // 分享进来的文件同样按来源限制格式（内容判定，不受分享目标改名影响）。
             sourceFileError(detected, bytes)?.let { throw ImportFileException(it) }
+            if (detected == ImportSource.CSV) {
+                mileNoteCsvHeaderError(data.headers)?.let { throw ImportFileException(it) }
+            }
             source = detected
             picked = PickedFile(name, bytes.size.toLong(), bytes)
             setupSheet(data)
@@ -319,32 +322,6 @@ internal class ImportWizardState(
         source = null
         resetFile()
         step = 0
-    }
-
-    private fun detectSharedSource(
-        fileName: String,
-        headers: List<String>,
-        mimeType: String?,
-    ): ImportSource {
-        val trimmedHeaders = headers.map { it.trim() }
-        if (trimmedHeaders.any { it == "总里程" || it == "加油量" || it == "日期时间" }) {
-            return ImportSource.BEAR
-        }
-        if (trimmedHeaders.any { it == "时间" || it == "类型" || it == "金额" }) {
-            return ImportSource.QIANJI
-        }
-        val lowerName = fileName.lowercase()
-        val mime = mimeType.orEmpty().lowercase()
-        if (lowerName.contains("小熊") || lowerName.endsWith(".xls") || mime.contains("vnd.ms-excel")) {
-            return ImportSource.BEAR
-        }
-        if (lowerName.contains("钱迹") || lowerName.contains("qianji") ||
-            lowerName.endsWith(".json") || mime.contains("json") || mime.contains("csv")
-        ) {
-            return ImportSource.QIANJI
-        }
-        // 任务约定：无法判断时默认钱迹，界面可切回来源选择。
-        return ImportSource.QIANJI
     }
 
     private fun ensureExtension(name: String, extension: String): String {
@@ -396,9 +373,13 @@ internal class ImportWizardState(
                     step = 1
                 }
 
-                ImportSource.BEAR, ImportSource.QIANJI -> {
+                ImportSource.BEAR, ImportSource.QIANJI, ImportSource.CSV -> {
                     val data = withContext(Dispatchers.IO) {
                         readSpreadsheet(bytes, name, allowJsonFallback = src == ImportSource.QIANJI)
+                    }
+                    // 里程志 CSV 按表头二次校验：扩展名不可信，缺列时给可读提示而不是导入成空账。
+                    if (src == ImportSource.CSV) {
+                        mileNoteCsvHeaderError(data.headers)?.let { throw ImportFileException(it) }
                     }
                     setupSheet(data)
                     if (src == ImportSource.QIANJI) applyQianjiHeuristics()
@@ -542,7 +523,7 @@ internal class ImportWizardState(
 
     fun scheduleTablePreview() {
         val src = source ?: return
-        if (src != ImportSource.BEAR && src != ImportSource.QIANJI) return
+        if (src != ImportSource.BEAR && src != ImportSource.QIANJI && src != ImportSource.CSV) return
         val data = sheetData ?: return
         val generation = ++previewGeneration
         val base = records
@@ -594,7 +575,7 @@ internal class ImportWizardState(
     fun refreshPreviewFromLedger() {
         if (step != 1) return
         when (source) {
-            ImportSource.BEAR, ImportSource.QIANJI -> scheduleTablePreview()
+            ImportSource.BEAR, ImportSource.QIANJI, ImportSource.CSV -> scheduleTablePreview()
             else -> Unit
         }
     }
@@ -640,7 +621,7 @@ internal class ImportWizardState(
                         )
                     }
 
-                    ImportSource.BEAR, ImportSource.QIANJI -> {
+                    ImportSource.BEAR, ImportSource.QIANJI, ImportSource.CSV -> {
                         val items = effectiveTableItems()
                         if (items.none { it.isValid }) {
                             throw ImportFileException(
@@ -654,7 +635,8 @@ internal class ImportWizardState(
                         // 直接按普通判重合并，让充电支出全部计入电费。
                         // 插混有油箱：加油行照常走油费口径，充电行（有 kwh、无 liters）由
                         // domain 的 `isFuelSourceRecord` 排除，不会被写 fuelCounted。
-                        val withFuelTank = hasFuelTank
+                        // 里程志 CSV 是「原样回灌」：不分油费口径，也不做覆盖删除（同编号原位更新）。
+                        val withFuelTank = hasFuelTank && src != ImportSource.CSV
                         // 等待真实写库结果再展示成功：修复「先报成功、后写库失败」。
                         val written = vm.applyImportAwait(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
                         result = WizardResult(
@@ -680,11 +662,19 @@ internal class ImportWizardState(
                                     add(tr("自动完成 %d 项保养", "%d service items auto-completed", written.completedServices))
                                 }
                             },
-                            note = tr(
-                                "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",
-                                "Open Records to review the result; Qianji service records auto-complete " +
-                                    "matching to-dos by item.",
-                            ),
+                            note = if (src == ImportSource.CSV) {
+                                tr(
+                                    "带「记录编号」的行已原位更新（保养记录与提醒的关联保留）；其余行按判重规则新增或跳过。",
+                                    "Rows with a record ID were updated in place (service-record links are kept); " +
+                                        "other rows are added or skipped by the usual duplicate rules.",
+                                )
+                            } else {
+                                tr(
+                                    "写入完成后可在「费用记录」查看；钱迹保养记录会按项目自动完成待办。",
+                                    "Open Records to review the result; Qianji service records auto-complete " +
+                                        "matching to-dos by item.",
+                                )
+                            },
                         )
                     }
                 }
@@ -712,7 +702,7 @@ internal class ImportWizardState(
         if (busy || step != 1) return false
         return when (source) {
             ImportSource.BACKUP -> backupPreview != null
-            ImportSource.BEAR, ImportSource.QIANJI -> validTableCount() > 0
+            ImportSource.BEAR, ImportSource.QIANJI, ImportSource.CSV -> validTableCount() > 0
             null -> false
         }
     }
@@ -721,4 +711,7 @@ internal class ImportWizardState(
         ImportSource.BACKUP -> tr("确认恢复", "Restore")
         else -> tr("确认导入", "Import")
     }
+
+    /** CSV 回灌是否可直接确认（不走「忽略 / 覆盖重复」弹层：同编号行原位更新）。 */
+    val csvWriteBack: Boolean get() = source == ImportSource.CSV
 }
