@@ -6,6 +6,9 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
+/** 备份超期阈值（天）：超过这么多天没备份就提示「建议现在备份一次」。 */
+const val BACKUP_OVERDUE_DAYS: Int = 30
+
 /**
  * 备份时间显示格式：固定 4 位年 + 24 小时制 `yyyy-MM-dd HH:mm`。
  *
@@ -40,3 +43,17 @@ fun backupAgeDays(
     val to = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     return ChronoUnit.DAYS.between(from, to).toInt().coerceAtLeast(0)
 }
+
+/**
+ * 备份超期天数：未备份返回 null（走「尚未备份」的既有提示），
+ * 距上次备份 ≥ [threshold] 个日历日时返回天数，否则 null。
+ *
+ * 纯函数、时区可注入；「我的」页与「备份与还原」页共用这一个阈值，
+ * 不引入通知 / 后台任务（只做页面内的静态提醒）。
+ */
+fun backupOverdueDays(
+    lastBackupAt: Long?,
+    now: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+    threshold: Int = BACKUP_OVERDUE_DAYS,
+): Int? = backupAgeDays(lastBackupAt, now, zone)?.takeIf { it >= threshold }

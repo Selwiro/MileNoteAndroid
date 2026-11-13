@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.data.settings.backupAgeDays
+import com.milenote.android.data.settings.backupOverdueDays
 import com.milenote.android.data.settings.formatBackupAt
 import com.milenote.android.domain.calc.Companion
 import com.milenote.android.domain.calc.Dates
@@ -90,12 +91,14 @@ fun MineScreen(
 
     val backupLabel = backupAgeLabel(backupDays, lastBackupAt)
     val backupMissing = backupDays == null
+    // 超期只做页面内提醒（≥30 天）；未备份走「尚未备份」的既有警告色，不叠加。
+    val overdueDays = remember(lastBackupAt) { backupOverdueDays(lastBackupAt) }
     val syncOn = state.webDav.configured
     val syncText = if (syncOn) tr("同步已开启", "Sync on") else tr("同步未开启", "Sync off")
-    val statusText = if (backupMissing) {
-        tr("尚未备份 · %s", "No backup yet · %s", syncText)
-    } else {
-        tr("上次备份 %s · %s", "Last backup %s · %s", backupLabel, syncText)
+    val statusText = when {
+        backupMissing -> tr("尚未备份 · %s", "No backup yet · %s", syncText)
+        overdueDays != null -> tr("已 %d 天未备份 · %s", "%d days without a backup · %s", overdueDays, syncText)
+        else -> tr("上次备份 %s · %s", "Last backup %s · %s", backupLabel, syncText)
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -136,7 +139,7 @@ fun MineScreen(
                         companionDays = companionDays,
                         sinceLabel = sinceLabel,
                         statusText = statusText,
-                        statusWarn = backupMissing,
+                        statusWarn = backupMissing || overdueDays != null,
                         showStatus = !state.demo,
                     )
                 }

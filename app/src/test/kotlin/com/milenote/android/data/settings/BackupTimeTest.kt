@@ -112,6 +112,35 @@ class BackupTimeTest {
     }
 
     @Test
+    fun `backup overdue is null when never backed up`() {
+        assertNull(backupOverdueDays(null, now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli(), zone = utc))
+    }
+
+    @Test
+    fun `backup overdue starts at the thirty day threshold`() {
+        val now = Instant.parse("2026-12-12T02:00:00Z").toEpochMilli()
+        val day29 = Instant.parse("2026-11-13T02:00:00Z").toEpochMilli()
+        val day30 = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli()
+        val day45 = Instant.parse("2026-10-28T02:00:00Z").toEpochMilli()
+        assertEquals(29, backupAgeDays(day29, now = now, zone = utc))
+        assertNull(backupOverdueDays(day29, now = now, zone = utc))
+        assertEquals(30, backupOverdueDays(day30, now = now, zone = utc))
+        assertEquals(45, backupOverdueDays(day45, now = now, zone = utc))
+    }
+
+    @Test
+    fun `backup overdue honours a custom threshold and the requested zone`() {
+        val now = Instant.parse("2026-11-12T02:00:00Z").toEpochMilli()
+        val nineDaysAgo = Instant.parse("2026-11-03T02:00:00Z").toEpochMilli()
+        assertEquals(9, backupOverdueDays(nineDaysAgo, now = now, zone = utc, threshold = 7))
+        assertNull(backupOverdueDays(nineDaysAgo, now = now, zone = utc, threshold = 10))
+        // 上海口径把 UTC 11-11 20:00 算作「今天」，UTC 口径已过 1 天。
+        val lastBackup = Instant.parse("2026-11-11T20:00:00Z").toEpochMilli()
+        assertNull(backupOverdueDays(lastBackup, now = now, zone = shanghai, threshold = 1))
+        assertEquals(1, backupOverdueDays(lastBackup, now = now, zone = utc, threshold = 1))
+    }
+
+    @Test
     fun `app settings defaults last backup at to null`() {
         assertNull(AppSettings().lastBackupAt)
         assertNull(AppSettings(darkMode = DarkMode.DARK).lastBackupAt)
