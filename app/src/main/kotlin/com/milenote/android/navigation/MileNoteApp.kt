@@ -1,6 +1,5 @@
 package com.milenote.android.navigation
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -434,10 +433,9 @@ private fun TabsScaffold(
     val copy = topBarCopy(tabs[currentPage].route, profile)
     val tabAction = topBarAction(tabs[currentPage].route, profile)
 
-    // 四个底部 tab 支持左右滑动切换；在非首个 tab 按返回先回总览。
-    BackHandler(enabled = currentPage != 0) {
-        scope.launch { pagerState.animateScrollToPage(0) }
-    }
+    // 四个底部 tab 支持左右滑动切换；系统返回键不做「先回总览」——
+    // 与首页一致：在任一 tab 按返回直接退出应用（2026-11-13 用户要求）。
+    // 推入页（明细 / 设置子页 / 导入）各有自己的返回栈，不受这里影响。
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
