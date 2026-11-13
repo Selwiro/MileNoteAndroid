@@ -395,7 +395,13 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
                 )
             }
         }
-        Spacer(modifier = Modifier.height(2.dp))
+        futureRecordNote(data)?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+        }
         Text(
             text = tr(
                 "里程志 · 数据仅存本机",
@@ -474,6 +480,7 @@ internal fun buildReportText(data: ReportData, ledger: Ledger): String {
             }
         }
     }
+    futureRecordNote(data)?.let { sb.append('\n').append(it).append('\n') }
     return sb.toString().trimEnd()
 }
 

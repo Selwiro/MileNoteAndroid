@@ -143,6 +143,12 @@ data class ReportData(
     val yearAgoDelta: ReportDelta?,
     /** 本期之前账本里有没有记录：用来区分「上月真的没花钱」和「账本从这个月才开始」。 */
     val hasEarlierRecords: Boolean,
+    /** 本期范围内、日期在今天之后的记录数（预录）；累计视角会算进总额，月 / 年报不算。 */
+    val futureCount: Int,
+    /** 上述预录记录的支出合计（costOf 口径）。 */
+    val futureTotal: Double,
+    /** 这些预录是否已计入本报告总额：累计为 true，月 / 年报为 false。 */
+    val includesFuture: Boolean,
     val records: List<Record>,
     val recordCount: Int,
     val distance: Double?,
@@ -265,6 +271,19 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
         else -> null
     }
 
+    // 预录（日期在今天之后）：累计口径会计入（与总览「全部」一致），月 / 年报截至今天不计入。
+    // 只在「本期自然范围内」统计，避免月报去提示下个月、明年之外的那笔。
+    val todayIso = Dates.iso(today)
+    val periodScope = if (fullRange == null) {
+        ledger.records
+    } else {
+        ledger.records.filter { it.date >= fullRange.from && it.date <= fullRange.to }
+    }
+    val futureRecords = periodScope.filter { it.date > todayIso }
+    val futureCount = futureRecords.size
+    val futureTotal = futureRecords.sumOf { costOf(it, ledger) }
+    val includesFuture = fullRange == null
+
     val (monthlyTrend, yearlyTrend) = buildTrends(
         ledger = ledger,
         period = period,
@@ -286,6 +305,9 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
         totalDelta = totalDelta,
         yearAgoDelta = yearAgoDelta,
         hasEarlierRecords = hasEarlierRecords,
+        futureCount = futureCount,
+        futureTotal = futureTotal,
+        includesFuture = includesFuture,
         records = records,
         recordCount = records.size,
         distance = distance,
@@ -351,7 +373,7 @@ private fun energyLine(
     }
     // 这一期没有任何能源记录（金额、量、区间、估算都没有）时不返回值：报告页整张能源卡不画，
     // 而不是显示「加油 0 次 / 油耗 — / 本期没有加满记录」。
-    if (counted.isEmpty() && rate == null && estimated == null && previous == null) return null
+    if (counted.isEmpty() && rate == null && estimated == null) return null
     return ReportEnergyLine(
         count = counted.size,
         amount = amount,

@@ -322,7 +322,7 @@ private fun ReportContent(
             }
             if (data.highlights.let { it.topExpense != null || it.priciestEnergy != null || it.topStation != null }) {
                 item(key = "highlights") {
-                    HighlightsCard(ledger = ledger, data = data)
+                    HighlightsCard(ledger = ledger, data = data, today = today)
                 }
             }
             item(key = "share") {
@@ -617,6 +617,33 @@ private fun OverviewCard(ledger: Ledger, data: ReportData) {
                 }
             }
         }
+        futureRecordNote(data)?.let { note ->
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 预录（未来日期）说明：累计口径已计入，月 / 年报未计入，文案必须说清楚，避免两个页面的数字看起来打架。
+ * 分享卡与正文也复用这一句。
+ */
+internal fun futureRecordNote(data: ReportData): String? {
+    if (data.futureCount <= 0) return null
+    val amount = "${Units.currencySymbol}${Format.money(data.futureTotal)}"
+    return when {
+        data.includesFuture && data.futureCount == 1 ->
+            tr("含 1 笔未来日期记录（%s）", "Includes 1 future-dated entry (%s)", amount)
+        data.includesFuture ->
+            tr("含 %d 笔未来日期记录（%s）", "Includes %d future-dated entries (%s)", data.futureCount, amount)
+        data.futureCount == 1 ->
+            tr("另有 1 笔未来日期记录未计入（%s）", "1 future-dated entry not included (%s)", amount)
+        else ->
+            tr("另有 %d 笔未来日期记录未计入（%s）", "%d future-dated entries not included (%s)", data.futureCount, amount)
     }
 }
 
@@ -976,7 +1003,7 @@ private fun TrendCard(data: ReportData, today: LocalDate, onPickKey: (String) ->
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-private fun HighlightsCard(ledger: Ledger, data: ReportData) {
+private fun HighlightsCard(ledger: Ledger, data: ReportData, today: LocalDate) {
     val profile = ledger.energyProfile
     val scheme = MaterialTheme.colorScheme
     val all = data.period.kind == ReportKind.ALL
@@ -988,14 +1015,20 @@ private fun HighlightsCard(ledger: Ledger, data: ReportData) {
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val todayIso = Dates.iso(today)
+            fun withFutureTag(record: Record, base: String): String =
+                if (record.date > todayIso) base + " · " + tr("预录", "scheduled") else base
             data.highlights.topExpense?.let { record ->
                 HighlightRow(
                     label = tr("最大一笔", "Largest expense"),
-                    value = listOfNotNull(
-                        DataLabels.categoryFor(ledger, record.category, profile),
-                        "${Units.currencySymbol}${Format.money(record.amount)}",
-                        recordDate(record, all),
-                    ).joinToString(" · "),
+                    value = withFutureTag(
+                        record,
+                        listOfNotNull(
+                            DataLabels.categoryFor(ledger, record.category, profile),
+                            "${Units.currencySymbol}${Format.money(record.amount)}",
+                            recordDate(record, all),
+                        ).joinToString(" · "),
+                    ),
                 )
             }
             data.highlights.priciestEnergy?.let { record ->
@@ -1005,11 +1038,14 @@ private fun HighlightsCard(ledger: Ledger, data: ReportData) {
                 val unit = if (record.kwh != null) Units.pricePerEnergy else Units.pricePerVolume
                 HighlightRow(
                     label = if (record.kwh != null) tr("最贵充电", "Priciest charge") else tr("最贵加油", "Priciest fill-up"),
-                    value = listOfNotNull(
-                        price?.let { "${Format.money(it)} $unit" },
-                        recordDate(record, all),
-                        record.location?.takeIf { it.isNotBlank() },
-                    ).joinToString(" · "),
+                    value = withFutureTag(
+                        record,
+                        listOfNotNull(
+                            price?.let { "${Format.money(it)} $unit" },
+                            recordDate(record, all),
+                            record.location?.takeIf { it.isNotBlank() },
+                        ).joinToString(" · "),
+                    ),
                 )
             }
             data.highlights.topStation?.let { station ->

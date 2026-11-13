@@ -502,6 +502,31 @@ class ReportTest {
     }
 
     @Test
+    fun `future dated records are counted in all view but not in month view`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-11-03", "保险", 100.0),
+                plain("2026-11-20", "保险", 500.0), // 预录：今天 11-13 之后
+            ),
+        )
+        val all = report(ledger, all, today)
+        assertTrue(all.includesFuture)
+        assertEquals(1, all.futureCount)
+        assertEquals(500.0, all.futureTotal, 1e-9)
+        assertEquals(600.0, all.total, 1e-9)
+
+        val month = report(ledger, month(2026, 11), today)
+        assertFalse(month.includesFuture)
+        assertEquals(1, month.futureCount)
+        assertEquals(500.0, month.futureTotal, 1e-9)
+        assertEquals(100.0, month.total, 1e-9)
+
+        // 只提示「本期自然范围内」的预录：下个月那笔不该出现在 11 月报告里。
+        val nextMonthOnly = ledgerWith(listOf(plain("2026-12-02", "保险", 90.0)))
+        assertEquals(0, report(nextMonthOnly, month(2026, 11), today).futureCount)
+    }
+
+    @Test
     fun `month without energy records has no energy flow`() {
         val ledger = ledgerWith(listOf(plain("2026-10-03", "保险", 100.0)))
         val data = report(ledger, month(2026, 10), today)
