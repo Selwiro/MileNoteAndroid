@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +76,7 @@ import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteCategoryNames
 import com.milenote.android.ui.theme.MileNoteShapes
+import com.milenote.android.ui.theme.moneyLarge
 import com.milenote.android.ui.theme.moneySmall
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -185,6 +187,49 @@ private fun monthWindowBetween(
 }
 
 /**
+ * 画布窗口：在选中范围之外再带一段上下文月份，让「本月 / 上月 / 自定义单月」
+ * 不再只剩一个孤点或孤柱。
+ *
+ * [months] 是实际绘制的月份，[focus] 是其中属于选中范围的月份；两者不等时
+ * 图表把上下文画淡、选中月保持满色，卡头说明行给出「附前 N 个月对比」。
+ */
+internal data class TrendDisplay(
+    val months: List<YearMonth>,
+    val focus: Set<YearMonth>,
+)
+
+/**
+ * 单月范围自动向前补足上下文（默认总共 [contextMonths] 个月），但**不早于账本
+ * 最早记录所在月**：新用户只有本月数据时仍只画这一个月，由调用方退回单月摘要。
+ *
+ * 多个月的范围原样返回（focus = months），不改变「近 3 个月 / 今年 / 全部」的窗口语义。
+ */
+internal fun trendDisplayWindow(
+    ledger: Ledger,
+    range: DateRange,
+    today: LocalDate = Dates.today(),
+    contextMonths: Int = 6,
+): TrendDisplay {
+    val window = trendMonthWindow(ledger, range, today)
+    if (window.months.size != 1) {
+        return TrendDisplay(months = window.months, focus = window.months.toSet())
+    }
+    val only = window.months.single()
+    val earliestMonth = ledger.records
+        .mapNotNull { Dates.parse(it.date) }
+        .minOrNull()
+        ?.let { YearMonth.from(it) }
+    val desiredStart = only.minusMonths((contextMonths - 1).coerceAtLeast(0).toLong())
+    val start = if (earliestMonth != null && earliestMonth > desiredStart) earliestMonth else desiredStart
+    if (start >= only) {
+        return TrendDisplay(months = listOf(only), focus = setOf(only))
+    }
+    val count = ChronoUnit.MONTHS.between(start, only).toInt()
+    val months = (count downTo 0).map { only.minusMonths(it.toLong()) }
+    return TrendDisplay(months = months, focus = setOf(only))
+}
+
+/**
  * 里程趋势数据：按 [months] 逐月计算每月行驶里程。
  *
  * 月里程 = 该月最大 odometer − 上月最大 odometer；上月无读数时用「该月 max − min」；
@@ -232,7 +277,11 @@ internal fun buildMileageBars(
  * 用一小段横线标记这个值。点数较多（如一年 12 个月以上）时只标注峰/谷与隔月标签，避免文字重叠。
  */
 @Composable
-internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modifier) {
+internal fun MileageTrendChart(
+    bars: List<MileageBar>,
+    modifier: Modifier = Modifier,
+    focusKeys: Set<String>? = null,
+) {
     if (bars.isEmpty() || bars.all { it.km <= 0.0 }) {
         EmptyChartHint(
             text = tr("暂无里程数据", "No mileage data yet"),
@@ -243,6 +292,9 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
     }
     val scheme = MaterialTheme.colorScheme
     val primary = scheme.primary
+    val focused = focusKeys ?: bars.map { it.key }.toSet()
+    val hasContext = bars.any { it.key !in focused }
+    val focusKm = bars.filter { it.key in focused }.sumOf { it.km }
     val maxKm = remember(bars) { maxOf(1.0, bars.maxOfOrNull { it.km } ?: 0.0) }
     var started by remember(bars) { mutableStateOf(false) }
     LaunchedEffect(bars) { started = true }
@@ -253,11 +305,29 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
     )
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
-    val description = tr(
-        "里程趋势，共 %d 个月，合计 %s %s",
-        "Mileage trend, %d months, %s %s in total",
-        bars.size, Format.fmt(bars.sumOf { it.km }), Units.distanceUnit,
-    )
+    val focusSummary = bars.filter { it.key in focused }
+        .joinToString(tr("，", ", ")) { "${it.label} ${Format.fmt(it.km)}" }
+    val description = if (hasContext) {
+        if (focusKm <= 0.0) {
+            tr(
+                "里程趋势，近 %d 个月，选中月暂无里程记录",
+                "Mileage trend, last %d months, no mileage recorded in the selected month",
+                bars.size,
+            )
+        } else {
+            tr(
+                "里程趋势，近 %d 个月，其中 %s %s",
+                "Mileage trend, last %d months, %s %s highlighted",
+                bars.size, focusSummary, Units.distanceUnit,
+            )
+        }
+    } else {
+        tr(
+            "里程趋势，共 %d 个月，合计 %s %s",
+            "Mileage trend, %d months, %s %s in total",
+            bars.size, Format.fmt(bars.sumOf { it.km }), Units.distanceUnit,
+        )
+    }
 
     Canvas(
         modifier = modifier
@@ -299,9 +369,14 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
             }
         }
 
+        // 有上下文时选中月只靠主色 / 加粗轴标签区分，不再垫整列色块：
+        // 6% 的主色在深色底上会变成一块「幽灵柱」，比柱子本身还显眼。
+
         // 折线 / 面积始终只画曲线，不画逐点圆圈：
         // 原先「只有 1 个月」画一颗空心圆点、「≤8 个月」逐点画空心圆点 —— 短区间（上月 / 近 3 个月）
         // 切到里程 tab 时，空白里会浮出几颗小圆圈（2026-11-13 用户反馈「里程有时候中间会有小圆点」）。
+        val focusHasValue = bars.any { it.key in focused && it.km > 0.0 }
+        val missingFocus = hasContext && !focusHasValue && bars.lastOrNull()?.key in focused
         if (singlePoint) {
             val point = points.first()
             val half = (right - left) * 0.16f
@@ -312,6 +387,44 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
                 strokeWidth = 2.5.dp.toPx(),
                 cap = StrokeCap.Round,
             )
+        } else if (hasContext) {
+            // 上下文月：整条线淡成 onSurfaceVariant；只有选中月那一段用主色。
+            // 选中月没有里程读数时不要连到 0（那会像「这个月没开车」）：线停在最后一个有读数的月，
+            // 选中月的轴标签下方单独画一个「—」。
+            val linePoints = if (missingFocus) points.dropLast(1) else points
+            if (linePoints.size >= 2) {
+                val contextPath = Path().apply {
+                    moveTo(linePoints.first().x, linePoints.first().y)
+                    for (index in 0 until linePoints.size - 1) {
+                        val current = linePoints[index]
+                        val next = linePoints[index + 1]
+                        val midX = (current.x + next.x) / 2f
+                        cubicTo(midX, current.y, midX, next.y, next.x, next.y)
+                    }
+                }
+                drawPath(
+                    path = contextPath,
+                    color = scheme.onSurfaceVariant.copy(alpha = 0.48f),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                )
+            }
+            if (focusHasValue) {
+                for (index in 0 until count - 1) {
+                    if (bars[index].key !in focused && bars[index + 1].key !in focused) continue
+                    val current = points[index]
+                    val next = points[index + 1]
+                    val midX = (current.x + next.x) / 2f
+                    val segment = Path().apply {
+                        moveTo(current.x, current.y)
+                        cubicTo(midX, current.y, midX, next.y, next.x, next.y)
+                    }
+                    drawPath(
+                        path = segment,
+                        color = primary,
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                }
+            }
         } else {
             val linePath = Path().apply {
                 moveTo(points.first().x, points.first().y)
@@ -354,17 +467,28 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
             isPeak || isTrough
         }.toSet()
         bars.forEachIndexed { index, bar ->
-            val show = bar.km > 0.0 && (index in extremumIndices || index == bars.lastIndex)
+            val show = bar.km > 0.0 && if (hasContext) {
+                bar.key in focused
+            } else {
+                index in extremumIndices || index == bars.lastIndex
+            }
             if (show) {
                 val layout = textMeasurer.measure(Format.fmt(bar.km), labelStyle)
                 val x = (points[index].x - layout.size.width / 2f)
                     .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
                 val y = (points[index].y - layout.size.height - 6.dp.toPx()).coerceAtLeast(0f)
                 drawText(textLayoutResult = layout, topLeft = Offset(x, y))
+            } else if (hasContext && bar.key in focused) {
+                // 选中月没有里程读数：在基线附近画「—」，避免整张图看起来断了。
+                val layout = textMeasurer.measure("—", labelStyle)
+                val x = (points[index].x - layout.size.width / 2f)
+                    .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
+                val y = (bottom - layout.size.height - 6.dp.toPx()).coerceAtLeast(0f)
+                drawText(textLayoutResult = layout, topLeft = Offset(x, y))
             }
         }
 
-        // 横轴月份标签：点多时隔月显示
+        // 横轴月份标签：点多时隔月显示；有上下文时选中月加重。
         bars.forEachIndexed { index, bar ->
             val show = when {
                 count <= 8 -> true
@@ -373,7 +497,12 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
                     index % ceil(count / 6.0).toInt() == 0
             }
             if (show) {
-                val layout = textMeasurer.measure(bar.label, labelStyle)
+                val style = if (hasContext && bar.key in focused) {
+                    labelStyle.copy(color = primary, fontWeight = FontWeight.SemiBold)
+                } else {
+                    labelStyle
+                }
+                val layout = textMeasurer.measure(bar.label, style)
                 val x = (points[index].x - layout.size.width / 2f)
                     .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
                 val labelTop = size.height - axisRow + (axisRow - layout.size.height) / 2f
@@ -451,7 +580,7 @@ internal fun monthKey(month: YearMonth): String =
     "${month.year}-${month.monthValue.toString().padStart(2, '0')}"
 
 /** 图表横轴月份标签：中文 `11 月`，英文 `Nov`。 */
-private fun monthAxisLabel(month: YearMonth): String =
+internal fun monthAxisLabel(month: YearMonth): String =
     tr("${month.monthValue} 月", month.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH))
 
 /**
@@ -496,6 +625,7 @@ internal fun ExpenseTrendChart(
     ev: Boolean = false,
     highlight: String? = null,
     onClearHighlight: () -> Unit = {},
+    focusKeys: Set<String>? = null,
 ) {
     if (bars.isEmpty() || bars.all { it.total <= 0.0 }) {
         EmptyChartHint(
@@ -506,6 +636,8 @@ internal fun ExpenseTrendChart(
         return
     }
     val scheme = MaterialTheme.colorScheme
+    val focused = focusKeys ?: bars.map { it.key }.toSet()
+    val hasContext = bars.any { it.key !in focused }
     var selection by remember(bars) { mutableStateOf<BarSelection?>(null) }
     var bubbleSize by remember(bars) { mutableStateOf(IntSize.Zero) }
     val maxTotal = remember(bars) { maxOf(1.0, bars.maxOfOrNull { it.total } ?: 0.0) }
@@ -525,11 +657,20 @@ internal fun ExpenseTrendChart(
         label = "trendReveal",
     )
 
-    val trendDescription = tr(
-        "支出趋势，合计 %s %s",
-        "Expense trend, %s %s in total",
-        Format.money(bars.sumOf { it.total }), Units.money,
-    )
+    val focusTotal = bars.filter { it.key in focused }.sumOf { it.total }
+    val trendDescription = if (hasContext) {
+        tr(
+            "支出趋势，近 %d 个月，选中范围合计 %s %s",
+            "Expense trend, last %d months, %s %s in the selected range",
+            bars.size, Format.money(focusTotal), Units.money,
+        )
+    } else {
+        tr(
+            "支出趋势，合计 %s %s",
+            "Expense trend, %s %s in total",
+            Format.money(focusTotal), Units.money,
+        )
+    }
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
@@ -575,11 +716,15 @@ internal fun ExpenseTrendChart(
                                 modifier = Modifier.height(20.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (!dense) {
+                                if (!dense && (!hasContext || bar.key in focused)) {
                                     Text(
                                         text = if (bar.total > 0.0) Format.fmt(bar.total) else "—",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = scheme.onSurfaceVariant,
+                                        color = if (hasContext && bar.key in focused) {
+                                            scheme.onSurface
+                                        } else {
+                                            scheme.onSurfaceVariant
+                                        },
                                         maxLines = 1,
                                     )
                                 }
@@ -630,7 +775,8 @@ internal fun ExpenseTrendChart(
                                                     selectedIndex = selection
                                                         ?.takeIf { it.monthIndex == index }
                                                         ?.categoryIndex,
-                                                    highlight = highlight,
+                                                    highlight = highlight?.takeIf { bar.key in focused },
+                                                    muted = hasContext && bar.key !in focused,
                                                 )
                                             }
                                         }
@@ -655,7 +801,12 @@ internal fun ExpenseTrendChart(
                         indices.add(count - 1)
                         var lastRight = -Float.MAX_VALUE
                         indices.sorted().forEach { monthIndex ->
-                            val layout = axisTextMeasurer.measure(bars[monthIndex].label, axisStyle)
+                            val style = if (hasContext && bars[monthIndex].key in focused) {
+                                axisStyle.copy(color = scheme.primary, fontWeight = FontWeight.SemiBold)
+                            } else {
+                                axisStyle
+                            }
+                            val layout = axisTextMeasurer.measure(bars[monthIndex].label, style)
                             val x = ((monthIndex + 0.5f) * cell - layout.size.width / 2f)
                                 .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
                             if (x < lastRight + 2.dp.toPx()) return@forEach
@@ -1177,6 +1328,95 @@ private fun ChartBubble(text: String, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * 单月且没有历史可比时（新账本只有一个月记录）的摘要版式。
+ *
+ * 不再把唯一值画成孤点 / 孤柱；高度仍钉在 [TrendChartBlockHeight]，
+ * 与图表、分类视图来回切换时卡片高度不变。
+ *
+ * @param stats label → value 的辅助指标，最多 2–3 条。
+ */
+@Composable
+internal fun SingleMonthTrendSummary(
+    title: String,
+    value: String,
+    unit: String?,
+    stats: List<Pair<String, String>>,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val description = buildString {
+        append(title)
+        append(' ')
+        append(value)
+        if (unit != null) {
+            append(' ')
+            append(unit)
+        }
+        stats.forEach { (label, statValue) ->
+            append(' ')
+            append(label)
+            append(' ')
+            append(statValue)
+        }
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TrendChartBlockHeight)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.moneyLarge,
+                color = scheme.onSurface,
+                maxLines = 1,
+            )
+            if (unit != null) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 5.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            stats.forEach { (label, statValue) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = statValue,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = scheme.onSurface,
+                        maxLines = 1,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** 图表空态占位（保持卡片有固定视觉高度，避免切换期间跳动）。 */
 @Composable
 private fun EmptyChartHint(
@@ -1207,9 +1447,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStackedBar(
     total: Double,
     selectedIndex: Int?,
     highlight: String? = null,
+    muted: Boolean = false,
 ) {
     if (total <= 0.0) return
     val radius = 6.dp.toPx()
+    val mute = if (muted) 0.45f else 1f
     val clip = Path().apply {
         addRoundRect(
             RoundRect(
@@ -1233,12 +1475,12 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStackedBar(
                 mismatch -> 0.22f
                 dimmed -> 0.5f
                 else -> 0.95f
-            }
+            } * mute
             val endAlpha = when {
                 mismatch -> 0.15f
                 dimmed -> 0.35f
                 else -> 0.65f
-            }
+            } * mute
             drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(

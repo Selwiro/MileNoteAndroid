@@ -853,23 +853,63 @@ private fun TrendCard(
     val tab = TrendTab.entries.firstOrNull { it.name == tabName } ?: TrendTab.MILEAGE
     val view = ExpenseChartView.entries.firstOrNull { it.name == viewName } ?: ExpenseChartView.MONTH
     val window = remember(ledger, range) { trendMonthWindow(ledger, range) }
-    val months = window.months
+    // 单月范围自动带上下文月份（最多 6 个月），避免图表只剩一个孤点 / 孤柱；
+    // display.focus 是其中属于选中范围的月份，分类视图只汇总这批。
+    val display = remember(ledger, range) { trendDisplayWindow(ledger, range) }
+    val months = display.months
+    val focusKeys = remember(display) { display.focus.map { monthKey(it) }.toSet() }
+    val hasContext = months.size > focusKeys.size
+    val focusLabel = display.focus.firstOrNull()?.let { monthAxisLabel(it) }
+    val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
+    val palette = LocalMileNoteCategoryColors.current
+    val darkTheme = LocalMileNoteDarkTheme.current
+    val monthBars = remember(ledger, palette, darkTheme, months) {
+        buildMonthBars(ledger, palette, darkTheme, months)
+    }
+    // 分类视图 / 单月摘要只算选中范围，不把上下文月份算进来。
+    val rangeBars = remember(monthBars, focusKeys) { monthBars.filter { it.key in focusKeys } }
+    val singleMonth = months.size == 1
+    val singleBar = monthBars.singleOrNull()
+    val singleMileage = mileageBars.singleOrNull()
+    val focusKm = remember(mileageBars, focusKeys) {
+        mileageBars.filter { it.key in focusKeys }.sumOf { it.km }
+    }
     // 「全部」在图表里只画最近 24 个月；轴下不放信息，窗口说明放在卡头右侧。
     val windowLabel = when {
+        hasContext && tab == TrendTab.MILEAGE && focusKm <= 0.0 -> tr(
+            "%s · 暂无里程 · 前 %d 个月对比",
+            "%s · no mileage · %d prior months for context",
+            focusLabel.orEmpty(),
+            months.size - 1,
+        )
+        hasContext -> tr(
+            "%s · 附前 %d 个月对比",
+            "%s · %d prior months for context",
+            focusLabel.orEmpty(),
+            months.size - 1,
+        )
         window.truncated -> tr(
             "近 %d / %d 个月",
             "Last %d of %d months",
             months.size,
             window.totalMonths,
         )
-        range.from.isEmpty() -> tr("近 %d 个月", "Last %d months", months.size)
+        range.from.isEmpty() -> if (months.size == 1) {
+            tr("近 1 个月", "Last month")
+        } else {
+            tr("近 %d 个月", "Last %d months", months.size)
+        }
         else -> null
     }
-    val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
-    val palette = LocalMileNoteCategoryColors.current
-    val darkTheme = LocalMileNoteDarkTheme.current
-    val monthBars = remember(ledger, palette, darkTheme, months) {
-        buildMonthBars(ledger, palette, darkTheme, months)
+    val rangeStats = remember(ledger, range, singleMonth) {
+        if (singleMonth) stats(ledger, range.from, range.to) else null
+    }
+    // 单月摘要的日均：本月算到今天，历史月算整月。
+    val summaryDays = remember(months, range) {
+        val end = (Dates.parse(range.to) ?: Dates.today()).let {
+            if (it.isAfter(Dates.today())) Dates.today() else it
+        }
+        (Dates.daysBetween(months.first().atDay(1), end) + 1).toInt().coerceAtLeast(1)
     }
     // 换范围 / 切车后高亮的分类可能已经不在了：别让整张图全暗着不给解释。
     LaunchedEffect(monthBars, highlight) {
@@ -939,16 +979,44 @@ private fun TrendCard(
         }
         Spacer(modifier = Modifier.height(10.dp))
         when (tab) {
-            TrendTab.MILEAGE -> MileageTrendChart(bars = mileageBars)
-            TrendTab.EXPENSE -> when (view) {
-                ExpenseChartView.MONTH -> ExpenseTrendChart(
-                    bars = monthBars,
-                    ev = ledger.isEv,
-                    highlight = highlight,
-                    onClearHighlight = { highlight = null },
+            TrendTab.MILEAGE -> if (singleMonth && singleMileage != null && singleMileage.km > 0.0) {
+                SingleMonthTrendSummary(
+                    title = tr("%s里程", "Mileage · %s", singleMileage.label),
+                    value = Format.fmt(singleMileage.km),
+                    unit = Units.distanceUnit,
+                    stats = listOf(
+                        tr("日均", "Daily avg") to
+                            "${Format.fmt(singleMileage.km / summaryDays)} ${Units.distanceUnit}",
+                        tr("记录", "Readings") to
+                            ((rangeStats?.records?.count { (it.odometer ?: 0.0) > 0.0 }) ?: 0).toString(),
+                    ),
                 )
+            } else {
+                MileageTrendChart(bars = mileageBars, focusKeys = focusKeys)
+            }
+            TrendTab.EXPENSE -> when (view) {
+                ExpenseChartView.MONTH -> if (singleMonth && singleBar != null && singleBar.total > 0.0) {
+                    SingleMonthTrendSummary(
+                        title = tr("%s支出", "Expense · %s", singleBar.label),
+                        value = Format.money(singleBar.total),
+                        unit = Units.money,
+                        stats = listOf(
+                            tr("日均", "Daily avg") to
+                                "${Units.currencySymbol}${Format.money(singleBar.total / summaryDays)}",
+                            tr("记录", "Entries") to (rangeStats?.records?.size ?: 0).toString(),
+                        ),
+                    )
+                } else {
+                    ExpenseTrendChart(
+                        bars = monthBars,
+                        ev = ledger.isEv,
+                        highlight = highlight,
+                        onClearHighlight = { highlight = null },
+                        focusKeys = focusKeys,
+                    )
+                }
                 ExpenseChartView.CATEGORY -> ExpenseCategoryBreakdown(
-                    bars = monthBars,
+                    bars = rangeBars,
                     ev = ledger.isEv,
                     onPick = { name ->
                         highlight = name
