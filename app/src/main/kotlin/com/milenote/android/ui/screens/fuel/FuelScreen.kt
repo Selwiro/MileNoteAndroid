@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -93,14 +94,14 @@ import kotlinx.coroutines.launch
  * - **FUEL_ONLY（燃油、HEV）**：今日油价卡 + 2×2 概览（油耗 / 油费支出 / 平均油费 / 里程）+ 油耗走势；
  * - **ELECTRIC_ONLY（纯电）**：无油价卡、不抓价、不定位；2×2 概览（电耗 / 电费支出 / 平均电费 / 里程）+ 电耗走势；
  * - **DUAL（插混 / 增程）**：有油箱 → 油价卡照旧（抓价 / 定位不变）；概览 2×3（平均油耗 / 平均电耗 /
- *   油费 / 电费 / 每公里能源费用 / 里程）、走势右上角「筛选」含时间 + 能源（油耗 / 电耗）两组；
- *   加油与充电明细在推入页 [EnergyDetailScreen] 里混排 + 两行汇总。
+ *   油费 / 电费 / 每公里能源费用 / 里程）、走势卡头一行「油耗 / 电耗」文字 tab（最左）+ 时间范围胶囊（最右），
+ *   选中 tab 即切换曲线数据源；加油与充电明细在推入页 [EnergyDetailScreen] 里混排 + 两行汇总。
  *
  * 结构（自上→下，统一为 SectionCard 卡片风格，卡内只有标题、无副标题）：
  * 1. 「今日油价」卡（有油箱且非英文界面时）：标号油价 + 刷新 / 定位；
  * 2. 「油耗/能耗概览」卡：右上角范围胶囊（6 档预设 + 自定义 DateRangePicker）+ 卡内 2×2（插混 2×3）纯文字指标；
- * 3. 「油耗/能耗走势」卡：右上角「筛选」胶囊（时间分组；插混另有能源分组，选中即切换曲线数据源）+
- *    平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
+ * 3. 「油耗/能耗走势」卡：燃油 / 纯电 = 标题 + 右上角范围胶囊；插混与总览「趋势」卡同构——卡头只有
+ *    一行控件，「油耗 / 电耗」在左、范围胶囊在右（不再单列卡标题）；平滑曲线 + 面积渐变 + 当前值 pill，点按数据点看数值；
  * 4. 底部可折叠「满箱法 / 满电+累计 / 双口径说明」。
  *
  * 「明细」页签已拆成独立推入页（[EnergyDetailScreen]）：本页不再含页签，也不含任何明细 state。
@@ -335,16 +336,34 @@ fun FuelScreen(
             }
         }
 
-        // ---- 油耗/能耗走势（一张卡；插混的曲线数据源在右上角「筛选 → 能源」里切换） ----
+        // ---- 油耗/能耗走势（一张卡；插混卡头与总览「趋势」卡同构：油耗/电耗 tab 在左、范围胶囊在右） ----
         item(key = "chart") {
+            // 插混的「油耗 / 电耗」切换当卡头用，不再单列「能耗走势」标题：
+            // 标题 + tab + 胶囊挤一行时，1.3× 字号下标题会贴到「油耗」上。
+            val rangeAction: @Composable () -> Unit = {
+                RangeFilterAction(
+                    period = trendPeriod,
+                    customRange = trendCustomRange,
+                    onSelectPeriod = { trendPeriod = it; trendCustomRange = null },
+                    onSelectCustomRange = { from, to -> trendCustomRange = DateRange(from, to) },
+                )
+            }
             SectionCard(
-                title = if (ev || phev) tr("能耗走势", "Energy trend") else tr("油耗走势", "Fuel trend"),
-                action = {
+                title = when {
+                    phev -> null
+                    ev -> tr("能耗走势", "Energy trend")
+                    else -> tr("油耗走势", "Fuel trend")
+                },
+                action = if (phev) null else rangeAction,
+            ) {
+                if (phev) {
+                    // 与 DashboardScreen 的趋势卡同构：左侧 tab 占满剩余宽度，右侧范围胶囊贴边。
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        if (phev) {
+                        Box(modifier = Modifier.weight(1f)) {
                             HeaderTextTabs(
                                 labels = listOf(tr("油耗", "Fuel"), tr("电耗", "Electric")),
                                 selectedIndex = if (chartKind == EnergyKind.FUEL) 0 else 1,
@@ -353,16 +372,11 @@ fun FuelScreen(
                                 },
                             )
                         }
-                        RangeFilterAction(
-                            period = trendPeriod,
-                            customRange = trendCustomRange,
-                            onSelectPeriod = { trendPeriod = it; trendCustomRange = null },
-                            onSelectCustomRange = { from, to -> trendCustomRange = DateRange(from, to) },
-                        )
+                        rangeAction()
                     }
-                },
-            ) {
-                // 插混：曲线数据源由右上角「筛选 → 能源」切换（单 Y 轴，单位随切换），空态与图表都跟随当前种类。
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                // 插混：曲线数据源由卡头「油耗 / 电耗」tab 切换（单 Y 轴，单位随切换），空态与图表都跟随当前种类。
                 val streamEv = if (phev) chartKind == EnergyKind.ELECTRIC else ev
                 if (intervals.isEmpty()) {
                     EmptyState(
