@@ -14,7 +14,7 @@
   `app/` = Compose 界面、数据层（单文件 JSON 账本快照）、平台能力（OCR/SAF/WebDAV）。
 - **i18n**：用户可见文案用 `tr("中文", "English")`（带占位符用 `tr(zh, en, args)`）；domain 用
   `com.milenote.android.domain.i18n.tr`。分类名/项目名/皮肤 id/presetKey 等**数据值不翻译**，
-  显示走 `i18n/DataLabels`。约定与术语表在仓库外 [`../docs/i18n-en-guide.md`](../docs/i18n-en-guide.md)。
+  显示走 `i18n/DataLabels`。约定与术语表在仓库外 [`../work/docs/i18n-en-guide.md`](../work/docs/i18n-en-guide.md)。
 
 ## 硬规则
 

@@ -3,7 +3,7 @@ package com.milenote.android.domain.export
 /**
  * 最小 XLSX 写入器（零依赖，只用 `java.util.zip`）。
  *
- * 为什么不用 Apache POI：本应用刻意保持运行期依赖精简（见 `docs/licensing` 审计），
+ * 为什么不用 Apache POI：本应用刻意保持运行期依赖精简（见 `work/docs/licensing` 审计），
  * 而导出只需要「文本 + 数字 + 表头加粗 + 冻结首行」，自写 OOXML 足够且可单测。
  *
  * 支持：多工作表、数字单元格、文本单元格（inlineStr，不写 sharedStrings）、

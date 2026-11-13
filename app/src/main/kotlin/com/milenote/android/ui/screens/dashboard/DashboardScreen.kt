@@ -536,7 +536,7 @@ private fun VehicleHeroCard(
  *
  * 旧做法把照片塞进右侧 160dp×全高肖像区、按「完整展示 / 铺满画框」切 Fit / Crop 再拉 55% 长渐隐：
  * Fit 会在渐变卡里露出带硬边的浮空矩形，长渐隐又让照片半透明、车像鬼影。整卡铺满 + 实色 scrim
- * 是设计稿里 A/B 合体版的落地方式（见 docs/design/dashboard-hero-redesign-20261108.md §2 升级路径）。
+ * 是设计稿里 A/B 合体版的落地方式（见 archive/design/dashboard-hero-redesign-20261108.md §2 升级路径）。
  */
 @Composable
 private fun VehiclePortraitPhoto(
