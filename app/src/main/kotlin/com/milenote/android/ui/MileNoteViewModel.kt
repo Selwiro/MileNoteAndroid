@@ -51,11 +51,15 @@ import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.format.Format
+import com.milenote.android.domain.calc.applyCategoryToRecords
 import com.milenote.android.domain.calc.completeImportedServices
 import com.milenote.android.domain.calc.duplicateOf
 import com.milenote.android.domain.calc.manualDuplicateOf
 import com.milenote.android.domain.calc.mergeFuelBatch
 import com.milenote.android.domain.calc.mergeImported
+import com.milenote.android.domain.calc.removeRecords
+import com.milenote.android.domain.calc.restoreRemovedRecords
+import com.milenote.android.domain.calc.DeletedRecords
 import com.milenote.android.domain.import.ImportItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,6 +89,19 @@ data class PendingRecordDelete(
     val record: Record,
     /** 该记录完成的提醒标题。 */
     val reminderTitles: List<String>,
+)
+
+/**
+ * 可撤销的一次删除（底部提示的「撤销」）。
+ *
+ * [message] 与提示文案绑定：只有当前提示确实来自这次删除时才显示「撤销」，
+ * 避免期间别的提示（如自动同步失败）被误挂上撤销动作。
+ */
+data class DeleteUndo(
+    val message: String,
+    /** 删除发生在哪辆车：期间切换车辆后不再把记录插回另一辆车。 */
+    val carId: String,
+    val deleted: DeletedRecords,
 )
 
 /** 通用确认弹层。 */
@@ -188,6 +205,8 @@ data class UiState(
     val vehicleSwitcher: Boolean = false,
     val confirm: PendingConfirm? = null,
     val recordDelete: PendingRecordDelete? = null,
+    /** 最近一次删除的撤销数据；非空且 [message] 匹配时底部提示显示「撤销」。 */
+    val deleteUndo: DeleteUndo? = null,
     val message: String? = null,
     val showVehicleEditor: Boolean = false,
     val vehicleEditorId: String? = null,
@@ -420,35 +439,151 @@ class MileNoteViewModel(
         }
     }
 
-    fun deleteRecord(record: Record) {
-        val active = _state.value.activeCar
-        val profile = active?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
-        val linked = _state.value.activeCar?.reminders.orEmpty()
-            .filter { it.done == true && it.recordId == record.id }
-        if (linked.isNotEmpty()) {
+    /**
+     * 删除记录（单条或批量）。
+     *
+     * - 单条、且该记录完成过保养提醒 → 弹窗询问是否恢复提醒（原有行为）；
+     * - 单条、无关联提醒 → 直接删除，底部提示可撤销；
+     * - 多条 → 先确认（有完成提醒会一并恢复），再删除，底部提示可撤销。
+     */
+    fun deleteRecords(records: List<Record>) {
+        val active = _state.value.activeCar ?: return
+        val ids = records.map { it.id }.toSet()
+        val existing = active.records.filter { it.id in ids }
+        if (existing.isEmpty()) return
+        val reminderTitles = active.reminders
+            .filter { it.done == true && it.recordId in ids }
+            .map { it.title }
+            .distinct()
+        when {
+            existing.size == 1 && reminderTitles.isNotEmpty() -> {
+                _state.value = _state.value.copy(
+                    recordDelete = PendingRecordDelete(
+                        record = existing.first(),
+                        reminderTitles = reminderTitles,
+                    ),
+                )
+            }
+            existing.size == 1 -> performDelete(existing, restoreReminders = true)
+            else -> confirm(
+                PendingConfirm(
+                    title = tr("删除选中的 %d 条记录？", "Delete %d selected records?", existing.size),
+                    message = if (reminderTitles.isNotEmpty()) {
+                        tr(
+                            "其中 %d 条完成了保养提醒，删除后提醒会恢复为未完成。删除后可在底部提示里撤销。",
+                            "%d of them completed service reminders; those reminders will be restored. You can undo from the message below.",
+                            reminderTitles.size,
+                        )
+                    } else {
+                        tr(
+                            "删除后可在底部提示里点「撤销」找回。",
+                            "You can undo this from the message below.",
+                        )
+                    },
+                    confirmLabel = tr("删除", "Delete"),
+                    destructive = true,
+                ) { performDelete(existing, restoreReminders = true) },
+            )
+        }
+    }
+
+    /** 单条删除入口（编辑页「删除」）仍走这里。 */
+    fun deleteRecord(record: Record) = deleteRecords(listOf(record))
+
+    /**
+     * 真正执行删除：写库、记下撤销快照、提示可撤销。
+     *
+     * @param restoreReminders 是否把被删记录完成过的保养提醒恢复为未完成。
+     */
+    private fun performDelete(records: List<Record>, restoreReminders: Boolean) {
+        val ids = records.map { it.id }.toSet()
+        val carId = _state.value.activeCar?.id
+        viewModelScope.launch {
+            var snapshot: DeletedRecords? = null
+            repository.update(syncHistory = true) { garage ->
+                updateActive(garage) { ledger ->
+                    val removal = removeRecords(ledger, ids, restoreReminders)
+                    snapshot = removal.undo
+                    removal.ledger
+                }
+            }
+            val deleted = snapshot ?: DeletedRecords()
+            if (deleted.isEmpty) {
+                _state.value = _state.value.copy(recordDelete = null)
+                return@launch
+            }
+            val count = deleted.records.size
+            val remindersRestored = restoreReminders &&
+                deleted.reminders.any { it.reminder.recordId in ids }
+            val message = when {
+                count == 1 && remindersRestored ->
+                    tr("已删除 1 条记录，保养提醒已恢复", "Deleted 1 record — service reminder restored")
+                count == 1 -> tr("已删除 1 条记录", "Deleted 1 record")
+                remindersRestored ->
+                    tr("已删除 %d 条记录，保养提醒已恢复", "Deleted %d records — service reminders restored", count)
+                else -> tr("已删除 %d 条记录", "Deleted %d records", count)
+            }
             _state.value = _state.value.copy(
-                recordDelete = PendingRecordDelete(
-                    record = record,
-                    reminderTitles = linked.map { it.title }.distinct(),
-                ),
+                recordDelete = null,
+                editor = _state.value.editor?.takeIf { it.record?.id !in ids },
+                deleteUndo = carId?.let { DeleteUndo(message = message, carId = it, deleted = deleted) },
+                message = message,
+            )
+        }
+    }
+
+    /** 撤销最近一次删除（底部提示的「撤销」）：按原位插回记录，并恢复受影响的提醒。 */
+    fun undoDelete() {
+        val undo = _state.value.deleteUndo ?: return
+        if (_state.value.activeCar?.id != undo.carId) {
+            _state.value = _state.value.copy(
+                deleteUndo = null,
+                message = tr("已切换车辆，无法撤销刚才的删除", "Switched vehicles — that deletion can no longer be undone"),
             )
             return
         }
-        confirm(
-            PendingConfirm(
-                title = tr("删除这条记录？", "Delete this record?"),
-                message = "${Dates.displayDots(record.date)} · ${active?.let { DataLabels.categoryFor(it, record.category, profile) } ?: DataLabels.category(record.category, profile)} · ${Units.currencySymbol}${Format.money(record.amount)}",
-                confirmLabel = tr("删除", "Delete"),
-                destructive = true,
-            ) {
-                viewModelScope.launch {
-                    repository.update(syncHistory = true) { garage ->
-                        updateActive(garage) { it.copy(records = it.records.filter { r -> r.id != record.id }) }
-                    }
-                    _state.value = _state.value.copy(message = tr("已删除", "Deleted"))
-                }
-            },
-        )
+        val count = undo.deleted.records.size
+        viewModelScope.launch {
+            repository.update(syncHistory = true) { garage ->
+                updateActive(garage) { restoreRemovedRecords(it, undo.deleted) }
+            }
+            _state.value = _state.value.copy(
+                deleteUndo = null,
+                message = if (count == 1) {
+                    tr("已恢复 1 条记录", "Restored 1 record")
+                } else {
+                    tr("已恢复 %d 条记录", "Restored %d records", count)
+                },
+            )
+        }
+    }
+
+    /** 提示已消失 / 已撤销：丢掉撤销数据，避免旧快照被再次使用。 */
+    fun clearDeleteUndo() {
+        if (_state.value.deleteUndo != null) {
+            _state.value = _state.value.copy(deleteUndo = null)
+        }
+    }
+
+    /** 批量改分类：只改选中记录的 `category`，其余字段与账本顺序不动。 */
+    fun changeRecordsCategory(records: List<Record>, category: String) {
+        val active = _state.value.activeCar ?: return
+        val ids = records.map { it.id }.toSet()
+        val target = Categories.normalize(category)
+        if (ids.isEmpty() || target.isEmpty()) return
+        val label = DataLabels.categoryFor(active, target, active.vehicle.energyProfile)
+        viewModelScope.launch {
+            repository.update(syncHistory = true) { garage ->
+                updateActive(garage) { applyCategoryToRecords(it, ids, target) }
+            }
+            _state.value = _state.value.copy(
+                message = if (ids.size == 1) {
+                    tr("已改为「%s」", "Changed to %s", label)
+                } else {
+                    tr("已将 %d 条记录改为「%s」", "Changed %d records to %s", ids.size, label)
+                },
+            )
+        }
     }
 
     /** 取消「删除记录后是否恢复提醒」。 */
@@ -458,29 +593,7 @@ class MileNoteViewModel(
 
     /** 删除记录；[restoreReminders] 为 true 时同时恢复该记录完成的保养提醒。 */
     fun confirmRecordDelete(record: Record, restoreReminders: Boolean) {
-        viewModelScope.launch {
-            repository.update(syncHistory = true) { garage ->
-                updateActive(garage) { ledger ->
-                    val reminders = if (restoreReminders) {
-                        restoreServiceRemindersAfterRecordDelete(ledger.reminders, record)
-                    } else {
-                        ledger.reminders.map { reminder ->
-                            if (reminder.recordId == record.id) reminder.copy(recordId = null)
-                            else reminder
-                        }
-                    }
-                    ledger.copy(
-                        records = ledger.records.filter { r -> r.id != record.id },
-                        reminders = reminders,
-                    )
-                }
-            }
-            _state.value = _state.value.copy(
-                recordDelete = null,
-                editor = _state.value.editor?.takeIf { it.record?.id != record.id },
-                message = if (restoreReminders) tr("已删除，保养提醒已恢复", "Deleted — service reminder restored") else tr("已删除", "Deleted"),
-            )
-        }
+        performDelete(listOf(record), restoreReminders)
     }
 
     // ---------- 车辆 ----------

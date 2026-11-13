@@ -34,8 +34,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -189,10 +191,20 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         }
     }
 
-    LaunchedEffect(state.message) {
+    LaunchedEffect(state.message, state.deleteUndo) {
         val message = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        // 只有「确实来自这次删除」的提示才挂「撤销」（期间别的提示不会误带撤销动作）。
+        val undo = state.deleteUndo?.takeIf { it.message == message }
+        val result = snackbarHostState.showSnackbar(
+            message = message,
+            actionLabel = if (undo != null) tr("撤销", "Undo") else null,
+            withDismissAction = false,
+            duration = if (undo != null) SnackbarDuration.Long else SnackbarDuration.Short,
+        )
         vm.consumeMessage()
+        if (undo != null) {
+            if (result == SnackbarResult.ActionPerformed) vm.undoDelete() else vm.clearDeleteUndo()
+        }
     }
 
     // 每个导航目标自带 Scaffold（顶栏 / 底栏 / Snackbar），外层不再按路由开关栏：
@@ -234,12 +246,15 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             )
         }
         composable(route = Routes.RECORDS) {
-            DetailScaffold(
-                title = tr("费用明细", "Expense details"),
-                snackbarHostState = snackbarHostState,
-                onBack = { navController.popBackStack() },
-            ) {
-                RecordsScreen(vm = vm)
+            // 费用明细页自带顶栏（多选时要换标题与动作），外层只提供 Snackbar 宿主与系统栏 inset。
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) },
+            ) { inner ->
+                RecordsScreen(
+                    vm = vm,
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.padding(inner),
+                )
             }
         }
         composable(route = Routes.FUEL_DETAIL) {
