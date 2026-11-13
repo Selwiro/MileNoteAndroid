@@ -45,6 +45,14 @@ data class FuelPriceInfo(
      * 界面据此提示「数据未更新」，避免把旧价当成今日价展示。
      */
     val dataStale: Boolean = false,
+    /** 价格已经是**城市级**（命中了城市页，或按城市差价推算过），可以直接当作该市今日价。 */
+    val cityLevel: Boolean = false,
+    /**
+     * 城市价是由「省价 + 城市固定差价」推算的（不是城市页直接给的值）。
+     *
+     * 只有省价源可用时才会发生：见 [FuelPriceRepository.withCityPrice]。
+     */
+    val cityEstimated: Boolean = false,
 ) {
     val hasPrice: Boolean get() = price92 != null || price95 != null || price98 != null || price0 != null
 }
@@ -58,6 +66,40 @@ data class FuelLocation(
     val cityName: String? = null,
 ) {
     val displayName: String get() = cityName?.takeIf { it.isNotBlank() }?.let(FuelRegions::shortCityName) ?: province.name
+}
+
+/**
+ * 一个城市相对**省均价**的固定上浮（元/升），按标号分开存。
+ *
+ * 城市之间差价的来源是省内运杂费（长期固定），发改委每次调价对同一省所有城市加减同一幅度，
+ * 所以这个差价可以跨调价周期复用。
+ */
+data class PriceSurcharge(
+    val p92: Double? = null,
+    val p95: Double? = null,
+    val p98: Double? = null,
+    val d0: Double? = null,
+) {
+    val isEmpty: Boolean get() = p92 == null && p95 == null && p98 == null && d0 == null
+}
+
+/**
+ * 最近一次拿到的「城市价 - 省价」差价表（内存），给 [FuelPriceRepository.withCityPrice] 用。
+ *
+ * 只有 fanzbus 数据集带城市级价格，而它经常停更；停更时它的**差价**仍然有效，
+ * 于是省价源（oil-price / oilpulse / 公共 API）拿到的新价可以按差价推回城市价。
+ */
+class CityPriceSnapshot {
+
+    @Volatile
+    private var surcharges: Map<String, Map<String, PriceSurcharge>> = emptyMap()
+
+    fun store(value: Map<String, Map<String, PriceSurcharge>>) {
+        if (value.isNotEmpty()) surcharges = value
+    }
+
+    fun surchargeFor(provinceName: String, cityName: String): PriceSurcharge? =
+        surcharges[provinceName]?.get(cityName)
 }
 
 object FuelRegions {
@@ -148,9 +190,12 @@ interface FuelPriceSource {
  * 缓存与刷新周期不在这里：见 [FuelPriceCache]（同一天内只自动刷新一次，手动刷新不受限）。
  */
 class FuelPriceRepository(
-    private val sources: List<FuelPriceSource> = defaultSources(),
+    sources: List<FuelPriceSource>? = null,
     private val client: OkHttpClient = defaultClient(),
+    private val citySnapshot: CityPriceSnapshot = CityPriceSnapshot(),
 ) {
+    private val sources: List<FuelPriceSource> = sources ?: defaultSources(client, citySnapshot)
+
     /**
      * 抓取一次：按顺序回退，返回**第一个仍处于当前调价周期**的数据源结果。
      *
@@ -167,10 +212,36 @@ class FuelPriceRepository(
             }.getOrNull()
             if (info == null || !info.hasPrice) continue
             val labeled = info.copy(source = source.id)
-            if (!info.dataStale) return@withContext labeled
+            if (!info.dataStale) return@withContext withCityPrice(labeled, location)
             if (staleFallback == null) staleFallback = labeled
         }
-        staleFallback
+        staleFallback?.let { withCityPrice(it, location) }
+    }
+
+    /**
+     * 只有省价时把城市价补回来：`城市价 = 省价 + 该市固定上浮`。
+     *
+     * 背景（2026-11-13）：云南这类非统一价省份，城市之间差 0.15–0.28 元/升。
+     * 唯一带城市级价格的数据源 fanzbus 停更后，回退源只有省均价——红河 8.67 会被显示成
+     * 云南均价 8.52。差价来自 [CityPriceSnapshot]（同源、同一轮调价的快照），
+     * 与省价一起相加即可还原城市价；推出来的值标 [FuelPriceInfo.cityEstimated]，界面会注明。
+     */
+    internal fun withCityPrice(info: FuelPriceInfo, location: FuelLocation): FuelPriceInfo {
+        if (info.cityLevel) return info
+        val city = location.cityName?.takeIf { it.isNotBlank() }?.let(FuelRegions::shortCityName)
+            ?: return info
+        val surcharge = citySnapshot.surchargeFor(location.province.name, city)
+            ?.takeIf { !it.isEmpty } ?: return info
+        fun add(base: Double?, delta: Double?): Double? =
+            if (base == null || delta == null) base else roundPrice(base + delta)
+        return info.copy(
+            price92 = add(info.price92, surcharge.p92),
+            price95 = add(info.price95, surcharge.p95),
+            price98 = add(info.price98, surcharge.p98),
+            price0 = add(info.price0, surcharge.d0),
+            cityLevel = true,
+            cityEstimated = true,
+        )
     }
 
     /** 无缓存且全部失败时的内置参考价（明确标记 isFallback）。 */
@@ -219,13 +290,18 @@ class FuelPriceRepository(
      * - `data/forecast.json`：独立预测方向（Yahoo Brent/WTI + 汇率模型，每天更新）。
      * 三个文件都是公开静态 JSON（jsDelivr 读取，不带任何参数）。
      */
-    private class FanzbusJsonSource(client: OkHttpClient) : HttpSource(client) {
+    private class FanzbusJsonSource(
+        client: OkHttpClient,
+        private val citySnapshot: CityPriceSnapshot,
+    ) : HttpSource(client) {
         override val id: String = "fanzbus-json"
 
         override suspend fun fetch(location: FuelLocation): FuelPriceInfo? = withContext(Dispatchers.IO) {
             val prices = fetchJson(PRICES_URL) ?: return@withContext null
             val cities = runCatching { fetchJson(CITIES_URL) }.getOrNull()
             val forecast = runCatching { fetchJson(FORECAST_URL) }.getOrNull()
+            // 差价先落下来：即便这份数据本身过期（不会作为今日价返回），它的城市差价仍然可用。
+            citySnapshot.store(parseCitySurcharges(prices, cities))
             parseFanzbusJson(
                 regionName = DataLabels.region(location.displayName),
                 provinceName = location.province.name,
@@ -343,6 +419,92 @@ class FuelPriceRepository(
                 ?: runCatching { LocalDate.parse(raw.trim().take(10)) }.getOrNull()
         }
 
+        /** 价格最小单位是 0.01 元/升，加完差价后按分四舍五入，避免 8.670000000000002。 */
+        internal fun roundPrice(value: Double): Double = Math.round(value * 100.0) / 100.0
+
+        /**
+         * `cities.json` 是否已经跟上 `prices.json` 最近一次调价。
+         *
+         * 上游的 Action 分文件产出：省价滚进新一轮、城市页还停在上一轮时，城市价是**旧价**，
+         * 既不能当今日价用，也不能拿它算差价。`last_change_at` 缺失时退回 `fetched_at`；
+         * 两个日期都读不到时按「可用」处理（与旧行为一致，避免元信息缺失导致城市价整体失效）。
+         */
+        internal fun cityDataInCurrentCycle(pricesRoot: JsonObject, citiesRoot: JsonObject?): Boolean {
+            if (citiesRoot == null) return false
+            val lastChange = parseIsoDate(citiesRoot.text("last_change_at"))
+                ?: parseIsoDate(pricesRoot.text("last_change_at"))
+                ?: parseIsoDate(pricesRoot.text("fetched_at"))
+            val cityDate = parseIsoDate(citiesRoot.text("fetched_at"))
+            if (lastChange == null || cityDate == null) return true
+            return !cityDate.isBefore(lastChange)
+        }
+
+        /** 城市价相对省价的差价上限：实测省内运杂费差最多 0.39（西藏阿里），超过就是数据串了。 */
+        private const val MAX_CITY_SURCHARGE = 0.6
+
+        /**
+         * 从 fanzbus 的 `prices.json` + `cities.json` 算出「城市价 - 省价」的固定上浮。
+         *
+         * 差价可以跨调价周期复用（同一次调价对全省所有城市加减同一幅度），
+         * 所以即使城市价快照已经过期，省价源拿到的新价 + 这个差价就能还原城市价。
+         * 两份文件必须来自同一轮调价（见 [cityDataInCurrentCycle]），否则算出来的差价是
+         * 「旧城市价 - 新省价」，会把价格推高一整轮调价幅度。
+         */
+        internal fun parseCitySurcharges(
+            pricesBody: String?,
+            citiesBody: String?,
+        ): Map<String, Map<String, PriceSurcharge>> {
+            val pricesRoot = runCatching { Json.parseToJsonElement(pricesBody.orEmpty()) as? JsonObject }
+                .getOrNull() ?: return emptyMap()
+            val citiesRoot = runCatching { Json.parseToJsonElement(citiesBody.orEmpty()) as? JsonObject }
+                .getOrNull() ?: return emptyMap()
+            if (!cityDataInCurrentCycle(pricesRoot, citiesRoot)) return emptyMap()
+
+            fun number(obj: JsonObject?, key: String): Double? =
+                (obj?.get(key) as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it in 2.0..20.0 }
+
+            fun surcharge(city: JsonObject, base: JsonObject): PriceSurcharge {
+                fun delta(key: String): Double? {
+                    val provincePrice = number(base, key) ?: return null
+                    val cityPrice = number(city, key) ?: return null
+                    val value = roundPrice(cityPrice - provincePrice)
+                    return value.takeIf { kotlin.math.abs(it) <= MAX_CITY_SURCHARGE }
+                }
+                return PriceSurcharge(
+                    p92 = delta("p92"),
+                    p95 = delta("p95"),
+                    p98 = delta("p98"),
+                    d0 = delta("d0"),
+                )
+            }
+
+            val provinceBase = (pricesRoot["provinces"] as? JsonArray)
+                ?.mapNotNull { it as? JsonObject }
+                ?.mapNotNull { row ->
+                    val name = (row["province"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                    name to row
+                }
+                ?.toMap()
+                .orEmpty()
+            if (provinceBase.isEmpty()) return emptyMap()
+
+            val result = mutableMapOf<String, Map<String, PriceSurcharge>>()
+            (citiesRoot["provinces"] as? JsonObject)?.forEach { (provinceName, list) ->
+                val base = provinceBase[provinceName] ?: return@forEach
+                val rows = (list as? JsonArray)?.mapNotNull { it as? JsonObject } ?: return@forEach
+                val byCity = rows
+                    .filter { (it["status"] as? JsonPrimitive)?.content != "pending" }
+                    .mapNotNull { row ->
+                        val city = (row["city"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                        val value = surcharge(row, base)
+                        if (value.isEmpty) null else city to value
+                    }
+                    .toMap()
+                if (byCity.isNotEmpty()) result[provinceName] = byCity
+            }
+            return result
+        }
+
         private fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.content
 
         private const val USER_AGENT =
@@ -354,10 +516,12 @@ class FuelPriceRepository(
             .build()
 
         /** 默认回退顺序：两个每日更新的静态 JSON 数据集 → 三个免费 HTTPS JSON API。 */
-        fun defaultSources(): List<FuelPriceSource> {
-            val client = defaultClient()
+        fun defaultSources(
+            client: OkHttpClient = defaultClient(),
+            citySnapshot: CityPriceSnapshot = CityPriceSnapshot(),
+        ): List<FuelPriceSource> {
             return listOf(
-                FanzbusJsonSource(client),
+                FanzbusJsonSource(client, citySnapshot),
                 OilPriceJsonSource(client),
                 OilPulseJsonSource(client),
                 JsonApiSource(client, "vvhan-json") { province ->
@@ -415,23 +579,27 @@ class FuelPriceRepository(
             var price95 = number(provinceRow, "p95")
             var price98 = number(provinceRow, "p98")
             var price0 = number(provinceRow, "d0")
+            var cityLevel = false
 
             // 城市级：只对非统一价省生效，匹配不到城市就继续用省级价。
+            // 城市页可能落后于省价（Action 只更新了一部分文件）：跨轮调价的城市价不能当今日价用。
             if (!cityName.isNullOrBlank() && citiesBody != null) {
                 val cityRoot = runCatching { Json.parseToJsonElement(citiesBody) as? JsonObject }.getOrNull()
-                val cityList = (cityRoot?.get("provinces") as? JsonObject)
-                    ?.let { (it[provinceName] as? JsonArray) }
-                val cityRow = cityList
-                    ?.mapNotNull { it as? JsonObject }
-                    ?.firstOrNull { row ->
-                        (row["city"] as? JsonPrimitive)?.content == cityName &&
-                            (row["status"] as? JsonPrimitive)?.content != "pending"
-                    }
+                val cityRow = if (cityDataInCurrentCycle(pricesRoot, cityRoot)) {
+                    ((cityRoot?.get("provinces") as? JsonObject)?.let { it[provinceName] as? JsonArray })
+                        ?.mapNotNull { it as? JsonObject }
+                        ?.firstOrNull { row ->
+                            (row["city"] as? JsonPrimitive)?.content == cityName &&
+                                (row["status"] as? JsonPrimitive)?.content != "pending"
+                        }
+                } else {
+                    null
+                }
                 if (cityRow != null) {
-                    price92 = number(cityRow, "p92") ?: price92
-                    price95 = number(cityRow, "p95") ?: price95
-                    price98 = number(cityRow, "p98") ?: price98
-                    price0 = number(cityRow, "d0") ?: price0
+                    number(cityRow, "p92")?.let { price92 = it; cityLevel = true }
+                    number(cityRow, "p95")?.let { price95 = it; cityLevel = true }
+                    number(cityRow, "p98")?.let { price98 = it; cityLevel = true }
+                    number(cityRow, "d0")?.let { price0 = it; cityLevel = true }
                 }
             }
 
@@ -469,6 +637,7 @@ class FuelPriceRepository(
                 forecast = (forecastRoot?.get("note") as? JsonPrimitive)?.content,
                 dataDate = dataDate?.toString(),
                 dataStale = stale,
+                cityLevel = cityLevel,
             )
         }
 

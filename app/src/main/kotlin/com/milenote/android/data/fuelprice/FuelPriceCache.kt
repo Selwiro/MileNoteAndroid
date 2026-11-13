@@ -48,7 +48,7 @@ class FuelPriceCache(context: Context) {
         private const val PREFS_NAME = "milenote-fuel-price-cache"
 
         /** 数据源/文案口径版本：更换油价数据源或字段口径时 +1（旧缓存会被丢弃并重抓）。 */
-        const val CACHE_VERSION = 4
+        const val CACHE_VERSION = 5
 
         private val json = Json { ignoreUnknownKeys = true }
 

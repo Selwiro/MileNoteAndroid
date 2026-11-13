@@ -67,6 +67,33 @@ class FuelPriceParsingTest {
         assertEquals(9.85, info.price95!!, 1e-9)
         assertEquals(8.82, info.price0!!, 1e-9)
         assertEquals("下调", info.trend)
+        assertTrue(info.cityLevel)
+    }
+
+    @Test
+    fun `fanzbus ignores city rows when the city file is behind the latest adjustment`() {
+        // 省价已滚进 11-13 这轮（8.52），城市页还停在 11-12（红河 9.19）：旧城市价不能当今日价。
+        val prices = """
+            {
+              "fetched_at": "2026-11-13T06:10:00+08:00",
+              "last_change_at": "2026-11-13T00:00:00+08:00",
+              "next_adjustment": "2026-11-27T00:00:00+08:00",
+              "next_adjustment_rolled": false,
+              "provinces": [{"province": "云南", "p92": 8.52}]
+            }
+        """.trimIndent()
+        val cities = """
+            {"fetched_at": "2026-11-12T10:40:28+08:00",
+             "provinces": {"云南": [{"city": "红河", "p92": 9.19, "status": "ok"}]}}
+        """.trimIndent()
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "云南红河", provinceName = "云南", cityName = "红河",
+            pricesBody = prices, citiesBody = cities, forecastBody = null,
+            today = LocalDate.parse("2026-11-13"),
+        )!!
+        assertEquals(8.52, info.price92!!, 1e-9)
+        assertFalse(info.cityLevel)
+        assertFalse(info.dataStale)
     }
 
     @Test
@@ -319,6 +346,127 @@ class FuelPriceParsingTest {
         assertFalse(FuelPriceRepository.isStaleByAge(LocalDate.parse("2026-11-12"), today))
         assertTrue(FuelPriceRepository.isStaleByAge(LocalDate.parse("2026-11-11"), today))
         assertFalse(FuelPriceRepository.isStaleByAge(null, today))
+    }
+
+    // ---------------- 城市级价格：省价 + 城市固定差价 ----------------
+    // 真实场景（2026-11-13）：fanzbus 停更（城市价还是调价前的 9.19），回退源只有云南省均价 8.52，
+    // 红河实际 8.67 = 8.52 + (9.19 - 9.04)。差价是省内运杂费、跨调价周期固定。
+
+    private val realPrices = """
+        {
+          "fetched_at": "2026-10-30T21:27:02+08:00",
+          "last_change_at": "2026-10-30T21:27:02+08:00",
+          "next_adjustment": "2026-11-13T00:00:00+08:00",
+          "next_adjustment_rolled": false,
+          "provinces": [
+            {"province": "北京", "p92": 8.89, "p95": 9.46, "p98": 10.96, "d0": 8.65},
+            {"province": "云南", "p92": 9.04, "p95": 9.70, "p98": 10.38, "d0": 8.65}
+          ]
+        }
+    """.trimIndent()
+
+    private val realCities = """
+        {
+          "fetched_at": "2026-11-12T10:40:28+08:00",
+          "status": "ok",
+          "non_unified_provinces": ["云南"],
+          "provinces": {
+            "云南": [
+              {"city": "红河", "p92": 9.19, "p95": 9.85, "p98": 10.53, "d0": 8.82, "status": "ok"},
+              {"city": "昆明", "p92": 9.04, "p95": 9.70, "p98": 10.38, "d0": 8.65, "status": "ok"},
+              {"city": "串价", "p92": 10.50, "status": "ok"}
+            ]
+          }
+        }
+    """.trimIndent()
+
+    @Test
+    fun `city surcharge is the city price minus the province price`() {
+        val surcharges = FuelPriceRepository.parseCitySurcharges(realPrices, realCities)
+        val yunnan = surcharges["云南"]!!
+        assertEquals(0.15, yunnan["红河"]!!.p92!!, 1e-9)
+        assertEquals(0.15, yunnan["红河"]!!.p95!!, 1e-9)
+        assertEquals(0.17, yunnan["红河"]!!.d0!!, 1e-9)
+        assertEquals(0.0, yunnan["昆明"]!!.p92!!, 1e-9)
+        // 差价超出正常范围（脏数据）的城市整条丢掉，不会把价格带偏。
+        assertNull(yunnan["串价"])
+        assertNull(surcharges["北京"])
+    }
+
+    @Test
+    fun `city surcharge is dropped when the city snapshot predates the latest adjustment`() {
+        val prices = realPrices.replace(
+            "\"last_change_at\": \"2026-10-30T21:27:02+08:00\"",
+            "\"last_change_at\": \"2026-11-13T00:00:00+08:00\"",
+        )
+        assertTrue(FuelPriceRepository.parseCitySurcharges(prices, realCities).isEmpty())
+    }
+
+    @Test
+    fun `city price is derived from the fresh province price plus the surcharge`() = runBlocking {
+        val snapshot = CityPriceSnapshot()
+        snapshot.store(FuelPriceRepository.parseCitySurcharges(realPrices, realCities))
+        val provinceOnly = object : FuelPriceSource {
+            override val id = "oil-price-json"
+            override suspend fun fetch(location: FuelLocation): FuelPriceInfo? = FuelPriceInfo(
+                regionName = "云南红河",
+                price92 = 8.52,
+                price95 = 9.14,
+                price98 = 10.19,
+                price0 = 8.12,
+                dataDate = "2026-11-13",
+            )
+        }
+        val repo = FuelPriceRepository(listOf(provinceOnly), citySnapshot = snapshot)
+        val location = FuelLocation(FuelRegions.bySlug("yunnan")!!, "红河哈尼族彝族自治州")
+        val info = repo.fetch(location)!!
+        assertEquals(8.67, info.price92!!, 1e-9)
+        assertEquals(9.29, info.price95!!, 1e-9)
+        assertEquals(10.34, info.price98!!, 1e-9)
+        assertEquals(8.29, info.price0!!, 1e-9)
+        assertTrue(info.cityLevel)
+        assertTrue(info.cityEstimated)
+        assertEquals("oil-price-json", info.source)
+    }
+
+    @Test
+    fun `province price is untouched without a known city or surcharge`() = runBlocking {
+        val snapshot = CityPriceSnapshot()
+        snapshot.store(FuelPriceRepository.parseCitySurcharges(realPrices, realCities))
+        val provinceOnly = object : FuelPriceSource {
+            override val id = "oil-price-json"
+            override suspend fun fetch(location: FuelLocation): FuelPriceInfo? =
+                FuelPriceInfo("云南", price92 = 8.52)
+        }
+        val repo = FuelPriceRepository(listOf(provinceOnly), citySnapshot = snapshot)
+        val provinceLocation = FuelLocation(FuelRegions.bySlug("yunnan")!!, null)
+        assertEquals(8.52, repo.fetch(provinceLocation)!!.price92!!, 1e-9)
+        val unknownCity = FuelLocation(FuelRegions.bySlug("yunnan")!!, "曲靖")
+        val unknown = repo.fetch(unknownCity)!!
+        assertEquals(8.52, unknown.price92!!, 1e-9)
+        assertFalse(unknown.cityEstimated)
+        // 统一的省（北京）没有城市差价，价格保持不变。
+        val beijing = object : FuelPriceSource {
+            override val id = "oil-price-json"
+            override suspend fun fetch(location: FuelLocation): FuelPriceInfo? =
+                FuelPriceInfo("北京", price92 = 8.52)
+        }
+        assertEquals(8.52, FuelPriceRepository(listOf(beijing), citySnapshot = snapshot).fetch(FuelLocation())!!.price92!!, 1e-9)
+    }
+
+    @Test
+    fun `city level source is not adjusted twice`() = runBlocking {
+        val snapshot = CityPriceSnapshot()
+        snapshot.store(FuelPriceRepository.parseCitySurcharges(realPrices, realCities))
+        val cityLevel = object : FuelPriceSource {
+            override val id = "fanzbus-json"
+            override suspend fun fetch(location: FuelLocation): FuelPriceInfo? =
+                FuelPriceInfo("云南红河", price92 = 9.19, cityLevel = true, dataDate = "2026-11-12")
+        }
+        val repo = FuelPriceRepository(listOf(cityLevel), citySnapshot = snapshot)
+        val info = repo.fetch(FuelLocation(FuelRegions.bySlug("yunnan")!!, "红河"))!!
+        assertEquals(9.19, info.price92!!, 1e-9)
+        assertFalse(info.cityEstimated)
     }
 
     // ---------------- 多源回退顺序 ----------------
