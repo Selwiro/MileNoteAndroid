@@ -4,10 +4,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -33,6 +35,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
 
@@ -153,6 +156,7 @@ fun FilterPill(
     onToggle: () -> Unit,
     onDismiss: () -> Unit,
     contentDescription: String = tr("筛选", "Filter"),
+    hint: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -162,20 +166,34 @@ fun FilterPill(
             shape = CircleShape,
             color = scheme.surfaceContainerHigh,
             contentColor = scheme.onSurface,
-            modifier = Modifier.height(CompactControlHeight),
+            // 带 hint 时是两行（主标签 + 说明）；用 minHeight 而不是固定 32dp，1.3× 字号下不会被裁掉。
+            modifier = Modifier.heightIn(min = CompactControlHeight),
         ) {
             Row(
                 modifier = Modifier.padding(start = 12.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 180.dp),
-                )
+                Column(modifier = Modifier.widthIn(max = 180.dp)) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (hint != null) {
+                        Text(
+                            text = hint,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                lineHeight = 11.sp,
+                            ),
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 Icon(
                     imageVector = MileNoteIcons.ChevronDown,
                     contentDescription = contentDescription,

@@ -533,7 +533,7 @@ private val DonutSize = 150.dp
  * 2026-11-13 起支出的「分类」视图也钉在这个高度里（合计行 + 最多 7 行排行），
  * 「月度 / 分类」来回切换时卡片高度不变。
  */
-private val TrendChartBlockHeight = 236.dp
+private val TrendChartBlockHeight = 210.dp
 
 /** 图表区底部月份轴行高：两张图都把标签居中画在这一行。 */
 private val TrendAxisRowHeight = 20.dp
@@ -544,8 +544,8 @@ private val TrendAxisGap = 4.dp
 /** 分类视图：最多显示几行，其余折成「其他 N 类」。 */
 private const val CategoryRowLimit = 7
 
-/** 分类排行单行高度：合计行 + 7 行正好铺满 [TrendChartBlockHeight]。 */
-private val CategoryRowHeight = 30.dp
+/** 分类排行单行高度：合计行 20dp + 7 行 × 27dp = 209dp，正好铺满 [TrendChartBlockHeight]。 */
+private val CategoryRowHeight = 27.dp
 
 /** 单根柱占列宽的比例（月数 6–24 时自适应，避免固定宽度在 12/24 列时互相重叠）。 */
 private const val BarWidthFraction = 0.62f

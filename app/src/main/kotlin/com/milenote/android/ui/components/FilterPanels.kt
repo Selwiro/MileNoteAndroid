@@ -142,6 +142,7 @@ fun RangeFilterAction(
     customRange: DateRange?,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
+    hint: String? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
@@ -151,6 +152,7 @@ fun RangeFilterAction(
         onToggle = { expanded = true },
         onDismiss = { expanded = false },
         contentDescription = tr("选择统计范围", "Select date range"),
+        hint = hint,
     ) {
         RangeMenuItems(
             period = period,

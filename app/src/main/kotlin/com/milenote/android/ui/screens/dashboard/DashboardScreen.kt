@@ -859,7 +859,6 @@ private fun TrendCard(
     val months = display.months
     val focusKeys = remember(display) { display.focus.map { monthKey(it) }.toSet() }
     val hasContext = months.size > focusKeys.size
-    val focusLabel = display.focus.firstOrNull()?.let { monthAxisLabel(it) }
     val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
     val palette = LocalMileNoteCategoryColors.current
     val darkTheme = LocalMileNoteDarkTheme.current
@@ -874,31 +873,26 @@ private fun TrendCard(
     val focusKm = remember(mileageBars, focusKeys) {
         mileageBars.filter { it.key in focusKeys }.sumOf { it.km }
     }
-    // 「全部」在图表里只画最近 24 个月；轴下不放信息，窗口说明放在卡头右侧。
-    val windowLabel = when {
+    // 说明不再单独占一行（会把卡撑高）：并进右上角范围胶囊的第二行。
+    // 范围胶囊已经写着「本月 / 上月 / 全部」，这里只补充窗口口径。
+    val windowHint = when {
         hasContext && tab == TrendTab.MILEAGE && focusKm <= 0.0 -> tr(
-            "%s · 暂无里程 · 前 %d 个月对比",
-            "%s · no mileage · %d prior months for context",
-            focusLabel.orEmpty(),
+            "暂无里程 · 前 %d 个月",
+            "no mileage · %d mo back",
             months.size - 1,
         )
         hasContext -> tr(
-            "%s · 附前 %d 个月对比",
-            "%s · %d prior months for context",
-            focusLabel.orEmpty(),
+            "前 %d 个月",
+            "%d mo back",
             months.size - 1,
         )
         window.truncated -> tr(
             "近 %d / %d 个月",
-            "Last %d of %d months",
+            "%d of %d mo",
             months.size,
             window.totalMonths,
         )
-        range.from.isEmpty() -> if (months.size == 1) {
-            tr("近 1 个月", "Last month")
-        } else {
-            tr("近 %d 个月", "Last %d months", months.size)
-        }
+        range.from.isEmpty() -> tr("近 %d 个月", "%d mo", months.size)
         else -> null
     }
     val rangeStats = remember(ledger, range, singleMonth) {
@@ -919,12 +913,11 @@ private fun TrendCard(
     val highlightLabel = highlight
         ?.takeIf { tab == TrendTab.EXPENSE && view == ExpenseChartView.MONTH }
         ?.let {
-            tr(
-                "仅高亮：%s · 点空白取消",
-                "%s only · tap blank to clear",
-                DataLabels.category(it, ledger.isEv),
-            )
+            // 高亮时范围胶囊第二行只放「怎么取消」；哪个分类被高亮由图表本身说明，
+            // 把分类名塞进胶囊会把「Mileage」在 1.3× 下挤掉。
+            tr("点空白取消", "tap blank to clear")
         }
+    val rangeHint = highlightLabel ?: windowHint
 
     SectionCard(modifier = modifier) {
         Row(
@@ -961,20 +954,7 @@ private fun TrendCard(
                 customRange = customRange,
                 onSelectPeriod = onSelectPeriod,
                 onSelectCustomRange = onSelectCustomRange,
-            )
-        }
-        // 说明行单独占满卡片宽度（不再挤在 tab 右侧的窄列里）：高亮提示 + 「近 N 个月」都要完整可读。
-        val subtitle = highlightLabel ?: windowLabel
-        if (subtitle != null) {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
+                hint = rangeHint,
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
