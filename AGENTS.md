@@ -46,9 +46,9 @@
 首次构建会下载 Gradle 9.6.0 与依赖；中国大陆网络可 `export MILENOTE_ALIYUN=1` 走阿里云镜像，
 wrapper 发行包下载慢时改 `gradle/wrapper/gradle-wrapper.properties` 的 `distributionUrl`。
 
-`dev-gradle.sh` 只是 `gradlew` 的薄封装：本机环境直接可用；设 `TOOLCHAIN=<目录>` 时从
-`<目录>/{jdk-*,sdk,gradle-home}` 取环境；仓库根的不入库 `local.env` 会被自动 source 用来固化本机路径。
-归档目录默认仓库内 `dist/`，`MILENOTE_OUT_DIR` 可覆盖。
+`dev-gradle.sh` 只是 `gradlew` 的薄封装：本机走系统标准安装（JDK 17 + `ANDROID_HOME`，见 `AGENTS.local.md`）；
+设 `TOOLCHAIN=<目录>` 时仍可从 `<目录>/{jdk-*,sdk,gradle-home}` 取环境（离线/容器用）；仓库根的不入库
+`local.env` 会被自动 source 用来固化本机路径。归档目录默认仓库内 `dist/`，`MILENOTE_OUT_DIR` 可覆盖。
 
 **签名（可选）**：`keystore/milenote-release.jks` 与口令**都不入库**。口令放 `keystore/keystore.properties`
 （该目录已被 `.gitignore` 排除）或环境变量 `MILENOTE_STORE_PASSWORD` / `MILENOTE_KEY_PASSWORD`，
