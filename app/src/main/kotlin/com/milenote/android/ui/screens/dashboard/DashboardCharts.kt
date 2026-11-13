@@ -226,9 +226,10 @@ internal fun buildMileageBars(
 }
 
 /**
- * 里程趋势折线图：平滑曲线 + 面积渐变 + 数据点，数据点上方标注里程、底部月份标签。
+ * 里程趋势折线图：平滑曲线 + 面积渐变，峰/谷与最后一个月上方标注里程、底部月份标签。
  *
- * 点数较多（如一年 12 个月以上）时只标注首尾/末点和隔月标签，避免文字重叠。
+ * 曲线**不画逐点圆圈**（2026-11-13 用户反馈短区间「里程中间有小圆点」）；只有 1 个月时
+ * 用一小段横线标记这个值。点数较多（如一年 12 个月以上）时只标注峰/谷与隔月标签，避免文字重叠。
  */
 @Composable
 internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modifier) {
@@ -252,7 +253,6 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
     )
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
-    val dense = bars.size > 8
     val description = tr(
         "里程趋势，共 %d 个月，合计 %s %s",
         "Mileage trend, %d months, %s %s in total",
@@ -288,12 +288,30 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
             strokeWidth = 1.dp.toPx(),
         )
 
-        val points = bars.mapIndexed { index, bar -> Offset(xAt(index), yAt(bar.km)) }
+        // 单月窗口没有可比对象，纵轴归一化没意义：唯一的数据点固定在绘图区垂直中间偏下，
+        // 用一小段横线标记（不是圆点），数值标签在它上方。
+        val singlePoint = bars.size == 1
+        val points = bars.mapIndexed { index, bar ->
+            if (singlePoint) {
+                Offset(size.width / 2f, top + usableH * 0.55f)
+            } else {
+                Offset(xAt(index), yAt(bar.km))
+            }
+        }
 
-        if (points.size == 1) {
+        // 折线 / 面积始终只画曲线，不画逐点圆圈：
+        // 原先「只有 1 个月」画一颗空心圆点、「≤8 个月」逐点画空心圆点 —— 短区间（上月 / 近 3 个月）
+        // 切到里程 tab 时，空白里会浮出几颗小圆圈（2026-11-13 用户反馈「里程有时候中间会有小圆点」）。
+        if (singlePoint) {
             val point = points.first()
-            drawCircle(color = primary, radius = 4.dp.toPx())
-            drawCircle(color = scheme.surface, radius = 1.8.dp.toPx())
+            val half = (right - left) * 0.16f
+            drawLine(
+                color = primary,
+                start = Offset(point.x - half, point.y),
+                end = Offset(point.x + half, point.y),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
         } else {
             val linePath = Path().apply {
                 moveTo(points.first().x, points.first().y)
@@ -323,14 +341,6 @@ internal fun MileageTrendChart(bars: List<MileageBar>, modifier: Modifier = Modi
                 color = primary,
                 style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
             )
-            // 点数多时不再逐点画圆心，避免出现孤立的“小圆圈”；数值由峰谷标签给出。
-            if (!dense) {
-                points.forEachIndexed { index, point ->
-                    if (bars[index].km <= 0.0) return@forEachIndexed
-                    drawCircle(color = primary, radius = 4.dp.toPx())
-                    drawCircle(color = scheme.surface, radius = 1.8.dp.toPx())
-                }
-            }
         }
 
         // 数值标签：只标峰/谷与最后一个月，避免密集文字。
