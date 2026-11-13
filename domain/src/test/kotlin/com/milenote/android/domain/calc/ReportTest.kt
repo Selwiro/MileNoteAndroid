@@ -139,6 +139,24 @@ class ReportTest {
     }
 
     @Test
+    fun `first period of the ledger is marked as having no earlier records`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-10-05", "保险", 100.0),
+                plain("2026-10-20", "保险", 50.0),
+            ),
+        )
+        val first = report(ledger, month(2026, 10), today)
+        assertFalse(first.hasEarlierRecords)
+        assertEquals(0.0, first.totalDelta!!.previous, 1e-9)
+
+        val later = report(ledger, month(2026, 11), today)
+        assertTrue(later.hasEarlierRecords)
+        // 累计没有「上期」，标记恒为 false。
+        assertFalse(report(ledger, all, today).hasEarlierRecords)
+    }
+
+    @Test
     fun `zero previous total gives diff without percent`() {
         val ledger = ledgerWith(listOf(plain("2026-10-03", "保险", 100.0)))
         val delta = report(ledger, month(2026, 10), today).totalDelta!!
@@ -469,6 +487,7 @@ class ReportTest {
     fun `current month trend ignores records dated after today`() {
         val ledger = ledgerWith(
             listOf(
+                plain("2026-10-03", "保险", 50.0),  // 上个月：趋势窗口里要保留
                 plain("2026-11-03", "保险", 100.0),
                 plain("2026-11-20", "保险", 900.0), // 预录的未来日期：不进本月合计，也不进趋势柱
             ),
@@ -477,6 +496,9 @@ class ReportTest {
         assertEquals(100.0, data.total, 1e-9)
         val currentBar = data.monthlyTrend.last { it.year == 2026 && it.month == 11 }
         assertEquals(100.0, currentBar.total, 1e-9)
+        // 不能因为「卡未来日期」把窗口里的历史月份也滤掉。
+        val previousBar = data.monthlyTrend.first { it.year == 2026 && it.month == 10 }
+        assertEquals(50.0, previousBar.total, 1e-9)
     }
 
     @Test

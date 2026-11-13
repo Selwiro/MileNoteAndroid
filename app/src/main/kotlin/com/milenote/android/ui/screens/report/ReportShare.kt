@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -59,6 +61,7 @@ import com.milenote.android.i18n.tr
 import com.milenote.android.platform.FileExporter
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
+import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.moneyLarge
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
@@ -152,11 +155,23 @@ internal fun ReportShareOverlay(
                 .clickable(onClick = {}),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = tr("分享报告", "Share report"),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = tr("分享报告", "Share report"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = MileNoteIcons.Close,
+                        contentDescription = tr("关闭分享", "Close share"),
+                    )
+                }
+            }
             // 按钮放在预览卡上方：卡高固定，小屏也能先点到动作。
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -493,7 +508,11 @@ private fun shareDeltaLine(data: ReportData): String {
         ReportKind.ALL -> ""
     }
     if (delta.previous <= 0.0) {
-        return tr("%s 无支出", "%s: no spending", label)
+        return if (!data.hasEarlierRecords) {
+            tr("账本从本期开始", "Ledger starts with this period")
+        } else {
+            tr("%s 无支出", "%s: no spending", label)
+        }
     }
     if (kotlin.math.abs(delta.diff) < 0.5) return tr("%s 基本持平", "%s about the same", label)
     val arrow = if (delta.diff > 0) "↑" else "↓"

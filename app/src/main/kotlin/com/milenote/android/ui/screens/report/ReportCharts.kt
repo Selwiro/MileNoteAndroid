@@ -1,6 +1,7 @@
 package com.milenote.android.ui.screens.report
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -9,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.contentDescription
@@ -39,12 +41,15 @@ private val ReportAxisHeight = 18.dp
  *
  * 只画总额，不堆分类——报告回答「哪个月花得多」，要看构成请回到上面的费用构成卡。
  * 高亮的柱（当前期）满色，其余 45% 透明；柱顶不标数值，避免 12 个数字打架。
+ *
+ * @param onBarClick 点某根柱把它的 key（`YYYY-MM` / `YYYY`）交给页面切期；null 时不可点。
  */
 @Composable
 internal fun ReportTrendChart(
     bars: List<ReportBar>,
     highlightKey: String?,
     modifier: Modifier = Modifier,
+    onBarClick: ((String) -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val textMeasurer = rememberTextMeasurer()
@@ -54,9 +59,12 @@ internal fun ReportTrendChart(
     val max = remember(bars) { maxOf(bars.maxOfOrNull { it.value } ?: 0.0, 1.0) }
     val total = remember(bars) { bars.sumOf { it.value } }
     val summary = tr(
-        "支出趋势图，共 %d 个柱，合计 %s %s",
-        "Spending trend, %d bars, %s %s in total",
-        bars.size, Format.money(total), Units.money,
+        "支出趋势图，共 %d 个柱，合计 %s %s%s",
+        "Spending trend, %d bars, %s %s in total%s",
+        bars.size,
+        Format.money(total),
+        Units.money,
+        if (onBarClick != null) tr("。点按柱子可切换到该期", ". Tap a bar to open that period") else "",
     )
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -64,6 +72,14 @@ internal fun ReportTrendChart(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(ReportChartHeight)
+                .pointerInput(bars, onBarClick) {
+                    if (onBarClick == null) return@pointerInput
+                    detectTapGestures { offset ->
+                        val slot = size.width.toFloat() / bars.size.coerceAtLeast(1)
+                        val index = (offset.x / slot).toInt().coerceIn(0, bars.lastIndex)
+                        onBarClick(bars[index].key)
+                    }
+                }
                 .semantics { contentDescription = summary },
         ) {
             val axisHeight = ReportAxisHeight.toPx()

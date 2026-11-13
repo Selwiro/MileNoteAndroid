@@ -141,6 +141,8 @@ data class ReportData(
     val total: Double,
     val totalDelta: ReportDelta?,
     val yearAgoDelta: ReportDelta?,
+    /** 本期之前账本里有没有记录：用来区分「上月真的没花钱」和「账本从这个月才开始」。 */
+    val hasEarlierRecords: Boolean,
     val records: List<Record>,
     val recordCount: Int,
     val distance: Double?,
@@ -216,6 +218,8 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
     }
     val previousStats = previousRange?.let { stats(ledger, it.from, it.to) }
     val totalDelta = previousStats?.let { ReportDelta(statsResult.total, it.total) }
+    // 本期起点之前有没有任何记录：没有就说明这是账本的第一期，不能写「上月无支出」。
+    val hasEarlierRecords = fullRange != null && ledger.records.any { it.date < range.from }
 
     // 去年同月：只有月报给；该期完全没有记录时整行不出现（不是「0 元」，是「没数据」）。
     val yearAgoRange = if (period.kind == ReportKind.MONTH) {
@@ -268,7 +272,7 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
         today = today,
         spanMonths = spanMonths,
         // 累计用 stats(ledger) 全量口径（不筛日期，与总览「全部」一致）；
-        // 月 / 年用实际区间过滤，避免当前月的趋势柱把未来日期的记录也画进去。
+        // 月 / 年只卡到「本期截止日」，避免当前月的趋势柱把未来日期的记录也画进去。
         filterRange = if (fullRange == null) null else range,
     )
 
@@ -281,6 +285,7 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
         total = statsResult.total,
         totalDelta = totalDelta,
         yearAgoDelta = yearAgoDelta,
+        hasEarlierRecords = hasEarlierRecords,
         records = records,
         recordCount = records.size,
         distance = distance,
@@ -368,12 +373,12 @@ private fun buildTrends(
     spanMonths: Int?,
     filterRange: DateRange?,
 ): Pair<List<MonthlyTotal>, List<YearlyTotal>> {
-    val filterFrom = filterRange?.let { Dates.parse(it.from) }
+    // 只卡上界：趋势窗口会画「选中期之前」的月份，不能按整期区间把前面几个月滤掉；
+    // 上界 = 本期实际截止日（进行中就是今天），保证当前月的柱与本月合计同口径。
     val filterTo = filterRange?.let { Dates.parse(it.to) }
     val totals = linkedMapOf<YearMonth, Double>()
     ledger.records.forEach { record ->
         val date = Dates.parse(record.date) ?: return@forEach
-        if (filterFrom != null && date < filterFrom) return@forEach
         if (filterTo != null && date > filterTo) return@forEach
         val key = YearMonth.of(date.year, date.monthValue)
         totals[key] = (totals[key] ?: 0.0) + costOf(record, ledger)

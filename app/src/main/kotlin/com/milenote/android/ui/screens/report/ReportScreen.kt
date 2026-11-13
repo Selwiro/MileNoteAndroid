@@ -304,7 +304,21 @@ private fun ReportContent(
                 }
             }
             item(key = "trend") {
-                TrendCard(data = data, today = today)
+                TrendCard(
+                    data = data,
+                    today = today,
+                    onPickKey = { key ->
+                        // `YYYY` = 年柱 → 切年报；`YYYY-MM` = 月柱 → 切月报并定位到该月。
+                        if (key.length == 4) {
+                            yearValue = key.toIntOrNull() ?: yearValue
+                            kindName = ReportKind.YEAR.name
+                        } else {
+                            key.substring(0, 4).toIntOrNull()?.let { monthYear = it }
+                            key.substring(5).toIntOrNull()?.let { monthMonth = it }
+                            kindName = ReportKind.MONTH.name
+                        }
+                    },
+                )
             }
             if (data.highlights.let { it.topExpense != null || it.priciestEnergy != null || it.topStation != null }) {
                 item(key = "highlights") {
@@ -506,10 +520,23 @@ private fun OverviewCard(ledger: Ledger, data: ReportData) {
             )
         } else {
             data.totalDelta?.let { delta ->
-                DeltaLine(
-                    label = previousLabel(data.period.kind, data.inProgress),
-                    text = deltaText(delta, previousEmptyLabel(data.period.kind, data.inProgress)),
-                )
+                if (delta.previous <= 0.0 && !data.hasEarlierRecords) {
+                    // 账本的第一期：上一期本来就没数据，写「上月无支出」会被读成「上月没花钱」。
+                    Text(
+                        text = if (data.period.kind == ReportKind.YEAR) {
+                            tr("账本从今年开始，暂无上期对比", "Ledger starts this year — no earlier period to compare")
+                        } else {
+                            tr("账本从本月开始，暂无上期对比", "Ledger starts this month — no earlier period to compare")
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    DeltaLine(
+                        label = previousLabel(data.period.kind, data.inProgress),
+                        text = deltaText(delta, previousEmptyLabel(data.period.kind, data.inProgress)),
+                    )
+                }
             }
             if (data.period.kind == ReportKind.MONTH) {
                 data.yearAgoDelta?.let { delta ->
@@ -902,7 +929,7 @@ private fun EnergyFlow(
 }
 
 @Composable
-private fun TrendCard(data: ReportData, today: LocalDate) {
+private fun TrendCard(data: ReportData, today: LocalDate, onPickKey: (String) -> Unit) {
     val yearly = data.yearlyTrend.isNotEmpty()
     val bars = remember(data) {
         if (yearly) {
@@ -940,7 +967,7 @@ private fun TrendCard(data: ReportData, today: LocalDate) {
             )
         },
     ) {
-        ReportTrendChart(bars = bars, highlightKey = highlightKey)
+        ReportTrendChart(bars = bars, highlightKey = highlightKey, onBarClick = onPickKey)
     }
 }
 
