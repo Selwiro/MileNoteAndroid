@@ -1019,7 +1019,7 @@ internal fun ExpenseCategoryBreakdown(
  * 读屏读「油费，8,830 元，占 65.2%」，不用逐个数字去听。
  */
 @Composable
-private fun CategoryRankRow(
+internal fun CategoryRankRow(
     label: String,
     value: Double,
     total: Double,

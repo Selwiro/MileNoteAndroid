@@ -68,6 +68,7 @@ import com.milenote.android.ui.theme.metricValue
 fun MineScreen(
     vm: MileNoteViewModel,
     onOpenPage: (String) -> Unit,
+    onOpenReport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -179,6 +180,12 @@ fun MineScreen(
                 MineGroup(
                     label = tr("数据与同步", "Data & sync"),
                 ) {
+                    MineValueRow(
+                        icon = MileNoteIcons.FileText,
+                        title = tr("月报 / 年报 / 累计", "Monthly / yearly / all-time"),
+                        onClick = onOpenReport,
+                    )
+                    SectionDivider()
                     MineValueRow(
                         icon = MileNoteIcons.Import,
                         title = tr("外部导入", "Import"),

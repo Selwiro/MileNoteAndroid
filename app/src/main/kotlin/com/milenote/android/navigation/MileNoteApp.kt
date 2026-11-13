@@ -81,6 +81,7 @@ import com.milenote.android.ui.screens.fuel.FuelScreen
 import com.milenote.android.ui.screens.maintenance.MaintenanceScreen
 import com.milenote.android.ui.screens.maintenance.ServiceHistoryScreen
 import com.milenote.android.ui.screens.records.RecordsScreen
+import com.milenote.android.ui.screens.report.ReportScreen
 import com.milenote.android.ui.screens.settings.MineScreen
 import com.milenote.android.ui.screens.settings.SettingsScreen
 
@@ -252,6 +253,15 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 onBack = { navController.popBackStack() },
             ) {
                 EnergyDetailScreen(vm = vm)
+            }
+        }
+        composable(route = Routes.REPORT) {
+            DetailScaffold(
+                title = tr("报告", "Report"),
+                snackbarHostState = snackbarHostState,
+                onBack = { navController.popBackStack() },
+            ) {
+                ReportScreen(vm = vm)
             }
         }
         composable(route = Routes.SERVICE_HISTORY) {
@@ -581,6 +591,7 @@ private fun HomeTabs(
                 3 -> MineScreen(
                     vm = vm,
                     onOpenPage = { pageKey -> onNavigate(Routes.settingsPageRoute(pageKey)) },
+                    onOpenReport = { onNavigate(Routes.REPORT) },
                 )
             }
         }
