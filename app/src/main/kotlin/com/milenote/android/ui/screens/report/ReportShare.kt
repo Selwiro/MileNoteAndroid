@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -140,15 +141,21 @@ internal fun ReportShareOverlay(
         pendingFile.delete()
     }
 
+    val scheme = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.62f))
             .clickable(onClick = onDismiss),
     ) {
+        Surface(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            color = scheme.surfaceContainerLow,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            tonalElevation = 3.dp,
+        ) {
         Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 // 吞掉卡片区域的点击，避免点在卡上把遮罩关掉。
@@ -235,6 +242,7 @@ internal fun ReportShareOverlay(
                 )
             }
         }
+        }
     }
 }
 
@@ -270,7 +278,7 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
             .widthIn(max = 330.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(scheme.surfaceContainerLow)
+            .background(scheme.surfaceContainerHighest)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -361,7 +369,7 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
                 Text(
                     text = tr(
                         "油耗 %s %s · 加油 %d 次",
-                        "Fuel economy %s %s · %d fills",
+                        if (fuel.count == 1) "Fuel economy %s %s · %d fill" else "Fuel economy %s %s · %d fills",
                         Format.fmt(rate),
                         Units.consumption,
                         fuel.count,
@@ -377,7 +385,7 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
                 Text(
                     text = tr(
                         "电耗 %s %s · 充电 %d 次",
-                        "Energy use %s %s · %d charges",
+                        if (electric.count == 1) "Energy use %s %s · %d charge" else "Energy use %s %s · %d charges",
                         Format.fmt(rate),
                         Units.energyConsumption,
                         electric.count,
