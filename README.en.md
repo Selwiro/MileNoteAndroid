@@ -21,7 +21,7 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 - **Fuel cars, plug-in hybrids and EVs:** fuel-economy, dual fuel + energy analysis, or energy analysis, each with a matching service plan.
 - **Independent multi-vehicle management:** expenses, energy and service records are kept per vehicle; a full backup covers every vehicle.
 - **Customisable categories and item library:** built-in expense categories and service items can be renamed or hidden (Fuel/Insurance/Service/Repair cannot be deleted); hiding only affects new-entry candidates, never existing records or statistics.
-- **Easy migration:** import records from Bear and Qianji, with CSV export, full JSON backups and optional WebDAV sync (encrypted upload supported).
+- **Easy migration:** import records from Bear and Qianji; the expense CSV can be exported, edited and imported back (records update in place by ID), with full JSON backups and optional WebDAV sync (encrypted upload supported).
 
 ## Screenshots
 
@@ -126,6 +126,7 @@ Supported sources:
 
 | Source | Import formats |
 |---|---|
+| MileNote CSV (write-back) | CSV |
 | Bear | XLS |
 | Qianji | XLSX, JSON |
 | MileNote full backup | JSON |
@@ -134,7 +135,7 @@ While importing you can adjust field mapping, preview and edit records row by ro
 
 Export comes in two forms:
 
-- **Expense CSV:** the current vehicle's expense details — 17 columns for fuel/EV, 18 for plug-in hybrid (trailing "charging amount"). For viewing and reconciling in Excel; the app does not import CSV back.
+- **Expense CSV:** the current vehicle's expense details — 18 columns for fuel/EV, 19 for plug-in hybrid; the trailing "record ID" column is the write-back anchor, so an edited CSV re-imports and updates records in place without duplicates. The app also warns in Me and Backup & restore after 30 days without a backup.
 - **Full JSON backup:** every vehicle, record, service entry and related data.
 
 A full backup works for switching phones, restoring data, or keeping as a standalone local archive.
