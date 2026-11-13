@@ -35,7 +35,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
@@ -48,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -73,7 +73,8 @@ import java.time.ZoneOffset
  * - 列表页：SearchFilterBar + ActiveFilterChips + FilterSheet（草稿态、实时计数）；
  * - 时间预设 / 文案：Period.rangeLabel()、rangeLabel()、customRangeLabel()（全 App 唯一一份）；
  * - 卡头内容切换：HeaderTextTabs（里程/支出、油耗/电耗同一套）。
- * 视觉高度沿用明细页 32dp 紧凑行；面板内每行触控热区 ≥ 48dp。
+ * 列表页搜索条 44dp（一体化，见 `FilterControls.SearchBarShell`）；卡片头胶囊 32dp；
+ * 面板内每行触控热区 ≥ 48dp。
  */
 
 // ---------------------------------------------------------------------------------------------
@@ -282,44 +283,11 @@ fun RangePresetChips(
 // 列表页：搜索 + 筛选胶囊 + 已选 chips
 // ---------------------------------------------------------------------------------------------
 
-/** 胶囊按钮（不带菜单）：用于打开筛选面板。 */
-@Composable
-fun FilterButton(
-    label: String,
-    onClick: () -> Unit,
-    contentDescription: String = tr("筛选", "Filter"),
-    modifier: Modifier = Modifier,
-) {
-    val scheme = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = scheme.surfaceContainerHigh,
-        contentColor = scheme.onSurface,
-        modifier = modifier.height(56.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 20.dp, end = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp),
-            )
-            Icon(
-                imageVector = MileNoteIcons.ChevronDown,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-/** 列表页筛选栏：搜索框占满剩余宽度，右侧「筛选 · N」胶囊。 */
+/**
+ * 列表页筛选栏（一体化搜索条，2026-11-13 方案 C）：
+ * 搜索输入、分隔线与筛选圆钮共用一个 44dp 圆形描边容器，聚焦时整条描边变主色。
+ * 高度定义见 `FilterControls.kt` 的 [SearchBarShell]。
+ */
 @Composable
 fun SearchFilterBar(
     query: String,
@@ -329,26 +297,25 @@ fun SearchFilterBar(
     onOpenFilter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        CompactSearchField(
+    var focused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    SearchBarShell(focused = focused, modifier = modifier.fillMaxWidth()) {
+        SearchBarInput(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
+            focusRequester = focusRequester,
+            onFocusChange = { focused = it },
             modifier = Modifier.weight(1f),
         )
-        FilterButton(
-            label = if (filterCount == 0) {
-                tr("筛选", "Filter")
-            } else {
-                tr("筛选 · %d", "Filter · %d", filterCount)
-            },
-            onClick = onOpenFilter,
-            contentDescription = tr("打开筛选面板", "Open filters"),
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 6.dp)
+                .width(1.dp)
+                .height(20.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
         )
+        SearchBarFilterButton(activeCount = filterCount, onClick = onOpenFilter)
     }
 }
 
