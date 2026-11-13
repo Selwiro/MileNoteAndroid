@@ -80,6 +80,7 @@ import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.moneyMedium
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -474,6 +475,12 @@ private fun FuelPriceCard(
                         "Network unavailable — showing the last fetched prices (%s)",
                         lastUpdatedMillis?.let(::formatFuelPriceTime) ?: "—",
                     ) to scheme.error
+                    // 抓取成功但上游数据没滚动（例如数据集停更）：价格是上一轮的，不能只写「更新于现在」。
+                    info.dataStale -> tr(
+                        "数据源未更新，仍是 %s 的油价",
+                        "Data source hasn't updated — prices are still from %s",
+                        info.dataDate?.let(::formatFuelDataDate) ?: "—",
+                    ) to scheme.error
                     else -> null
                 }
                 val updatedText = if (statusError == null) {
@@ -791,6 +798,12 @@ private fun formatFuelPriceTime(millis: Long): String =
     Instant.ofEpochMilli(millis)
         .atZone(ZoneId.of("Asia/Shanghai"))
         .format(DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.CHINA))
+
+/** 上游数据日期展示：`2026-10-30` → 「10 月 30 日」（油价卡只在中文界面展示）。 */
+private fun formatFuelDataDate(isoDate: String): String =
+    runCatching { LocalDate.parse(isoDate) }.getOrNull()
+        ?.let { "${it.monthValue} 月 ${it.dayOfMonth} 日" }
+        ?: isoDate
 
 private const val FUEL_PREFS = "milenote-fuel-price"
 private const val KEY_FUEL_PROVINCE_SLUG = "fuel_province_slug"

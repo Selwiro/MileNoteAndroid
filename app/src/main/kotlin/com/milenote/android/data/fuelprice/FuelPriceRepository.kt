@@ -3,6 +3,7 @@ package com.milenote.android.data.fuelprice
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,19 @@ data class FuelPriceInfo(
     val isFallback: Boolean = false,
     /** 实际命中的数据源 id（调试/展示用）；参考价为 null。 */
     val source: String? = null,
+    /**
+     * 上游数据自身的日期（上海时区 `yyyy-MM-dd`）；null = 数据源没提供。
+     *
+     * 和「抓取时间」不是一回事：抓取成功不等于数据已经更新（上游可能还在发上一轮的价格）。
+     */
+    val dataDate: String? = null,
+    /**
+     * 这份数据是否还停在**上一个调价周期**。
+     *
+     * 判定依据来自数据源自报的元信息（调价生效时间、数据日期），不猜价格；见 [FuelPriceRepository]。
+     * 界面据此提示「数据未更新」，避免把旧价当成今日价展示。
+     */
+    val dataStale: Boolean = false,
 ) {
     val hasPrice: Boolean get() = price92 != null || price95 != null || price98 != null || price0 != null
 }
@@ -137,15 +151,26 @@ class FuelPriceRepository(
     private val sources: List<FuelPriceSource> = defaultSources(),
     private val client: OkHttpClient = defaultClient(),
 ) {
-    /** 抓取一次；全部数据源失败返回 null（不要用参考价冒充实时价）。 */
+    /**
+     * 抓取一次：按顺序回退，返回**第一个仍处于当前调价周期**的数据源结果。
+     *
+     * 为什么不能只看「有没有价格」：上游数据集可能停更（例如 fanzbus 的 GitHub Action 挂了，
+     * 数据停在半个月前），此时它照样能返回价格与「预计上调」，会把上一轮的价格当成今日价。
+     * 所以过期数据不直接采用，继续问下一个源；**全部源都过期**时才拿第一条过期数据兜底
+     * （带 [FuelPriceInfo.dataStale] 交给界面标注），全部失败返回 null（不要用参考价冒充实时价）。
+     */
     suspend fun fetch(location: FuelLocation): FuelPriceInfo? = withContext(Dispatchers.IO) {
+        var staleFallback: FuelPriceInfo? = null
         for (source in sources) {
             val info = runCatching {
                 withTimeout(SOURCE_TIMEOUT_MS) { source.fetch(location) }
             }.getOrNull()
-            if (info != null && info.hasPrice) return@withContext info.copy(source = source.id)
+            if (info == null || !info.hasPrice) continue
+            val labeled = info.copy(source = source.id)
+            if (!info.dataStale) return@withContext labeled
+            if (staleFallback == null) staleFallback = labeled
         }
-        null
+        staleFallback
     }
 
     /** 无缓存且全部失败时的内置参考价（明确标记 isFallback）。 */
@@ -283,6 +308,43 @@ class FuelPriceRepository(
         /** 单数据源整体超时：站点慢就快速回退到下一个。 */
         const val SOURCE_TIMEOUT_MS = 9_000L
 
+        /** 油价是发改委按上海时间 24 时调价，所有「日期」判断都统一用这个时区。 */
+        internal val SHANGHAI: ZoneId = ZoneId.of("Asia/Shanghai")
+
+        /**
+         * 数据日期比今天早**两天**以上就算停更（不是「非今天即过期」：油价只在调价日变化，
+         * 上游每天更新但价格可能连续多天不变；留一天余量覆盖跨时区/延迟发布）。
+         */
+        internal fun isStaleByAge(dataDate: LocalDate?, today: LocalDate): Boolean =
+            dataDate != null && dataDate.isBefore(today.minusDays(1))
+
+        /**
+         * 数据是否还停在上一轮调价周期。
+         *
+         * [nextAdjustmentDate] 是**这次调价何时生效**（fanzbus 的 `next_adjustment` 已是生效时刻）：
+         * 生效日已到、而文件还标着「未滚动」（`next_adjustment_rolled=false`），说明里面还是调价前的价。
+         */
+        internal fun isStaleFuelData(
+            dataDate: LocalDate?,
+            nextAdjustmentDate: LocalDate?,
+            nextAdjustmentRolled: Boolean,
+            today: LocalDate,
+        ): Boolean {
+            if (isStaleByAge(dataDate, today)) return true
+            return nextAdjustmentDate != null &&
+                !nextAdjustmentRolled &&
+                !nextAdjustmentDate.isAfter(today)
+        }
+
+        /** 数据源里的日期字段：`2026-11-13` 或 `2026-11-13T06:20:22+08:00` 都能取到日期。 */
+        internal fun parseIsoDate(raw: String?): LocalDate? {
+            if (raw.isNullOrBlank()) return null
+            return runCatching { OffsetDateTime.parse(raw.trim()).toLocalDate() }.getOrNull()
+                ?: runCatching { LocalDate.parse(raw.trim().take(10)) }.getOrNull()
+        }
+
+        private fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.content
+
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
@@ -326,6 +388,9 @@ class FuelPriceRepository(
          * - 省级价格从 `prices.provinces` 里按省名取；城市级从 `cities.provinces[省]` 里按城市名取，
          *   城市页缺失/异常时退回省级价（非统一价省才拆城市，其余省本身统一价）；
          * - 调价方向从 `forecast.direction` 取（独立预测，比价格站点自带的「预计上调」更及时）。
+         *
+         * 同时按文件自报的 `fetched_at` / `next_adjustment`(+`_rolled`) 判断数据是否还停在上一轮：
+         * 上游停更时这里返回 [FuelPriceInfo.dataStale]，由仓库继续回退到下一个源。
          */
         internal fun parseFanzbusJson(
             regionName: String,
@@ -334,6 +399,7 @@ class FuelPriceRepository(
             pricesBody: String,
             citiesBody: String?,
             forecastBody: String?,
+            today: LocalDate = LocalDate.now(SHANGHAI),
         ): FuelPriceInfo? {
             val pricesRoot = runCatching { Json.parseToJsonElement(pricesBody) as? JsonObject }.getOrNull()
                 ?: return null
@@ -379,9 +445,19 @@ class FuelPriceRepository(
                 direction.contains("上") -> "上调"
                 else -> "搁浅"
             }
-            val adjustmentLabel = normalizeAdjustmentLabel(
-                (pricesRoot["next_adjustment_label"] as? JsonPrimitive)?.content,
+            // 数据年龄：上游文件自己写的抓取时间（不是 App 的抓取时间）。
+            val dataDate = parseIsoDate(pricesRoot.text("fetched_at"))
+            val stale = isStaleFuelData(
+                dataDate = dataDate,
+                nextAdjustmentDate = parseIsoDate(pricesRoot.text("next_adjustment")),
+                nextAdjustmentRolled = pricesRoot.text("next_adjustment_rolled")?.toBooleanStrictOrNull() == true,
+                today = today,
             )
+            val adjustmentLabel = if (stale) {
+                null
+            } else {
+                normalizeAdjustmentLabel(pricesRoot.text("next_adjustment_label"), today)
+            }
             return FuelPriceInfo(
                 regionName = regionName,
                 price92 = price92,
@@ -389,25 +465,37 @@ class FuelPriceRepository(
                 price98 = price98,
                 price0 = price0,
                 nextAdjustmentText = adjustmentLabel,
-                trend = trend,
+                trend = if (stale) null else trend,
                 forecast = (forecastRoot?.get("note") as? JsonPrimitive)?.content,
+                dataDate = dataDate?.toString(),
+                dataStale = stale,
             )
         }
 
         /** "11月12日24时" → 「11 月 12 日 24 时」；其它格式原样返回（去掉多余空格）。 */
-        internal fun normalizeAdjustmentLabel(raw: String?): String? {
+        internal fun normalizeAdjustmentLabel(
+            raw: String?,
+            today: LocalDate = LocalDate.now(SHANGHAI),
+        ): String? {
             if (raw.isNullOrBlank()) return null
             val match = Regex("(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日\\s*24\\s*时").find(raw)
             if (match != null) {
-                val month = match.groupValues[1]
-                val day = match.groupValues[2]
-                return "$month 月 $day 日 24 时"
+                val month = match.groupValues[1].toIntOrNull() ?: return null
+                val day = match.groupValues[2].toIntOrNull() ?: return null
+                // 原文「11 月 12 日 24 时」= 13 日 0 时生效：生效时刻已过就不再是「下次调价」，
+                // 继续展示会把上一轮的日期当成下一轮的（13 日还写 12 日 24 时）。
+                return nextAdjustmentLabel(month, day, today)
             }
             return raw.replace(" ", "")
         }
 
         /** 解析「全国油价趋势看板」prices.json：provinces_data[省][标号] 是按 dates 对齐的价格数组。 */
-        internal fun parseOilPriceJson(regionName: String, provinceName: String, body: String): FuelPriceInfo? {
+        internal fun parseOilPriceJson(
+            regionName: String,
+            provinceName: String,
+            body: String,
+            today: LocalDate = LocalDate.now(SHANGHAI),
+        ): FuelPriceInfo? {
             val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
             val data = root["provinces_data"] as? JsonObject ?: return null
             val entry = data[provinceName] as? JsonObject ?: return null
@@ -432,7 +520,17 @@ class FuelPriceRepository(
                 direction.contains("上") -> "上调"
                 else -> "搁浅"
             }
-            val adjustment = next?.get("date")?.let { (it as? JsonPrimitive)?.content }?.let(::isoAdjustmentLabel)
+            // `meta.date_to` = 这份数据更新到哪一天；`next.last_adjust` = 最近一次调价生效日。
+            // 数据早于最近一次调价 → 价格还是调价前的；数据日期太旧 → 上游停更。
+            val dataDate = parseIsoDate((root["meta"] as? JsonObject)?.text("date_to"))
+            val lastAdjust = parseIsoDate(next?.text("last_adjust"))
+            val stale = isStaleByAge(dataDate, today) ||
+                (dataDate != null && lastAdjust != null && dataDate.isBefore(lastAdjust))
+            val adjustment = if (stale) {
+                null
+            } else {
+                next?.text("date")?.let { isoAdjustmentLabel(it, today) }
+            }
             return FuelPriceInfo(
                 regionName = regionName,
                 price92 = price92,
@@ -440,13 +538,20 @@ class FuelPriceRepository(
                 price98 = price98,
                 price0 = price0,
                 nextAdjustmentText = adjustment,
-                trend = trend,
-                forecast = next?.get("reason")?.let { (it as? JsonPrimitive)?.content },
+                trend = if (stale) null else trend,
+                forecast = next?.text("reason"),
+                dataDate = dataDate?.toString(),
+                dataStale = stale,
             )
         }
 
         /** 解析 oilpulse-cn 的 latest.json：provinces[省] = { t0, t89, t92, t95, t98 }。 */
-        internal fun parseOilPulseJson(regionName: String, provinceName: String, body: String): FuelPriceInfo? {
+        internal fun parseOilPulseJson(
+            regionName: String,
+            provinceName: String,
+            body: String,
+            today: LocalDate = LocalDate.now(SHANGHAI),
+        ): FuelPriceInfo? {
             val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
             val provinces = root["provinces"] as? JsonObject ?: return null
             val entry = provinces[provinceName] as? JsonObject ?: return null
@@ -454,12 +559,15 @@ class FuelPriceRepository(
             fun price(key: String): Double? =
                 (entry[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it in 2.0..20.0 }
 
+            val dataDate = parseIsoDate(root.text("updated_at"))
             val info = FuelPriceInfo(
                 regionName = regionName,
                 price92 = price("t92"),
                 price95 = price("t95"),
                 price98 = price("t98"),
                 price0 = price("t0"),
+                dataDate = dataDate?.toString(),
+                dataStale = isStaleByAge(dataDate, today),
             )
             return info.takeIf { it.hasPrice }
         }
@@ -470,9 +578,8 @@ class FuelPriceRepository(
          * 上游 `next.date` 是**生效日期**（13 日 0 时生效 = 12 日 24 时），所以这里不再追加「24 时」，
          * 避免显示成「13 日 24 时」而晚一天。离今天太远/非法返回 null。
          */
-        private fun isoAdjustmentLabel(isoDate: String): String? {
+        private fun isoAdjustmentLabel(isoDate: String, today: LocalDate): String? {
             val target = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return null
-            val today = LocalDate.now(ZoneId.of("Asia/Shanghai"))
             if (target.isBefore(today.minusDays(1)) || target.isAfter(today.plusDays(31))) return null
             return "${target.monthValue} 月 ${target.dayOfMonth} 日"
         }
