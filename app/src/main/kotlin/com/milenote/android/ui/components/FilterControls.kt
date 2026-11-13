@@ -35,7 +35,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
 
@@ -140,7 +139,10 @@ fun CompactSearchField(
 }
 
 /**
- * 筛选胶囊（[CompactControlHeight] 高）：显示当前筛选摘要，点开 [content] 里的菜单项。
+ * 筛选胶囊（[CompactControlHeight] 高，**永远单行**）：显示当前筛选摘要，点开 [content] 里的菜单项。
+ *
+ * 2026-11-13：原先可选的第二行说明（hint）在 1.3× 字号下会把胶囊撑得比 32dp 视图开关更高、
+ * 让卡头控件不齐，因此移除；需要解释窗口口径的卡片改在**下拉菜单首行**展示（见 `RangeFilterAction`）。
  *
  * @param label 胶囊文案（无筛选时传「筛选」，有筛选时传「本月」「本月 · 电耗」这类摘要）。
  * @param expanded 菜单是否展开。
@@ -156,7 +158,6 @@ fun FilterPill(
     onToggle: () -> Unit,
     onDismiss: () -> Unit,
     contentDescription: String = tr("筛选", "Filter"),
-    hint: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -166,7 +167,7 @@ fun FilterPill(
             shape = CircleShape,
             color = scheme.surfaceContainerHigh,
             contentColor = scheme.onSurface,
-            // 带 hint 时是两行（主标签 + 说明）；用 minHeight 而不是固定 32dp，1.3× 字号下不会被裁掉。
+            // 单行标签；大字号下用 minHeight 兜底，保持 32dp 基准。
             modifier = Modifier.heightIn(min = CompactControlHeight),
         ) {
             Row(
@@ -174,26 +175,13 @@ fun FilterPill(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Column(modifier = Modifier.widthIn(max = 180.dp)) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (hint != null) {
-                        Text(
-                            text = hint,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
-                                lineHeight = 11.sp,
-                            ),
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 180.dp),
+                )
                 Icon(
                     imageVector = MileNoteIcons.ChevronDown,
                     contentDescription = contentDescription,

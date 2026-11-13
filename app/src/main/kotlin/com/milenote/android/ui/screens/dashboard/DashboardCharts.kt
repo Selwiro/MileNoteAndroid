@@ -230,6 +230,32 @@ internal fun trendDisplayWindow(
 }
 
 /**
+ * 趋势卡的范围下拉菜单说明（2026-11-13 起从胶囊第二行移到这里）：
+ * 只在**图里画的月份和选中范围不一致**时返回文案，其余情况返回 null（胶囊保持单行，
+ * 卡头控件 32dp 等高）。
+ *
+ * - 单月范围补了上下文 → 「图表另含前 N 个月对比」；
+ * - 全部 / 自定义范围超过 24 个月被截断 → 「图表仅画最近 24 / N 个月」。
+ */
+internal fun trendRangeCaption(display: TrendDisplay, window: TrendWindow): String? {
+    val contextMonths = display.months.size - display.focus.size
+    return when {
+        contextMonths > 0 -> tr(
+            "图表另含前 %d 个月对比",
+            "Chart also shows the %d months before it",
+            contextMonths,
+        )
+        window.truncated -> tr(
+            "图表仅画最近 %d / %d 个月",
+            "Chart shows the latest %d of %d months",
+            window.months.size,
+            window.totalMonths,
+        )
+        else -> null
+    }
+}
+
+/**
  * 里程趋势数据：按 [months] 逐月计算每月行驶里程。
  *
  * 月里程 = 该月最大 odometer − 上月最大 odometer；上月无读数时用「该月 max − min」；
@@ -658,7 +684,7 @@ internal fun ExpenseTrendChart(
     )
 
     val focusTotal = bars.filter { it.key in focused }.sumOf { it.total }
-    val trendDescription = if (hasContext) {
+    val baseDescription = if (hasContext) {
         tr(
             "支出趋势，近 %d 个月，选中范围合计 %s %s",
             "Expense trend, last %d months, %s %s in the selected range",
@@ -670,6 +696,18 @@ internal fun ExpenseTrendChart(
             "Expense trend, %s %s in total",
             Format.money(focusTotal), Units.money,
         )
+    }
+    // 高亮态原来在范围胶囊第二行提示「点空白取消」；胶囊改单行后，提示并入无障碍描述，
+    // 视觉上靠「其余分类降到 22%」表达，点空白仍然取消（2026-11-13）。
+    val trendDescription = if (highlight != null) {
+        tr(
+            "%s，已高亮「%s」，点空白取消",
+            "%s, %s highlighted — tap blank to clear",
+            baseDescription,
+            DataLabels.category(highlight, ev),
+        )
+    } else {
+        baseDescription
     }
     BoxWithConstraints(
         modifier = modifier

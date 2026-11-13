@@ -5,17 +5,32 @@ import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.blankLedger
+import com.milenote.android.i18n.I18n
 import java.time.LocalDate
 import java.time.YearMonth
 import org.junit.Assert.assertEquals
+import org.junit.After
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 /** 趋势图窗口：全部 = 最早记录起算，超过 24 个月取最近 24 个月（不是最早 24 个月）；单月补上下文。 */
 class TrendWindowTest {
 
     private val today = LocalDate.of(2026, 11, 12)
+
+    @Before
+    fun setUp() {
+        // 说明文案是用户可见中文；显式固定语言，避免受其他测试的英文状态影响。
+        I18n.applyEnglish(false)
+    }
+
+    @After
+    fun tearDown() {
+        I18n.applyEnglish(false)
+    }
 
     private fun ledgerWith(vararg dates: String) = blankLedger().copy(
         records = dates.mapIndexed { index, date ->
@@ -101,6 +116,37 @@ class TrendWindowTest {
         val display = trendDisplayWindow(ledger, Dates.range(Period.MONTH, today), today)
         assertEquals(listOf(YearMonth.of(2026, 11)), display.months)
         assertEquals(setOf(YearMonth.of(2026, 11)), display.focus)
+    }
+
+    @Test
+    fun `caption explains the context months for a single month range`() {
+        val ledger = ledgerWith("2026-01-01")
+        val range = Dates.range(Period.MONTH, today)
+        val display = trendDisplayWindow(ledger, range, today)
+        val window = trendMonthWindow(ledger, range, today)
+
+        assertEquals("图表另含前 5 个月对比", trendRangeCaption(display, window))
+    }
+
+    @Test
+    fun `caption explains the 24 month truncation for a long all range`() {
+        val ledger = ledgerWith("2024-01-05", "2026-11-01")
+        val range = Dates.range(Period.ALL, today)
+        val display = trendDisplayWindow(ledger, range, today)
+        val window = trendMonthWindow(ledger, range, today)
+
+        assertEquals("图表仅画最近 24 / 35 个月", trendRangeCaption(display, window))
+    }
+
+    @Test
+    fun `caption is null when the chart matches the selected range`() {
+        val ledger = ledgerWith("2026-01-01")
+        val range = Dates.range(Period.YEAR, today)
+        assertNull(trendRangeCaption(trendDisplayWindow(ledger, range, today), trendMonthWindow(ledger, range, today)))
+
+        // 「全部」但没有被 24 个月截断时也不需要说明。
+        val all = Dates.range(Period.ALL, today)
+        assertNull(trendRangeCaption(trendDisplayWindow(ledger, all, today), trendMonthWindow(ledger, all, today)))
     }
 
     @Test

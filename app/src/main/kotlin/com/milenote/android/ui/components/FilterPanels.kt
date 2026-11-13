@@ -56,12 +56,15 @@ import androidx.compose.ui.unit.dp
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.Period
+import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteShapeTokens
 import com.milenote.android.ui.theme.MileNoteShapes
 import java.time.Instant
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.time.ZoneOffset
 
 /*
@@ -122,6 +125,32 @@ fun customRangeLabel(customRange: DateRange?): String? {
 fun rangeLabel(period: Period, customRange: DateRange?): String =
     customRangeLabel(customRange) ?: period.rangeLabel()
 
+/**
+ * 胶囊上的**紧凑**范围文案（菜单项仍用 [rangeLabel] 的完整说法）。
+ *
+ * 英文的「This month / Last 3 months」在 32dp 胶囊里会把卡头文字 tab 挤到截断
+ * （2026-11-13 实拍「Mileage」被裁成「Milea」），因此英文胶囊改成月份简称：
+ * `Nov` / `Oct` / `Sep–Nov` / `2026`；中文本来就短（本月 / 上月 / 近 3 个月 / 今年），保持不变。
+ */
+fun rangePillLabel(
+    period: Period,
+    customRange: DateRange?,
+    today: LocalDate = Dates.today(),
+): String {
+    customRangeLabel(customRange)?.let { return it }
+    if (!I18n.english) return period.rangeLabel()
+    val range = Dates.range(period, today)
+    fun monthShort(value: String): String =
+        Dates.parse(value)?.format(DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)) ?: ""
+    return when (period) {
+        Period.ALL -> tr("全部", "All")
+        Period.MONTH -> monthShort(range.from)
+        Period.LAST_MONTH -> monthShort(range.from)
+        Period.LAST_3_MONTHS -> "${monthShort(range.from)}–${monthShort(range.to)}"
+        Period.YEAR -> range.to.take(4)
+    }
+}
+
 private fun monthDay(date: LocalDate): String =
     "${date.monthValue.toString().padStart(2, '0')}.${date.dayOfMonth.toString().padStart(2, '0')}"
 
@@ -142,18 +171,28 @@ fun RangeFilterAction(
     customRange: DateRange?,
     onSelectPeriod: (Period) -> Unit,
     onSelectCustomRange: (String, String) -> Unit,
-    hint: String? = null,
+    caption: String? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
     FilterPill(
-        label = rangeLabel(period, customRange),
+        label = rangePillLabel(period, customRange),
         expanded = expanded,
         onToggle = { expanded = true },
         onDismiss = { expanded = false },
         contentDescription = tr("选择统计范围", "Select date range"),
-        hint = hint,
     ) {
+        // 窗口口径说明（如「图表另含前 5 个月对比」）只在展开菜单时出现：
+        // 放胶囊第二行会把它撑高、和 32dp 的视图开关不齐（2026-11-13 用户反馈）。
+        if (caption != null) {
+            Text(
+                text = caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp),
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
         RangeMenuItems(
             period = period,
             customRange = customRange,

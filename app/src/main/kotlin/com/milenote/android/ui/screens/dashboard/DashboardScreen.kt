@@ -858,7 +858,6 @@ private fun TrendCard(
     val display = remember(ledger, range) { trendDisplayWindow(ledger, range) }
     val months = display.months
     val focusKeys = remember(display) { display.focus.map { monthKey(it) }.toSet() }
-    val hasContext = months.size > focusKeys.size
     val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
     val palette = LocalMileNoteCategoryColors.current
     val darkTheme = LocalMileNoteDarkTheme.current
@@ -870,31 +869,9 @@ private fun TrendCard(
     val singleMonth = months.size == 1
     val singleBar = monthBars.singleOrNull()
     val singleMileage = mileageBars.singleOrNull()
-    val focusKm = remember(mileageBars, focusKeys) {
-        mileageBars.filter { it.key in focusKeys }.sumOf { it.km }
-    }
-    // 说明不再单独占一行（会把卡撑高）：并进右上角范围胶囊的第二行。
-    // 范围胶囊已经写着「本月 / 上月 / 全部」，这里只补充窗口口径。
-    val windowHint = when {
-        hasContext && tab == TrendTab.MILEAGE && focusKm <= 0.0 -> tr(
-            "暂无里程 · 前 %d 个月",
-            "no mileage · %d mo back",
-            months.size - 1,
-        )
-        hasContext -> tr(
-            "前 %d 个月",
-            "%d mo back",
-            months.size - 1,
-        )
-        window.truncated -> tr(
-            "近 %d / %d 个月",
-            "%d of %d mo",
-            months.size,
-            window.totalMonths,
-        )
-        range.from.isEmpty() -> tr("近 %d 个月", "%d mo", months.size)
-        else -> null
-    }
+    // 窗口口径说明（单月补上下文 / 超过 24 个月被截断）进范围下拉菜单首行，
+    // 胶囊保持单行 32dp，卡头控件等高（2026-11-13 用户反馈两行不好看）。
+    val rangeCaption = trendRangeCaption(display, window)
     val rangeStats = remember(ledger, range, singleMonth) {
         if (singleMonth) stats(ledger, range.from, range.to) else null
     }
@@ -910,14 +887,6 @@ private fun TrendCard(
         val name = highlight ?: return@LaunchedEffect
         if (monthBars.none { bar -> bar.categories.any { it.name == name } }) highlight = null
     }
-    val highlightLabel = highlight
-        ?.takeIf { tab == TrendTab.EXPENSE && view == ExpenseChartView.MONTH }
-        ?.let {
-            // 高亮时范围胶囊第二行只放「怎么取消」；哪个分类被高亮由图表本身说明，
-            // 把分类名塞进胶囊会把「Mileage」在 1.3× 下挤掉。
-            tr("点空白取消", "tap blank to clear")
-        }
-    val rangeHint = highlightLabel ?: windowHint
 
     SectionCard(modifier = modifier) {
         Row(
@@ -935,7 +904,15 @@ private fun TrendCard(
                     },
                 )
             }
-            // 视图开关只在支出 tab 出现；32dp 圆底，与范围胶囊同高，不改变卡头高度。
+            RangeFilterAction(
+                period = period,
+                customRange = customRange,
+                onSelectPeriod = onSelectPeriod,
+                onSelectCustomRange = onSelectCustomRange,
+                caption = rangeCaption,
+            )
+            // 视图开关只在支出 tab 出现；放在范围胶囊**右侧**：英文「Expense / Mileage」两个
+            // 文字 tab 需要完整宽度，夹在 tab 与胶囊之间会把「Mileage」裁成「Milea」（2026-11-13 实拍发现）。
             if (tab == TrendTab.EXPENSE) {
                 ExpenseViewToggle(
                     view = view,
@@ -949,13 +926,6 @@ private fun TrendCard(
                     },
                 )
             }
-            RangeFilterAction(
-                period = period,
-                customRange = customRange,
-                onSelectPeriod = onSelectPeriod,
-                onSelectCustomRange = onSelectCustomRange,
-                hint = rangeHint,
-            )
         }
         Spacer(modifier = Modifier.height(10.dp))
         when (tab) {
