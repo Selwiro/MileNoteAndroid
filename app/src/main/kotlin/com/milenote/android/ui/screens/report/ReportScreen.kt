@@ -38,8 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
@@ -300,9 +298,9 @@ private fun ReportContent(
             item(key = "overview") {
                 OverviewCard(ledger = ledger, data = data)
             }
-            if (data.period.kind != ReportKind.ALL && data.hasEarlierRecords) {
+            if (data.period.kind != ReportKind.ALL) {
                 item(key = "comparison") {
-                    ComparisonCard(data = data)
+                    MetricChartCard(data = data)
                 }
             }
             item(key = "categories") {
@@ -516,101 +514,40 @@ private fun OverviewCard(ledger: Ledger, data: ReportData) {
             unit = Units.money,
             showCurrencySymbol = true,
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        if (data.period.kind == ReportKind.ALL) {
-            Text(
-                text = tr(
-                    "月均 %s · 记录跨度 %s",
-                    "%s a month · %s of records",
-                    money(data.monthlyAvg),
-                    spanText(data.spanMonths),
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurfaceVariant,
-            )
-        } else {
-            data.totalDelta?.let { delta ->
-                if (delta.previous <= 0.0 && !data.hasEarlierRecords) {
-                    // 账本的第一期：上一期本来就没数据，写「上月无支出」会被读成「上月没花钱」。
-                    Text(
-                        text = if (data.period.kind == ReportKind.YEAR) {
-                            tr("账本从今年开始，暂无上期对比", "Ledger starts this year — no earlier period to compare")
-                        } else {
-                            tr("账本从本月开始，暂无上期对比", "Ledger starts this month — no earlier period to compare")
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    DeltaLine(
-                        label = previousLabel(data.period.kind, data.inProgress),
-                        text = deltaText(delta, previousEmptyLabel(data.period.kind, data.inProgress)),
-                    )
-                }
-            }
-            if (data.period.kind == ReportKind.MONTH) {
-                data.yearAgoDelta?.let { delta ->
-                    DeltaLine(
-                        label = if (data.inProgress) {
-                            tr("较去年同期", "vs same span last year")
-                        } else {
-                            tr("较去年同月", "vs same month last year")
-                        },
-                        text = deltaText(delta, tr("去年同月无支出", "No spending that month last year")),
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-        Spacer(modifier = Modifier.height(14.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ReportMetric(
-                    label = tr("记录", "Entries"),
-                    value = data.recordCount.toString(),
-                    unit = if (I18n.english) null else tr("笔", "entries"),
-                    modifier = Modifier.weight(1f),
+        Spacer(modifier = Modifier.height(12.dp))
+        when {
+            data.period.kind == ReportKind.ALL -> {
+                // 累计没有可比期：给月均 / 跨度，再用 2×2 数字块收尾（趋势在下面单独成图）。
+                Text(
+                    text = tr(
+                        "月均 %s · 记录跨度 %s",
+                        "%s a month · %s of records",
+                        money(data.monthlyAvg),
+                        spanText(data.spanMonths),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
                 )
-                ReportMetric(
-                    label = tr("里程", "Distance"),
-                    value = data.distance?.let { Format.fmt(it) } ?: "—",
-                    unit = if (data.distance != null) Units.distanceUnit else null,
-                    caption = if (data.distance != null) null else tr("本期没有里程读数", "No odometer readings this period"),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                when (data.period.kind) {
-                    ReportKind.MONTH -> {
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         ReportMetric(
-                            label = tr("日均", "Daily avg"),
-                            value = moneyOf(data.daily),
-                            unit = Units.money,
+                            label = tr("记录", "Entries"),
+                            value = data.recordCount.toString(),
+                            unit = if (I18n.english) null else tr("笔", "entries"),
                             modifier = Modifier.weight(1f),
                         )
                         ReportMetric(
-                            label = tr("每公里", "Per km"),
-                            value = data.perKm?.let { Format.money(it) } ?: "—",
-                            unit = if (data.perKm != null) Units.costPerDistance else null,
+                            label = tr("里程", "Distance"),
+                            value = data.distance?.let { Format.fmt(it) } ?: "—",
+                            unit = if (data.distance != null) Units.distanceUnit else null,
+                            caption = if (data.distance != null) null else tr("本期没有里程读数", "No odometer readings this period"),
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    ReportKind.YEAR -> {
-                        ReportMetric(
-                            label = tr("月均支出", "Monthly avg"),
-                            value = moneyOf(data.monthlyAvg),
-                            unit = Units.money,
-                            modifier = Modifier.weight(1f),
-                        )
-                        ReportMetric(
-                            label = tr("有记录月份", "Months with data"),
-                            value = "${data.monthsWithData}/${elapsedMonths(data)}",
-                            unit = null,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    ReportKind.ALL -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         ReportMetric(
                             label = tr("每公里", "Per km"),
                             value = data.perKm?.let { Format.money(it) } ?: "—",
@@ -626,6 +563,17 @@ private fun OverviewCard(ledger: Ledger, data: ReportData) {
                     }
                 }
             }
+            // 账本的第一期：上一期本来就没数据，写「上月无支出」会被读成「上月没花钱」。
+            !data.hasEarlierRecords -> Text(
+                text = if (data.period.kind == ReportKind.YEAR) {
+                    tr("账本从今年开始，暂无上期对比", "Ledger starts this year — no earlier period to compare")
+                } else {
+                    tr("账本从本月开始，暂无上期对比", "Ledger starts this month — no earlier period to compare")
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurfaceVariant,
+            )
+            else -> SpendCompareChart(data)
         }
         futureRecordNote(data)?.let { note ->
             Spacer(modifier = Modifier.height(10.dp))
@@ -635,6 +583,34 @@ private fun OverviewCard(ledger: Ledger, data: ReportData) {
                 color = scheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * 支出对比横条：本期 / 上期 / 去年同期（年报只有本期 / 上年）。
+ *
+ * 单条（没有可比期）时不画：图上一根孤立柱子没有信息量。
+ */
+@Composable
+private fun SpendCompareChart(data: ReportData) {
+    val colors = reportCompareColors()
+    val kind = data.period.kind
+    val bars = buildList {
+        add(CompareBar(tr("本期", "This period"), data.total, colors.current))
+        data.totalDelta?.let { delta ->
+            add(CompareBar(comparePreviousLabel(kind, data.inProgress), delta.previous, colors.previous))
+        }
+        if (kind == ReportKind.MONTH) {
+            data.yearAgoDelta?.let { delta ->
+                add(CompareBar(compareYearAgoLabel(kind, data.inProgress), delta.previous, colors.yearAgo))
+            }
+        }
+    }
+    if (bars.size > 1) {
+        CompareBars(
+            bars = bars,
+            valueText = { "${Units.currencySymbol}${Format.money(it)}" },
+        )
     }
 }
 
@@ -660,34 +636,17 @@ internal fun futureRecordNote(data: ReportData): String? {
 private fun elapsedMonths(data: ReportData): Int =
     if (data.inProgress) Dates.parse(data.range.to)?.monthValue ?: 12 else 12
 
-@Composable
-private fun DeltaLine(label: String, text: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+/** 环比系列标签（月报 = 上月，年报 = 上年）；图表横条左侧用。 */
+private fun comparePreviousLabel(kind: ReportKind, inProgress: Boolean): String = when (kind) {
+    ReportKind.MONTH -> if (inProgress) tr("上月同期", "Last month") else tr("上月", "Last month")
+    ReportKind.YEAR -> if (inProgress) tr("上年同期", "Last year") else tr("上年", "Last year")
+    ReportKind.ALL -> ""
 }
 
-private fun previousLabel(kind: ReportKind, inProgress: Boolean): String = when (kind) {
-    ReportKind.MONTH -> if (inProgress) tr("较上月同期", "vs same span last month") else tr("较上月", "vs last month")
-    ReportKind.YEAR -> if (inProgress) tr("较去年同期", "vs same span last year") else tr("较上年", "vs last year")
+/** 同比系列标签（月报 = 去年同月 / 去年同期；年报沿用上期标签）。 */
+private fun compareYearAgoLabel(kind: ReportKind, inProgress: Boolean): String = when (kind) {
+    ReportKind.MONTH -> if (inProgress) tr("去年同期", "Year ago") else tr("去年同月", "Year ago")
+    ReportKind.YEAR -> comparePreviousLabel(kind, inProgress)
     ReportKind.ALL -> ""
 }
 
@@ -775,112 +734,117 @@ private fun ReportMetric(
 }
 
 // ---------------------------------------------------------------------------------------------
-// 环比 / 同比
+// 指标对比（分组柱）
 // ---------------------------------------------------------------------------------------------
 
 /**
- * 指标对比卡：日均、每公里、记录、里程的环比 / 同比。
+ * 指标对比卡：日均 / 每公里 / 记录 / 里程各一行，行内三根柱分别是本期 / 上期 / 同比。
  *
- * 支出合计的环比 / 同比留在总览卡里（紧贴大金额，不重复画一遍）；
- * 累计视角没有可比的期（跨度不同），整张卡不出现。
+ * 支出合计的对比在总览卡的横条图里，避免同一组数字画两遍；累计没有可比期，整张卡不出现。
  */
 @Composable
-private fun ComparisonCard(data: ReportData) {
-    val month = data.period.kind == ReportKind.MONTH
+private fun MetricChartCard(data: ReportData) {
+    val colors = reportCompareColors()
+    val kind = data.period.kind
+    val month = kind == ReportKind.MONTH
     val metrics = data.metrics
     val records = metrics.records.current?.toInt() ?: 0
-    SectionCard(
-        title = if (month) tr("环比 · 同比", "MoM · YoY") else tr("同比", "YoY"),
-        subtitle = if (month) {
-            tr("较上月同期、去年同月", "vs last month and a year ago")
-        } else {
-            tr("较上年同期", "vs the same span last year")
-        },
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            MetricCompareRow(
+    val hasYearAgo = month && listOf(
+        metrics.daily.yearAgo,
+        metrics.perKm.yearAgo,
+        metrics.records.yearAgo,
+        metrics.distance.yearAgo,
+    ).any { it != null }
+
+    val series = buildList {
+        add(MetricSeries(tr("本期", "Now"), colors.current))
+        if (month) add(MetricSeries(comparePreviousLabel(kind, data.inProgress), colors.previous))
+        if (hasYearAgo) add(MetricSeries(compareYearAgoLabel(kind, data.inProgress), colors.yearAgo))
+        if (!month) add(MetricSeries(compareYearAgoLabel(kind, data.inProgress), colors.yearAgo))
+    }
+    fun values(current: Double?, previous: Double?, yearAgo: Double?): List<Double?> = when {
+        !month -> listOf(current, yearAgo)
+        hasYearAgo -> listOf(current, previous, yearAgo)
+        else -> listOf(current, previous)
+    }
+    val primaryLabel = if (month) tr("环比", "MoM") else tr("同比", "YoY")
+    fun caption(delta: ReportDelta?, countUnit: String? = null): String? =
+        delta?.let { metricCompareChip(primaryLabel, it, countUnit) }
+
+    val rows = buildList {
+        add(
+            MetricBarRow(
                 label = tr("日均", "Daily avg"),
-                value = metrics.daily.current?.let { "${Units.currencySymbol}${Format.money(it)}" } ?: "—",
-                monthOverMonth = metrics.daily.monthOverMonth,
-                yearOverYear = metrics.daily.yearOverYear,
-            )
-            metrics.perKm.current?.let { perKm ->
-                MetricCompareRow(
+                valueText = metrics.daily.current?.let { "${Units.currencySymbol}${Format.money(it)}" } ?: "—",
+                values = values(metrics.daily.current, metrics.daily.previous, metrics.daily.yearAgo),
+                deltaText = caption(if (month) metrics.daily.monthOverMonth else metrics.daily.yearOverYear),
+            ),
+        )
+        metrics.perKm.current?.let { perKm ->
+            add(
+                MetricBarRow(
                     label = tr("每公里", "Per km"),
-                    value = "${Units.currencySymbol}${Format.money(perKm)}",
-                    monthOverMonth = metrics.perKm.monthOverMonth,
-                    yearOverYear = metrics.perKm.yearOverYear,
-                )
-            }
-            MetricCompareRow(
-                label = tr("记录", "Entries"),
-                value = if (records == 1) tr("1 笔", "1 entry") else tr("%d 笔", "%d entries", records),
-                monthOverMonth = metrics.records.monthOverMonth,
-                yearOverYear = metrics.records.yearOverYear,
-                countUnit = tr("笔", "entries"),
+                    valueText = "${Units.currencySymbol}${Format.money(perKm)}",
+                    values = values(perKm, metrics.perKm.previous, metrics.perKm.yearAgo),
+                    deltaText = caption(if (month) metrics.perKm.monthOverMonth else metrics.perKm.yearOverYear),
+                ),
             )
-            metrics.distance.current?.let { distance ->
-                MetricCompareRow(
+        }
+        add(
+            MetricBarRow(
+                label = tr("记录", "Entries"),
+                valueText = if (records == 1) tr("1 笔", "1 entry") else tr("%d 笔", "%d entries", records),
+                values = values(metrics.records.current, metrics.records.previous, metrics.records.yearAgo),
+                deltaText = caption(
+                    if (month) metrics.records.monthOverMonth else metrics.records.yearOverYear,
+                    countUnit = tr("笔", "entries"),
+                ),
+            ),
+        )
+        metrics.distance.current?.let { distance ->
+            add(
+                MetricBarRow(
                     label = tr("里程", "Distance"),
-                    value = "${Format.fmt(distance)} ${Units.distanceUnit}",
-                    monthOverMonth = metrics.distance.monthOverMonth,
-                    yearOverYear = metrics.distance.yearOverYear,
-                    countUnit = Units.distanceUnit,
-                )
-            }
+                    valueText = "${Format.fmt(distance)} ${Units.distanceUnit}",
+                    values = values(distance, metrics.distance.previous, metrics.distance.yearAgo),
+                    deltaText = caption(
+                        if (month) metrics.distance.monthOverMonth else metrics.distance.yearOverYear,
+                        countUnit = Units.distanceUnit,
+                    ),
+                ),
+            )
         }
     }
-}
 
-@Composable
-private fun MetricCompareRow(
-    label: String,
-    value: String,
-    monthOverMonth: ReportDelta?,
-    yearOverYear: ReportDelta?,
-    countUnit: String? = null,
-) {
-    val scheme = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    SectionCard(title = tr("指标对比", "Metric comparison")) {
+        MetricBars(series = series, rows = rows)
+        if (!month) {
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                color = scheme.onSurface,
-                maxLines = 1,
+                text = tr(
+                    "月均支出 %s · 有记录月份 %d/%d",
+                    "%s a month · %d of %d months",
+                    money(data.monthlyAvg),
+                    data.monthsWithData,
+                    elapsedMonths(data),
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        val chips = buildList {
-            monthOverMonth?.let { add(metricCompareChip(tr("环比", "MoM"), it, countUnit)) }
-            yearOverYear?.let { add(metricCompareChip(tr("同比", "YoY"), it, countUnit)) }
-        }
-        Text(
-            text = chips.ifEmpty { listOf(tr("暂无可比数据", "No comparison yet")) }.joinToString(" · "),
-            style = MaterialTheme.typography.labelSmall,
-            color = scheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
 /**
- * 分类行的环比 / 同比片段：上期这一分类没有支出 →「新增」，差额 < 0.5 元 →「≈」，其余给增减幅度。
+ * 分类增减条的数值标注：上期这一分类没有支出 →「新增」，差额 < 0.5 元 →「≈」，其余给增减幅度。
  *
  * 分类金额都是钱，0.5 元阈值与总览「基本持平」同一口径。
  */
-internal fun categoryDeltaChip(label: String, current: Double, previous: Double): String {
-    if (previous <= 0.0) return "$label ${tr("新增", "new")}"
+internal fun categoryDeltaLabel(current: Double, previous: Double): String {
+    if (previous <= 0.0) return tr("新增", "new")
     val diff = current - previous
-    if (abs(diff) < 0.5) return "$label ≈"
-    return "$label ${changeArrow(current, previous)}"
+    if (abs(diff) < 0.5) return "≈"
+    return deltaArrowText(current, previous)
 }
 
 /**
@@ -889,7 +853,7 @@ internal fun categoryDeltaChip(label: String, current: Double, previous: Double)
  *
  * 跌幅上限是 −100%（本期 ≥ 0），不需要倍数分支。
  */
-private fun changeArrow(current: Double, previous: Double): String {
+internal fun deltaArrowText(current: Double, previous: Double): String {
     val percent = (current - previous) / previous * 100.0
     if (percent >= 900.0) return "↑ ${oneDecimal(current / previous)}×"
     val arrow = if (percent > 0) "↑" else "↓"
@@ -911,11 +875,11 @@ internal fun metricCompareChip(label: String, delta: ReportDelta, countUnit: Str
     }
     val percent = delta.percent ?: return "$label ${tr("上期无", "no data")}"
     if (abs(percent) < 0.05) return "$label ≈"
-    return "$label ${changeArrow(delta.current, delta.previous)}"
+    return "$label ${deltaArrowText(delta.current, delta.previous)}"
 }
 
 // ---------------------------------------------------------------------------------------------
-// 费用构成（环图 + 分类明细）
+// 费用构成（环图 + 分类增减条）
 // ---------------------------------------------------------------------------------------------
 
 /** 分类明细的一行；[names] 是它包含的原始分类名（折叠的「其他 N 类」会有多个）。 */
@@ -964,9 +928,56 @@ private fun BreakdownCard(ledger: Ledger, data: ReportData) {
             )
         }
     }
+
+    // 0 = 环比（上月），1 = 同比（去年同月 / 上年）；只有存在对比表时才出现。
+    var mode by rememberSaveable { mutableIntStateOf(0) }
+    val modes = buildList {
+        if (data.previousCategories != null) add(0)
+        if (data.yearAgoCategories != null) add(1)
+    }
+    val activeMode = if (mode in modes) mode else modes.firstOrNull() ?: -1
+    val comparison = when (activeMode) {
+        0 -> data.previousCategories
+        1 -> data.yearAgoCategories
+        else -> null
+    }
+    val action: (@Composable () -> Unit)? = when (modes.size) {
+        2 -> {
+            {
+                ChartModeToggle(
+                    labels = listOf(tr("环比", "MoM"), tr("同比", "YoY")),
+                    selected = if (activeMode == 0) 0 else 1,
+                    onSelect = { mode = it },
+                )
+            }
+        }
+        1 -> {
+            {
+                Text(
+                    text = if (modes[0] == 0) tr("环比", "MoM") else tr("同比", "YoY"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        }
+        else -> null
+    }
+
+    val bars = rows.map { row ->
+        val previous = comparison?.let { map -> row.names.sumOf { map[it] ?: 0.0 } }
+        CategoryDeltaBar(
+            label = row.label,
+            value = row.value,
+            valueText = "${Units.currencySymbol}${Format.money(row.value)}",
+            shareText = percentText(row.value, total),
+            color = row.color,
+            delta = previous?.let { row.value - it },
+            deltaText = previous?.let { categoryDeltaLabel(row.value, it) }.orEmpty(),
+        )
+    }
     val slices = rows.map { BreakdownSlice(key = it.key, label = it.label, value = it.value, color = it.color) }
 
-    SectionCard(title = tr("费用构成", "Breakdown")) {
+    SectionCard(title = tr("费用构成", "Breakdown"), action = action) {
         if (rows.isEmpty()) {
             // 有记录但全是 0 元（例如免费充电）：环图画不出来，别让「等待你的第一笔记录」误导。
             Text(
@@ -976,84 +987,10 @@ private fun BreakdownCard(ledger: Ledger, data: ReportData) {
             )
             return@SectionCard
         }
-        // 环图本身不再画横排图例：下面的明细行带色点、金额、占比和环比 / 同比，就是图例。
+        // 环图本身不再画横排图例：下面的明细行带色点、金额、占比和增减条，就是图例。
         CategoryBreakdown(slices = slices, total = total, showLegend = false)
         Spacer(modifier = Modifier.height(12.dp))
-        rows.forEach { row ->
-            CategoryCompareRow(
-                label = row.label,
-                value = row.value,
-                total = total,
-                color = row.color,
-                previous = data.previousCategories?.let { map -> row.names.sumOf { map[it] ?: 0.0 } },
-                yearAgo = data.yearAgoCategories?.let { map -> row.names.sumOf { map[it] ?: 0.0 } },
-            )
-        }
-    }
-}
-
-/**
- * 分类明细行：色点 + 名称 + 金额 + 占比，第二行是环比 / 同比。
- *
- * [previous] / [yearAgo] 为 null 表示对比期完全没有记录（整行不画对比）；
- * 0.0 表示对比期有记录、但这一分类没有支出（写「新增」而不是 ∞%）。
- */
-@Composable
-private fun CategoryCompareRow(
-    label: String,
-    value: Double,
-    total: Double,
-    color: Color,
-    previous: Double?,
-    yearAgo: Double?,
-) {
-    val scheme = MaterialTheme.colorScheme
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(color, CircleShape),
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "${Units.currencySymbol}${Format.money(value)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurface,
-                maxLines = 1,
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = percentText(value, total),
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                textAlign = TextAlign.End,
-                modifier = Modifier.width(44.dp),
-            )
-        }
-        val chips = buildList {
-            previous?.let { add(categoryDeltaChip(tr("环比", "MoM"), value, it)) }
-            yearAgo?.let { add(categoryDeltaChip(tr("同比", "YoY"), value, it)) }
-        }
-        if (chips.isNotEmpty()) {
-            Text(
-                text = chips.joinToString(" · "),
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 2.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        CategoryDeltaBars(rows = bars, total = total)
     }
 }
 
@@ -1083,7 +1020,6 @@ private fun EnergyCard(ledger: Ledger, data: ReportData) {
                         "本期没有加满记录，无法计算满箱油耗",
                         "No full tank this period, so fuel economy can't be computed",
                     ),
-                    compareLabel = previousLabel(data.period.kind, data.inProgress),
                 )
             }
             if (data.fuel != null && data.electric != null) {
@@ -1102,7 +1038,6 @@ private fun EnergyCard(ledger: Ledger, data: ReportData) {
                         "本期没有充满记录，无法计算满电电耗",
                         "No full charge this period, so energy use can't be computed",
                     ),
-                    compareLabel = previousLabel(data.period.kind, data.inProgress),
                 )
             }
         }
@@ -1119,9 +1054,9 @@ private fun EnergyFlow(
     rateLabel: String,
     rateUnit: String,
     missingText: String,
-    compareLabel: String,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val compareColors = reportCompareColors()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (title != null) {
             Text(
@@ -1142,13 +1077,30 @@ private fun EnergyFlow(
         val currentRate = line.rate
         val estimate = line.estimated
         // 完全没有能耗数字时不画「油耗 —」这一行，只留下面那句解释，避免同一件事说两遍。
-        if (currentRate != null || estimate != null) {
+        if (currentRate != null) {
             Text(
-                text = if (currentRate != null) {
-                    tr("%s %s %s", "%s %s %s", rateLabel, Format.fmt(currentRate), rateUnit)
-                } else {
-                    tr("累计估算约 %s %s", "Rough estimate %s %s", Format.fmt(estimate), rateUnit)
-                },
+                text = tr("%s %s %s", "%s %s %s", rateLabel, Format.fmt(currentRate), rateUnit),
+                style = MaterialTheme.typography.bodyLarge,
+                color = scheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // 本期 vs 上期：用两根横条代替「较上月 ↓0.3 L/100km」那行字。
+            val previousRate = line.previous?.rate
+            if (previousRate != null) {
+                CompareBars(
+                    bars = listOf(
+                        CompareBar(tr("本期", "Now"), currentRate, compareColors.current),
+                        CompareBar(tr("上期", "Before"), previousRate, compareColors.previous),
+                    ),
+                    valueText = { "${Format.fmt(it)} $rateUnit" },
+                    labelWidth = 48.dp,
+                    valueWidth = 88.dp,
+                )
+            }
+        } else if (estimate != null) {
+            Text(
+                text = tr("累计估算约 %s %s", "Rough estimate %s %s", Format.fmt(estimate), rateUnit),
                 style = MaterialTheme.typography.bodyLarge,
                 color = scheme.onSurface,
                 maxLines = 1,
@@ -1168,30 +1120,7 @@ private fun EnergyFlow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        val previous = line.previous
-        val previousRate = previous?.rate
-        if (currentRate != null && previousRate != null) {
-            val diff = currentRate - previousRate
-            val arrow = if (diff > 0) "↑" else if (diff < 0) "↓" else ""
-            val diffText = if (abs(diff) < 0.05) {
-                tr("基本持平", "About the same")
-            } else {
-                "$arrow ${Format.fmt(abs(diff))} ${rateUnit}"
-            }
-            Text(
-                text = tr(
-                    "%s %s（上期 %s · %s）",
-                    "%s %s (previous %s · %s)",
-                    compareLabel,
-                    diffText,
-                    Format.fmt(previousRate),
-                    spanCountText(previous.intervals, electric),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 2,
-            )
-        } else if (line.rate == null && line.estimated == null) {
+        if (currentRate == null && estimate == null) {
             Text(
                 text = missingText,
                 style = MaterialTheme.typography.bodySmall,
@@ -1438,7 +1367,6 @@ private fun spanCountText(intervals: Int, electric: Boolean): String = when {
 private fun money(value: Double?): String =
     if (value == null) "—" else "${Units.currencySymbol}${Format.money(value)}"
 
-private fun moneyOf(value: Double?): String = value?.let { Format.money(it) } ?: "—"
 
 private fun oneDecimal(value: Double): String {
     val rounded = kotlin.math.round(value * 10.0) / 10.0

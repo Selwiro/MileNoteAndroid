@@ -7,9 +7,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 报告页环比 / 同比文案（[categoryDeltaChip] / [metricCompareChip]）。
+ * 报告页图表上的增减标注（[categoryDeltaLabel] / [deltaArrowText] / [metricCompareChip]）与归一函数。
  *
- * 重点：上期 0 不能画成 ∞%、差额过小写「≈」、记录数与里程按绝对值 + 单位而不是百分比。
+ * 重点：上期 0 不能画成 ∞%、差额过小写「≈」、记录数与里程按绝对值 + 单位而不是百分比；
+ * 条长归一遇到 0 / 负数 / NaN 不能让 Canvas 画出负宽。
  */
 class ReportCompareTextTest {
 
@@ -21,22 +22,21 @@ class ReportCompareTextTest {
     // ---------------------------------------------------------------- 分类
 
     @Test
-    fun `category chip shows percent up and down`() {
-        assertEquals("环比 ↑ 20%", categoryDeltaChip("环比", 120.0, 100.0))
-        assertEquals("环比 ↓ 20%", categoryDeltaChip("环比", 80.0, 100.0))
-        assertEquals("同比 ↑ 150%", categoryDeltaChip("同比", 5.0, 2.0))
+    fun `category label shows percent up and down`() {
+        assertEquals("↑ 20%", categoryDeltaLabel(120.0, 100.0))
+        assertEquals("↓ 20%", categoryDeltaLabel(80.0, 100.0))
+        assertEquals("↑ 150%", categoryDeltaLabel(5.0, 2.0))
     }
 
     @Test
-    fun `category chip uses new when previous period had none`() {
-        assertEquals("环比 新增", categoryDeltaChip("环比", 35.2, 0.0))
-        assertEquals("同比 新增", categoryDeltaChip("同比", 35.2, 0.0))
+    fun `category label uses new when previous period had none`() {
+        assertEquals("新增", categoryDeltaLabel(35.2, 0.0))
     }
 
     @Test
-    fun `category chip flattens sub half yuan difference`() {
-        assertEquals("环比 ≈", categoryDeltaChip("环比", 100.2, 100.0))
-        assertEquals("环比 ≈", categoryDeltaChip("环比", 99.6, 100.0))
+    fun `category label flattens sub half yuan difference`() {
+        assertEquals("≈", categoryDeltaLabel(100.2, 100.0))
+        assertEquals("≈", categoryDeltaLabel(99.6, 100.0))
     }
 
     // ---------------------------------------------------------------- 指标
@@ -62,7 +62,8 @@ class ReportCompareTextTest {
     fun `huge increases switch to multiples instead of five digit percents`() {
         // 演示数据里基期很小的时候会出现 12,486.8% 这种数字，改画倍数更好读。
         assertEquals("同比 ↑ 125.9×", metricCompareChip("同比", ReportDelta(1258.68, 10.0)))
-        assertEquals("环比 ↑ 90×", categoryDeltaChip("环比", 45.0, 0.5))
+        assertEquals("↑ 90×", categoryDeltaLabel(45.0, 0.5))
+        assertEquals("↑ 125.9×", deltaArrowText(1258.68, 10.0))
         // 跌幅有下限（本期不为负），不会触发倍数分支。
         assertEquals("环比 ↓ 100%", metricCompareChip("环比", ReportDelta(0.0, 10.0)))
     }
@@ -80,10 +81,30 @@ class ReportCompareTextTest {
     @Test
     fun `chips switch to english labels and words`() {
         I18n.applyEnglish(true)
-        assertEquals("MoM ↑ 20%", categoryDeltaChip("MoM", 120.0, 100.0))
-        assertEquals("MoM new", categoryDeltaChip("MoM", 35.2, 0.0))
+        assertEquals("↑ 20%", categoryDeltaLabel(120.0, 100.0))
+        assertEquals("new", categoryDeltaLabel(35.2, 0.0))
         assertEquals("YoY ≈", metricCompareChip("YoY", ReportDelta(100.01, 100.0)))
         assertEquals("MoM no data", metricCompareChip("MoM", ReportDelta(12.0, 0.0)))
         assertEquals("MoM +3 entries", metricCompareChip("MoM", ReportDelta(33.0, 30.0), "entries"))
+    }
+
+    // ---------------------------------------------------------------- 条长归一
+
+    @Test
+    fun `bar fraction normalises and guards bad input`() {
+        assertEquals(0.5f, barFraction(50.0, 100.0))
+        assertEquals(1f, barFraction(120.0, 100.0))
+        assertEquals(0f, barFraction(0.0, 100.0))
+        assertEquals(0f, barFraction(-5.0, 100.0))
+        assertEquals(0f, barFraction(50.0, 0.0))
+        assertEquals(0f, barFraction(Double.NaN, 100.0))
+    }
+
+    @Test
+    fun `diverging fraction uses absolute delta and guards missing comparison`() {
+        assertEquals(0.5f, divergingFraction(-50.0, 100.0))
+        assertEquals(1f, divergingFraction(300.0, 100.0))
+        assertEquals(0f, divergingFraction(null, 100.0))
+        assertEquals(0f, divergingFraction(10.0, 0.0))
     }
 }
