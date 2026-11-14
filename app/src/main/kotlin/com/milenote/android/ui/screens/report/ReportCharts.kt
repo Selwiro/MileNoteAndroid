@@ -20,6 +20,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.milenote.android.domain.format.Format
@@ -50,6 +51,7 @@ internal fun ReportTrendChart(
     highlightKey: String?,
     modifier: Modifier = Modifier,
     onBarClick: ((String) -> Unit)? = null,
+    chartHeight: Dp = ReportChartHeight,
 ) {
     val scheme = MaterialTheme.colorScheme
     val textMeasurer = rememberTextMeasurer()
@@ -71,7 +73,7 @@ internal fun ReportTrendChart(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(ReportChartHeight)
+                .height(chartHeight)
                 .pointerInput(bars, onBarClick) {
                     if (onBarClick == null) return@pointerInput
                     detectTapGestures { offset ->

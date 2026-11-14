@@ -1127,6 +1127,7 @@ internal fun CategoryBreakdown(
     total: Double,
     modifier: Modifier = Modifier,
     showLegend: Boolean = true,
+    showCount: Boolean = true,
 ) {
     if (slices.isEmpty() || total <= 0.0) {
         EmptyChartHint(text = tr("等待你的第一笔记录", "Waiting for your first entry"), modifier = modifier)
@@ -1168,6 +1169,7 @@ internal fun CategoryBreakdown(
                     total = total,
                     selected = selected,
                     onSelect = toggle,
+                    showCount = showCount,
                     modifier = Modifier.size(DonutSize),
                 )
                 if (showLegend) {
@@ -1217,6 +1219,7 @@ private fun DonutChart(
     total: Double,
     selected: String?,
     onSelect: (String) -> Unit,
+    showCount: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -1285,11 +1288,13 @@ private fun DonutChart(
                 maxLines = 1,
                 softWrap = false,
             )
-            Text(
-                text = tr("%d 个分类", "%d categories", slices.size),
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-            )
+            if (showCount) {
+                Text(
+                    text = tr("%d 个分类", "%d categories", slices.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
