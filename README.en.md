@@ -7,9 +7,9 @@
 
 [简体中文](README.md) · **English**
 
-MileNote is an **open-source, native, local-first Android app for logging car expenses and mileage**. It supports multiple vehicles, daily expense records, fuel and energy analysis, service planning and running-cost statistics.
+MileNote is an **open-source, native, local-first Android companion for your car**. It supports multiple vehicles, daily expense records, fuel and energy analysis, service planning and running-cost statistics.
 
-No account is needed, and the ledger is stored on your phone by default — it never depends on a developer server. To sync between devices, you can connect your own WebDAV storage and optionally enable encrypted upload (off by default).
+No account is needed, and your data is stored on your phone by default — it never depends on a developer server. To sync between devices, you can connect your own WebDAV storage and optionally enable encrypted upload (off by default).
 
 Refuelling, charging, parking, insurance, repairs and scheduled maintenance all live in one place, with charts that show how each car is used and where the money goes over time.
 
@@ -17,7 +17,7 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 
 ## Highlights
 
-- **Local-first, no account:** the ledger stays on your device by default, with no subscriptions, ads or analytics.
+- **Local-first, no account:** your data stays on your device by default, with no subscriptions, ads or analytics.
 - **Fuel cars, plug-in hybrids and EVs:** fuel-economy, dual fuel + energy analysis, or energy analysis, each with a matching service plan.
 - **Independent multi-vehicle management:** expenses, energy and service records are kept per vehicle; a full backup covers every vehicle.
 - **Customisable categories and item library:** built-in expense categories and service items can be renamed or hidden (Fuel/Insurance/Service/Repair cannot be deleted); hiding only affects new-entry candidates, never existing records or statistics.
@@ -25,7 +25,7 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 
 ## Screenshots
 
-These screenshots come from an older build's demo ledger (English UI); all data is synthetic. **Since 0.39.0 the bottom bar is Overview / Fuel / ＋ / Service / Me** (the Analytics page was dissolved: expense trend moved to Overview, expense details open from the Overview top-right icon; fuel details and maintenance records open from their page top-right icons). The interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
+These screenshots come from an older build's demo mode (English UI); all data is synthetic. **Since 0.39.0 the bottom bar is Overview / Fuel / ＋ / Service / Me** (the Analytics page was dissolved: expense trend moved to Overview, expense details open from the Overview top-right icon; fuel details and maintenance records open from their page top-right icons). The interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
 
 | Overview | Add entry | Analytics | Service |
 |:---:|:---:|:---:|:---:|
@@ -114,9 +114,9 @@ The app uses **Tesseract** (Tesseract4Android, with the tessdata_fast Chinese an
 
 Pump-display screens (seven-segment LED/LCD) use a **built-in geometric decoder** instead: it reads the amount, fuel volume and unit price directly from the segment positions and still validates them with `amount ≈ fuel × unit price`. If nothing can be read, tap **Fill in / edit the readings** on the result panel to enter them quickly with a numeric keypad or the numbers found in the recognised text.
 
-Scan results only fill fields that are still empty and never overwrite existing values. Review them before saving so a misread doesn't end up in your ledger.
+Scan results only fill fields that are still empty and never overwrite existing values. Review them before saving so a misread doesn't end up in your data.
 
-Recognition runs locally; the image is never uploaded and never written into the ledger.
+Recognition runs locally; the image is never uploaded and never written into your data.
 
 ### Import and export
 
@@ -142,7 +142,7 @@ A full backup works for switching phones, restoring data, or keeping as a standa
 
 ### WebDAV sync
 
-WebDAV is optional. Without it, the ledger always stays local.
+WebDAV is optional. Without it, your data always stays local.
 
 You can connect Nutstore (Jianguoyun), Nextcloud, Synology NAS or any other WebDAV-compatible storage service.
 
@@ -152,11 +152,11 @@ Sync jobs only run while the app is in the foreground; they stop when you leave 
 
 The WebDAV password is encrypted with Android Keystore and AES-256-GCM before being stored on the device. Release builds only allow HTTPS connections.
 
-The uploaded ledger can optionally be encrypted; this is off by default. Turn on **Encrypted upload** under Settings → WebDAV sync and set a separate encryption password (at least 8 characters), and the remote file is stored as AES-256-GCM ciphertext whose key is derived from that password with PBKDF2-SHA256 (600,000 iterations). The encryption password is also protected by the Android Keystore and kept only on this device; the developer cannot access it. On another device, enter the same password to decrypt and restore the ledger.
+The uploaded data can optionally be encrypted; this is off by default. Turn on **Encrypted upload** under Settings → WebDAV sync and set a separate encryption password (at least 8 characters), and the remote file is stored as AES-256-GCM ciphertext whose key is derived from that password with PBKDF2-SHA256 (600,000 iterations). The encryption password is also protected by the Android Keystore and kept only on this device; the developer cannot access it. On another device, enter the same password to decrypt and restore your data.
 
 Encrypted files use the same format as the Web version's "encrypted sync", so the two are interoperable: the Web version can read files encrypted by the Android app, and the Android app can read the Web version's encrypted or plain files.
 
-**Note:** without encryption, the uploaded ledger remains plain JSON and transport security relies on HTTPS; use a service you trust and set access permissions carefully. The encryption password cannot be recovered — if you forget it, the remote encrypted ledger cannot be decrypted. Please remember it.
+**Note:** without encryption, the uploaded data remains plain JSON and transport security relies on HTTPS; use a service you trust and set access permissions carefully. The encryption password cannot be recovered — if you forget it, the remote encrypted data cannot be decrypted. Please remember it.
 
 ### Other features
 
@@ -168,7 +168,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 | Display units | Currency, distance and volume units change labels only; existing values are not converted |
 | Home-screen shortcuts | Long-press the app icon to add an entry or scan a receipt |
 | System integration | System share intake, SAF file picking and in-app update checks |
-| Demo ledger | Two virtual vehicles with sample records; exiting the demo restores your real ledger automatically |
+| Demo mode | Two virtual vehicles with sample records; exiting the demo restores your real data automatically |
 | Monthly / yearly / all-time report | Open from **Me**: total spend with month/year comparisons, category breakdown, refueling and fuel economy, trends and highlights; share as text or as a portrait summary image |
 
 Today's fuel price is only available for fuel vehicles in the Chinese interface. It is fetched in order from daily-updated public fuel-price datasets → free HTTPS JSON APIs → the local cache, and is reference data only. A successful fetch is cached on the device, not re-requested on the same day, refreshed automatically the next day, and can be refreshed manually from the card.
@@ -197,21 +197,21 @@ GitHub Releases provide the APK, release notes and SHA-256 checksums. The websit
 
 On first install, Android may ask you to allow installing unknown apps from your browser or file manager.
 
-After installing, try the built-in demo ledger, then add a vehicle and start logging. It's worth exporting a full JSON backup early so you get comfortable with backup and restore.
+After installing, try the built-in demo mode, then add a vehicle and start logging. It's worth exporting a full JSON backup early so you get comfortable with backup and restore.
 
-**Note:** APKs signed with different keys cannot be installed over each other. Back up your ledger before uninstalling the app, clearing app data or switching devices.
+**Note:** APKs signed with different keys cannot be installed over each other. Back up your data before uninstalling the app, clearing app data or switching devices.
 
 ## Data and privacy
 
-MileNote has no account system and never builds a database of users' ledgers on a developer server.
+MileNote has no account system and never keeps users' data on a developer server.
 
 Data is handled as follows:
 
 | Item | How it is handled |
 |---|---|
-| Ledger storage | A single `version:2` JSON file in the app's private storage |
+| Data storage | A single `version:2` JSON file in the app's private storage |
 | Writing | Atomic writes reduce the risk of corruption when a write is interrupted |
-| Vehicle images | Embedded in the ledger as data URLs |
+| Vehicle images | Embedded in the data as data URLs |
 | File import | Parsed on the device; original files are never uploaded |
 | Receipt OCR | Recognised on the device; images are never uploaded or kept |
 | WebDAV | Configured by you; HTTPS only; plain JSON by default, with optional encrypted upload (AES-256-GCM ciphertext) |
@@ -219,17 +219,17 @@ Data is handled as follows:
 
 The app requests only network and coarse location. Coarse location is used only for the today's fuel price feature.
 
-The default ledger is never uploaded to a developer server; online features such as today's fuel price, update checks and your own WebDAV still talk to the corresponding external services.
+Your data is never uploaded to a developer server; online features such as today's fuel price, update checks and your own WebDAV still talk to the corresponding external services.
 
-Fuel-price fetching uses HTTPS only and sends just the province name — no ledger data, images or location coordinates.
+Fuel-price fetching uses HTTPS only and sends just the province name — no records, images or location coordinates.
 
 ### Backups
 
-The ledger lives in the app's private storage, so uninstalling the app or clearing its data can delete it.
+Your data lives in the app's private storage, so uninstalling the app or clearing its data can delete it.
 
 Export a full JSON backup regularly and keep it somewhere outside your phone.
 
-Full backups contain vehicle images and ledger data — treat them like any other personal file.
+Full backups contain vehicle images and all records — treat them like any other personal file.
 
 ## Known limitations
 
@@ -275,7 +275,7 @@ MileNote is written in Kotlin and uses the native Android stack.
 | Material 3 Expressive | Components and theming |
 | Compose Navigation | Navigation |
 | DataStore | App settings persistence |
-| JSON snapshot | Ledger storage |
+| JSON snapshot | Data storage |
 | Tesseract4Android | On-device Chinese/English text recognition (Apache-2.0, tessdata_fast models bundled) |
 | OkHttp | WebDAV networking |
 | Android Keystore | Secure storage of connection passwords |
@@ -300,7 +300,7 @@ MileNoteAndroid/
 
 Module responsibilities:
 
-- **`app/`:** Compose UI, ViewModels, ledger I/O, OCR, file import/export, WebDAV and Android platform integration.
+- **`app/`:** Compose UI, ViewModels, data I/O, OCR, file import/export, WebDAV and Android platform integration.
 - **`domain/`:** data models, the full-tank and full-charge methods, service plans, statistics, backup merging, import parsing and other domain logic.
 - **`app/src/test/`:** app unit tests.
 - **`domain/src/test/`:** domain JVM unit tests.
@@ -434,7 +434,7 @@ Open an issue in [Issues](https://github.com/Selwiro/MileNoteAndroid/issues). A 
 - Steps to reproduce and what actually happens.
 - Screenshots or error messages where useful.
 
-Please protect your privacy; don't upload real ledgers or receipts containing personal information.
+Please protect your privacy; don't upload real data or receipts containing personal information.
 
 ### Contributing code
 
@@ -447,7 +447,7 @@ Before submitting a pull request, run at least:
 ./gradlew :app:assembleDebug
 ```
 
-Project conventions are documented in [AGENTS.md](AGENTS.md), including the ledger format, permissions, tests and release rules.
+Project conventions are documented in [AGENTS.md](AGENTS.md), including the data format, permissions, tests and release rules.
 
 Commit messages use:
 
@@ -455,7 +455,7 @@ Commit messages use:
 type(scope): summary
 ```
 
-Use synthetic data for all demo and test data. Never commit real ledgers, receipts, signing keys, passwords or build artifacts.
+Use synthetic data for all demo and test data. Never commit real data, receipts, signing keys, passwords or build artifacts.
 
 ## Acknowledgements
 

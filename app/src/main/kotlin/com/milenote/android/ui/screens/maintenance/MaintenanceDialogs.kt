@@ -456,7 +456,7 @@ internal fun DefaultServicePlanDialog(
                     text = tr(
                         "将按默认 %d 项周期（首保 + %d 项常规保养）生成提醒，以提车日期和记账起始里程为基准。",
                         "Creates reminders for the %d default intervals (first service + %d routine " +
-                            "services), based on the delivery date and the ledger's starting mileage.",
+                            "services), based on the delivery date and the data's starting mileage.",
                         planSize,
                         planSize - 1,
                     ),

@@ -1057,7 +1057,7 @@ private fun shareDeltaLine(data: ReportData): String {
     }
     if (delta.previous <= 0.0) {
         return if (!data.hasEarlierRecords) {
-            tr("账本从本期开始", "Ledger starts with this period")
+            tr("记录从本期开始", "Data starts with this period")
         } else {
             tr("%s 无支出", "%s: no spending", label)
         }

@@ -118,8 +118,8 @@ class WebDavAutoSyncEngine(
             return AutoSyncOutcome(
                 AutoSyncOutcome.Kind.SKIPPED,
                 tr(
-                    "本机账本读取异常，已暂停同步以保护数据",
-                    "Local ledger could not be read — sync paused to protect your data",
+                    "本机数据读取异常，已暂停同步以保护数据",
+                    "Local data could not be read — sync paused to protect your data",
                 ),
             )
         }
@@ -145,7 +145,7 @@ class WebDavAutoSyncEngine(
         if (garage.demoMode.value) {
             return AutoSyncOutcome(
                 AutoSyncOutcome.Kind.SKIPPED,
-                tr("演示账本不自动同步", "The demo ledger is not auto-synced"),
+                tr("演示模式不自动同步", "The demo data is not auto-synced"),
             )
         }
         return null
@@ -166,8 +166,8 @@ class WebDavAutoSyncEngine(
             return AutoSyncOutcome(
                 AutoSyncOutcome.Kind.NEEDS_PASSWORD,
                 tr(
-                    "远端账本已加密，请到 设置 → WebDAV 同步 输入加密密码",
-                    "The remote ledger is encrypted — enter the encryption password in Settings → WebDAV sync",
+                    "远端数据已加密，请到 设置 → WebDAV 同步 输入加密密码",
+                    "The remote data is encrypted — enter the encryption password in Settings → WebDAV sync",
                 ),
             )
         }
@@ -202,7 +202,7 @@ class WebDavAutoSyncEngine(
                 garageToUpload = plan.garage,
                 found = found,
                 action = if (found == null) {
-                    tr("远端无备份，已上传本地账本", "No remote backup — uploaded the local ledger")
+                    tr("远端无备份，已上传本地数据", "No remote backup — uploaded the local data")
                 } else {
                     tr("已自动上传本地修改", "Local changes uploaded automatically")
                 },
@@ -289,8 +289,8 @@ class WebDavAutoSyncEngine(
     private fun blockedPlainUpload(): AutoSyncOutcome = AutoSyncOutcome(
         AutoSyncOutcome.Kind.NEEDS_PASSWORD,
         tr(
-            "远端账本已加密，请到 设置 → WebDAV 同步 输入加密密码（已阻止明文上传）",
-            "The remote ledger is encrypted — enter the encryption password in Settings → WebDAV sync (plain upload blocked)",
+            "远端数据已加密，请到 设置 → WebDAV 同步 输入加密密码（已阻止明文上传）",
+            "The remote data is encrypted — enter the encryption password in Settings → WebDAV sync (plain upload blocked)",
         ),
     )
 

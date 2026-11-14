@@ -122,7 +122,7 @@ fun ReportScreen(
             ReportLoadError(message = error, onRetry = vm::reloadLedger, modifier = modifier)
         } else {
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                LoadingState(label = tr("正在读取本机账本…", "Reading the local ledger…"))
+                LoadingState(label = tr("正在读取本机数据…", "Reading the local data…"))
             }
         }
         return
@@ -237,11 +237,11 @@ private fun ReportContent(
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         MessageBar(
                             message = tr(
-                                "本地账本读取异常，原始数据已另存。当前为空账本，可继续使用或重新读取。",
-                                "The local ledger could not be read and a copy of the original was saved. You are on an empty ledger — keep using it or re-read the original.",
+                                "本地数据读取异常，原始数据已另存。当前还没有记录，可继续使用或重新读取。",
+                                "The local data could not be read and a copy of the original was saved. You are starting with no records — keep using the app or re-read the original.",
                             ),
                             kind = MessageKind.ERROR,
-                            actionLabel = tr("重新读取账本", "Re-read the ledger"),
+                            actionLabel = tr("重新读取数据", "Re-read the data"),
                             onAction = vm::reloadLedger,
                         )
                         Text(
@@ -421,7 +421,7 @@ private fun DemoNotice(onExit: () -> Unit) {
             modifier = Modifier.size(14.dp),
         )
         Text(
-            text = tr("演示账本 · 不会写入真实账本", "Demo ledger · not saved to your real ledger"),
+            text = tr("演示模式 · 不会写入真实数据", "Demo data · not saved to your real data"),
             style = MaterialTheme.typography.labelMedium,
             color = scheme.onSurfaceVariant,
             maxLines = 1,
@@ -1520,11 +1520,11 @@ private fun ReportLoadError(message: String, onRetry: () -> Unit, modifier: Modi
     ) {
         MessageBar(
             message = tr(
-                "本地账本读取异常，原始数据已另存。当前为空账本，可继续使用或重新读取。",
-                "The local ledger could not be read and a copy of the original was saved. You are on an empty ledger — keep using it or re-read the original.",
+                "本地数据读取异常，原始数据已另存。当前还没有记录，可继续使用或重新读取。",
+                "The local data could not be read and a copy of the original was saved. You are starting with no records — keep using the app or re-read the original.",
             ),
             kind = MessageKind.ERROR,
-            actionLabel = tr("重新读取账本", "Re-read the ledger"),
+            actionLabel = tr("重新读取数据", "Re-read the data"),
             onAction = onRetry,
         )
         Text(

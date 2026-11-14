@@ -34,7 +34,7 @@ class WebDavSyncStateProblemTest {
     fun `needs password is restored as its own kind`() {
         val problem = WebDavSyncState(
             lastProblemKind = WebDavProblemKind.NEEDS_PASSWORD.name,
-            lastProblemMessage = "远端账本已加密，请到 设置 → WebDAV 同步 输入加密密码",
+            lastProblemMessage = "远端数据已加密，请到 设置 → WebDAV 同步 输入加密密码",
             lastProblemAt = 42L,
         ).problem
 

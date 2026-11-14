@@ -204,13 +204,13 @@ private fun DashboardContent(
                     MessageBar(
                         message = if (state.persistenceBlocked) {
                             tr(
-                                "本地账本读取异常，已暂停保存（不会覆盖原文件）。请先导出原始数据检查，修好后可重新读取。",
-                                "The local ledger could not be read, so saving is paused (the original file is left untouched). Export the raw data first; once fixed you can re-read it.",
+                                "本地数据读取异常，已暂停保存（不会覆盖原文件）。请先导出原始数据检查，修好后可重新读取。",
+                                "The local data could not be read, so saving is paused (the original file is left untouched). Export the raw data first; once fixed you can re-read it.",
                             )
                         } else {
                             tr(
-                                "本地账本读取异常，原始数据已另存。当前为空账本，可继续使用或重新读取。",
-                                "The local ledger could not be read and a copy of the original was saved. You are on an empty ledger — keep using it or re-read the original.",
+                                "本地数据读取异常，原始数据已另存。当前还没有记录，可继续使用或重新读取。",
+                                "The local data could not be read and a copy of the original was saved. You are starting with no records — keep using the app or re-read the original.",
                             )
                         },
                         kind = MessageKind.ERROR,
@@ -221,7 +221,7 @@ private fun DashboardContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(onClick = onReloadLedger) {
-                        Text(tr("重新读取账本", "Re-read the ledger"))
+                        Text(tr("重新读取数据", "Re-read the data"))
                     }
                 }
             }
@@ -296,7 +296,7 @@ private fun DashboardLoadState(
     val error = state.loadError
     if (error == null) {
         LoadingState(
-            label = tr("正在读取本机账本…", "Reading the local ledger…"),
+            label = tr("正在读取本机数据…", "Reading the local data…"),
             modifier = modifier
                 .fillMaxSize()
                 .padding(top = 64.dp),
@@ -312,13 +312,13 @@ private fun DashboardLoadState(
         MessageBar(
             message = if (state.persistenceBlocked) {
                 tr(
-                    "本地账本暂时无法读取或迁移，已停止写入以保护原文件。原记录仍保留，请先导出原始数据检查。",
-                    "The local ledger cannot be read or migrated right now. Writing is disabled to protect the original file — export the raw data and check it first.",
+                    "本地数据暂时无法读取或迁移，已停止写入以保护原文件。原记录仍保留，请先导出原始数据检查。",
+                    "The local data cannot be read or migrated right now. Writing is disabled to protect the original file — export the raw data and check it first.",
                 )
             } else {
                 tr(
-                    "本地账本暂时无法读取或迁移，原始数据已另存。原记录仍保留，请导出原始数据检查。",
-                    "The local ledger cannot be read or migrated right now. A copy of the original was saved; export the raw data and check it.",
+                    "本地数据暂时无法读取或迁移，原始数据已另存。原记录仍保留，请导出原始数据检查。",
+                    "The local data cannot be read or migrated right now. A copy of the original was saved; export the raw data and check it.",
                 )
             },
             kind = MessageKind.ERROR,
@@ -332,7 +332,7 @@ private fun DashboardLoadState(
             Text(tr("前往设置导出原始数据", "Go to Settings to export raw data"))
         }
         TextButton(onClick = onReloadLedger) {
-            Text(tr("重新读取账本", "Re-read the ledger"))
+            Text(tr("重新读取数据", "Re-read the data"))
         }
     }
 }
@@ -341,7 +341,7 @@ private fun DashboardLoadState(
 @Composable
 private fun DemoBanner(onExitDemo: () -> Unit) {
     MessageBar(
-        message = tr("演示账本 · 可切换车辆、试记账与换肤，退出后不保留修改", "Demo ledger · switch vehicles, try entries and themes; changes are discarded on exit"),
+        message = tr("演示模式 · 可切换车辆、试记账与换肤，退出后不保留修改", "Demo data · switch vehicles, try entries and themes; changes are discarded on exit"),
         kind = MessageKind.DEMO,
         actionLabel = tr("退出演示", "Exit demo"),
         onAction = onExitDemo,

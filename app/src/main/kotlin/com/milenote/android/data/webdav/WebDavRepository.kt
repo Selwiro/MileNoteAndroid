@@ -230,7 +230,7 @@ class WebDavRepository(
             val encrypted = try {
                 LedgerCrypto.encrypt(plainJson, encryptionPassword)
             } catch (e: BackupException) {
-                throw WebDavException(e.message ?: tr("账本加密失败", "Could not encrypt the ledger"), e)
+                throw WebDavException(e.message ?: tr("数据加密失败", "Could not encrypt the data"), e)
             }
             encrypted.toByteArray(Charsets.UTF_8)
         } else {

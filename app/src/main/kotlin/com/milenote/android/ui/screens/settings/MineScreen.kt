@@ -120,15 +120,15 @@ fun MineScreen(
                             MessageBar(
                                 message = loadError,
                                 kind = MessageKind.ERROR,
-                                actionLabel = tr("重新读取账本", "Re-read the ledger"),
+                                actionLabel = tr("重新读取数据", "Re-read the data"),
                                 onAction = vm::reloadLedger,
                             )
                         }
                         if (state.demo) {
                             MessageBar(
                                 message = tr(
-                                    "演示账本 · 修改不会保存到真实账本",
-                                    "Demo ledger · Changes are not saved to your real ledger",
+                                    "演示模式 · 修改不会保存到真实数据",
+                                    "Demo mode · Changes are not saved to your real data",
                                 ),
                                 kind = MessageKind.DEMO,
                                 actionLabel = tr("退出演示", "Exit demo"),
@@ -234,7 +234,7 @@ fun MineScreen(
 }
 
 /**
- * 数据概览卡（M1）：不写"本机账本 / 无账号"这类身份自述，只讲数据规模与数据安全。
+ * 数据概览卡（M1）：不写"本机数据 / 无账号"这类身份自述，只讲数据规模与数据安全。
  *
  * @param carsCount 车辆数（账本级）。
  * @param recordsCount 记录总数（账本级）。

@@ -426,7 +426,7 @@ internal fun VehicleEditorDialog(
                             keyboardType = KeyboardType.Decimal,
                             supportingText = tr(
                                 "对应记账起点，用于平均每%s成本；留空时取最早记录里程",
-                                "Ledger starting point for average cost per %s; empty uses the earliest record mileage",
+                                "Data starting point for average cost per %s; empty uses the earliest record mileage",
                                 Units.distanceUnit,
                             ),
                         )
@@ -692,8 +692,8 @@ private fun ImageEditor(
         }
         Text(
             text = tr(
-                "支持 PNG / JPG / WebP。图片在本机压缩到 1000×700 以内并以 WebP 存入账本，不上传服务器。",
-                "Supports PNG / JPG / WebP. Images are compressed to fit 1000×700 and stored as WebP in the ledger; nothing is uploaded.",
+                "支持 PNG / JPG / WebP。图片在本机压缩到 1000×700 以内并以 WebP 保存在本机，不上传服务器。",
+                "Supports PNG / JPG / WebP. Images are compressed to fit 1000×700 and stored as WebP in your local data; nothing is uploaded.",
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -740,8 +740,8 @@ private fun ImageUrlDialog(
                 )
                 Text(
                     text = tr(
-                        "链接需可公开访问；加载失败时自动显示默认插画，不影响账本数据。",
-                        "The link must be publicly accessible; if it fails to load, the default illustration is shown and ledger data is unaffected.",
+                        "链接需可公开访问；加载失败时自动显示默认插画，不影响本机数据。",
+                        "The link must be publicly accessible; if it fails to load, the default illustration is shown and your data is unaffected.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

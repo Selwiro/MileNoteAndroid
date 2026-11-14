@@ -382,7 +382,7 @@ fun SettingsScreen(
         pendingRaw = null
         if (uri != null && bytes != null) {
             runCatching { FileExporter.writeTo(context, uri, bytes) }
-                .onSuccess { notify(tr("原始账本已导出", "Raw ledger exported"), MessageKind.SUCCESS) }
+                .onSuccess { notify(tr("原始数据已导出", "Raw data exported"), MessageKind.SUCCESS) }
                 .onFailure {
                     notify(
                         tr(
@@ -481,7 +481,7 @@ fun SettingsScreen(
             try {
                 val bytes = vm.readQuarantinedRaw()
                 if (bytes == null) {
-                    notify(tr("没有可导出的原始账本", "No raw ledger available to export"), MessageKind.WARNING)
+                    notify(tr("没有可导出的原始数据", "No raw data available to export"), MessageKind.WARNING)
                 } else {
                     pendingRaw = bytes
                     createRaw.launch("里程志-原始数据-${Dates.iso(Dates.today())}.json")
@@ -531,7 +531,7 @@ fun SettingsScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                LoadingState(label = tr("正在读取本机账本…", "Loading local ledger…"))
+                LoadingState(label = tr("正在读取本机数据…", "Loading local data…"))
             }
             return@Scaffold
         }
@@ -882,7 +882,7 @@ internal fun SettingsMessageArea(
         loadError?.let { MessageBar(message = it, kind = MessageKind.ERROR) }
         if (demo) {
             MessageBar(
-                message = tr("演示账本 · 修改不会保存到真实账本", "Demo ledger · Changes are not saved to your real ledger"),
+                message = tr("演示模式 · 修改不会保存到真实数据", "Demo mode · Changes are not saved to your real data"),
                 kind = MessageKind.DEMO,
                 actionLabel = tr("退出演示", "Exit demo"),
                 onAction = onExitDemo,
@@ -1419,7 +1419,7 @@ private fun BackupRestorePage(
         }
 
         item("status") {
-            SectionCard(title = tr("账本", "Ledger")) {
+            SectionCard(title = tr("数据概览", "Data overview")) {
                 Text(
                     text = tr("%d 辆车 · %d 条记录", "%d vehicles · %d records", carsCount, recordsCount),
                     style = MaterialTheme.typography.titleMedium,
@@ -1477,7 +1477,7 @@ private fun BackupRestorePage(
                     SectionDivider()
                     SettingsActionRow(
                         icon = MileNoteIcons.Warning,
-                        title = tr("导出原始账本（损坏文件）", "Export raw ledger (corrupted file)"),
+                        title = tr("导出原始数据（损坏文件）", "Export raw data (corrupted file)"),
                         subtitle = tr("仅用于检查或抢救，不能直接还原", "For inspection only; cannot be restored"),
                         enabled = !busy,
                         onClick = onExportRaw,
@@ -1523,8 +1523,8 @@ private fun BackupRestorePage(
                         icon = MileNoteIcons.Refresh,
                         title = tr("回滚到上次覆盖前", "Roll back to before the last overwrite"),
                         subtitle = tr(
-                            "快照：%s（WebDAV 下载或还原前的本机账本）",
-                            "Snapshot: %s (local ledger before a WebDAV download or restore)",
+                            "快照：%s（WebDAV 下载或还原前的本机数据）",
+                            "Snapshot: %s (local data before a WebDAV download or restore)",
                             formatBackupAt(replaceSnapshot.savedAtMillis),
                         ),
                         enabled = !busy,
@@ -1640,11 +1640,11 @@ private fun AboutPage(
                 Spacer(modifier = Modifier.size(10.dp))
                 Text(
                     text = tr(
-                        "本地优先的多车用车账本：记录费用与加油、用满箱法算油耗、管理保养计划；" +
+                        "本地优先的多车用车小助手：记油耗、管保养、算清用车开销；" +
                             "数据只保存在本机，无账号、无后端。",
-                        "A local-first ledger for your cars: track expenses and refuels, compute fuel economy " +
-                            "with the full-tank method, and manage service plans. Your data stays on this device — " +
-                            "no account, no backend.",
+                        "A local-first companion for your car: log fuel and running costs, compute real fuel " +
+                            "economy with the full-tank method, and keep service plans on schedule. " +
+                            "Your data stays on this device — no account, no backend.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1713,11 +1713,11 @@ private fun AboutPage(
             ) {
                 SettingsActionRow(
                     icon = MileNoteIcons.Sparkle,
-                    title = if (demo) tr("退出演示账本", "Exit demo ledger") else tr("体验演示账本", "Try the demo ledger"),
+                    title = if (demo) tr("退出演示模式", "Exit demo mode") else tr("试用演示模式", "Try demo mode"),
                     subtitle = if (demo) {
                         tr("内置样例，修改不保存", "Built-in samples; changes are not saved")
                     } else {
-                        tr("内置样例体验，不写入真实账本", "Try built-in samples; nothing is written")
+                        tr("内置样例体验，不写入真实数据", "Try built-in samples; nothing is written")
                     },
                     onClick = onToggleDemo,
                 )
@@ -1803,11 +1803,11 @@ private fun PrivacyPage() {
             SectionCard(title = tr("数据存在哪里", "Where your data lives")) {
                 PrivacyParagraph(
                     tr(
-                        "账本只保存在这台设备的应用私有目录（单文件 JSON，车辆图片内嵌其中）。没有账号体系，" +
-                            "开发者没有服务器，也不会收到你的账本、记录或图片。",
-                        "Your ledger is stored only in this app's private storage on this device — a single JSON " +
+                        "数据只保存在这台设备的应用私有目录（单文件 JSON，车辆图片内嵌其中）。没有账号体系，" +
+                            "开发者没有服务器，也不会收到你的数据、记录或图片。",
+                        "Your data is stored only in this app's private storage on this device — a single JSON " +
                             "file with vehicle images embedded. There are no accounts, no developer server, and " +
-                            "your ledger, records or photos are never sent to the developer.",
+                            "your data, records or photos are never sent to the developer.",
                     ),
                 )
                 PrivacyParagraph(
@@ -1866,17 +1866,17 @@ private fun PrivacyPage() {
             SectionCard(title = tr("会联网的场景", "When the app connects")) {
                 PrivacyParagraph(
                     tr(
-                        "以下联网只在你主动触发、或对应功能开启时发生，且都不包含账本内容：",
+                        "以下联网只在你主动触发、或对应功能开启时发生，且都不包含数据内容：",
                         "The app connects only when you trigger it or enable the related feature. None of these " +
-                            "requests include your ledger contents:",
+                            "requests include your data:",
                     ),
                     secondary = true,
                 )
                 PrivacyBullet(
                     tr(
-                        "检查更新：点「检查更新」时才请求 GitHub（api.github.com），只读取版本信息，请求里不含任何账本内容。",
+                        "检查更新：点「检查更新」时才请求 GitHub（api.github.com），只读取版本信息，请求里不含任何数据内容。",
                         "Update check: only when you tap Check for updates; it reads version info from GitHub " +
-                            "(api.github.com) and the request contains no ledger data.",
+                            "(api.github.com) and the request contains no data.",
                     ),
                 )
                 PrivacyBullet(
@@ -1916,10 +1916,10 @@ private fun PrivacyPage() {
                 PrivacyParagraph(
                     tr(
                         "小票识别（Tesseract 引擎）与文件解析（XLS / XLSX / JSON / CSV）都在本机完成。" +
-                            "识别用的图片只在内存中处理，识别结束即释放，不落盘、不上传、不写入账本。",
+                            "识别用的图片只在内存中处理，识别结束即释放，不落盘、不上传、不写入数据。",
                         "Receipt recognition (Tesseract) and file parsing (XLS / XLSX / JSON / CSV) run entirely " +
                             "on this device. Images used for recognition are processed in memory, released " +
-                            "afterwards, never written to disk, uploaded or stored in the ledger.",
+                            "afterwards, never written to disk, uploaded or stored in the data.",
                     ),
                 )
             }
@@ -1955,9 +1955,9 @@ private fun PrivacyPage() {
                 )
                 PrivacyBullet(
                     tr(
-                        "WebDAV 加密密码只保存在本机、无法找回；忘记后无法解密远端账本。",
+                        "WebDAV 加密密码只保存在本机、无法找回；忘记后无法解密远端数据。",
                         "The WebDAV encryption password stays on this device and cannot be recovered; if you " +
-                            "forget it, the remote ledger cannot be decrypted.",
+                            "forget it, the remote data cannot be decrypted.",
                     ),
                 )
             }

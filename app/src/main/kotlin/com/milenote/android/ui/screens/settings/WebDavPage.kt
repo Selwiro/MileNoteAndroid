@@ -287,7 +287,7 @@ internal fun WebDavPage(
         // ---------------- 连接表单 ----------------
         SectionCard(
             title = tr("连接", "Connection"),
-            subtitle = tr("WebDAV 上的账本文件完整地址（JSON）", "Full URL of the ledger file on WebDAV (JSON)"),
+            subtitle = tr("WebDAV 上的数据文件完整地址（JSON）", "Full URL of the data file on WebDAV (JSON)"),
         ) {
             FormField(
                 value = url,
@@ -296,7 +296,7 @@ internal fun WebDavPage(
                     urlError = null
                 },
                 label = tr("服务器文件地址", "Server URL"),
-                placeholder = tr("https://dav.jianguoyun.com/dav/里程志/账本.json", "https://dav.jianguoyun.com/dav/MileNote/ledger.json"),
+                placeholder = tr("https://dav.jianguoyun.com/dav/里程志/milenote.json", "https://dav.jianguoyun.com/dav/MileNote/milenote.json"),
                 singleLine = true,
                 isError = urlError != null,
                 supportingText = urlError,
@@ -342,9 +342,9 @@ internal fun WebDavPage(
             Text(
                 text = tr(
                     "建议使用服务商提供的应用密码：坚果云「账户安全 → 应用密钥 → 添加应用」生成，" +
-                        "不要填写登录密码。密码仅保存在本机，不进入账本备份。",
+                        "不要填写登录密码。密码仅保存在本机，不进入数据备份。",
                     "Use the app password from your provider (Jianguoyun: Account security → App keys → Add app). " +
-                        "Do not enter your login password. The password stays on this device and is not included in ledger backups.",
+                        "Do not enter your login password. The password stays on this device and is not included in data backups.",
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
@@ -362,8 +362,8 @@ internal fun WebDavPage(
                     Text(tr("加密上传（推荐）", "Encrypt uploads (recommended)"), style = MaterialTheme.typography.titleMedium)
                     Text(
                         text = tr(
-                            "远端账本用 AES-256-GCM 加密；在另一台设备输入同一密码即可解密。",
-                            "The remote ledger is encrypted with AES-256-GCM; enter the same password on another device to decrypt it.",
+                            "远端数据用 AES-256-GCM 加密；在另一台设备输入同一密码即可解密。",
+                            "The remote data is encrypted with AES-256-GCM; enter the same password on another device to decrypt it.",
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
@@ -458,9 +458,9 @@ internal fun WebDavPage(
                 Spacer(modifier = Modifier.size(8.dp))
                 Text(
                     text = tr(
-                        "加密密码只保存在本机（Android Keystore 保护）；忘记后无法解密远端账本，请自行记牢。" +
+                        "加密密码只保存在本机（Android Keystore 保护）；忘记后无法解密远端数据，请自行记牢。" +
                             "开启后下一次上传会把远端文件改写为加密格式；关闭不会自动改写远端，直到下次上传。",
-                        "The encryption password is stored only on this device (protected by Android Keystore); if you forget it, the remote ledger cannot be decrypted, so keep it safe. " +
+                        "The encryption password is stored only on this device (protected by Android Keystore); if you forget it, the remote data cannot be decrypted, so keep it safe. " +
                             "Once enabled, the next upload rewrites the remote file in encrypted form; disabling does not rewrite the remote until the next upload.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -482,8 +482,8 @@ internal fun WebDavPage(
                         Text(tr("允许 HTTP（不安全）", "Allow HTTP (insecure)"), style = MaterialTheme.typography.titleMedium)
                         Text(
                             text = tr(
-                                "仅建议自建局域网服务器；公网请使用 HTTPS，否则账本与密码可能被窃听。",
-                                "Only recommended for a self-hosted LAN server; use HTTPS on the public internet or the ledger and password may be intercepted.",
+                                "仅建议自建局域网服务器；公网请使用 HTTPS，否则数据与密码可能被窃听。",
+                                "Only recommended for a self-hosted LAN server; use HTTPS on the public internet or the data and password may be intercepted.",
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant,
@@ -586,7 +586,7 @@ internal fun WebDavPage(
                 }
                 Text(
                     text = tr(
-                        "说明：先比较本地账本与远端文件；只有本端有修改时上传，只有远端有修改时下载；" +
+                        "说明：先比较本地数据与远端文件；只有本端有修改时上传，只有远端有修改时下载；" +
                             "两边都有修改时按记录自动合并（每条记录以后改的时间为准），只有同一条记录在同一时刻被改才需要你确认。",
                         "How it works: local and remote are compared first; only this device changed → upload, " +
                             "only the remote changed → download, both changed → merge record by record (later edit wins). " +
@@ -643,9 +643,9 @@ internal fun WebDavPage(
             WebDavNote(tr("推荐使用 HTTPS。开启「允许 HTTP」仅建议自建局域网服务器，公网切勿使用明文 HTTP。", "HTTPS is recommended. “Allow HTTP” is only for a self-hosted LAN server; never use plain HTTP on the public internet."))
             WebDavNote(tr("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。", "Jianguoyun: Account security → Add app → generate an app password; use the app password, not your login password."))
             WebDavNote(tr("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。", "Create the target folder in your WebDAV service first; the app only reads and writes the JSON file you entered."))
-            WebDavNote(tr("未开启加密时账本以明文 JSON 保存在远端，传输由 HTTPS 保护；建议开启加密上传。", "Without encryption the ledger is stored remotely as plain JSON, protected in transit by HTTPS; enabling encrypted uploads is recommended."))
+            WebDavNote(tr("未开启加密时数据以明文 JSON 保存在远端，传输由 HTTPS 保护；建议开启加密上传。", "Without encryption the data is stored remotely as plain JSON, protected in transit by HTTPS; enabling encrypted uploads is recommended."))
             WebDavNote(tr("与 Web 版互通：本应用加密上传的文件与 Web 版「加密同步」格式相同，可直接互读；Web 的明文同步文件也能读取。", "Interoperable with the web version: files uploaded with encryption use the same format as the web version's encrypted sync and can be read by both; the web version's plain-sync files can also be read."))
-            WebDavNote(tr("加密格式：AES-256-GCM（PBKDF2-SHA256 派生密钥，600000 次迭代）；加密密码只保存在本机 Android Keystore，不写入账本或备份。", "Encryption format: AES-256-GCM (PBKDF2-SHA256 key derivation, 600,000 iterations); the encryption password is stored only in the Android Keystore on this device and is never written into the ledger or backups."))
+            WebDavNote(tr("加密格式：AES-256-GCM（PBKDF2-SHA256 派生密钥，600000 次迭代）；加密密码只保存在本机 Android Keystore，不写入数据或备份。", "Encryption format: AES-256-GCM (PBKDF2-SHA256 key derivation, 600,000 iterations); the encryption password is stored only in the Android Keystore on this device and is never written into the data or backups."))
             WebDavNote(tr("自动同步开启后：只在应用打开期间，打开时或本地修改后自动同步；退出应用后不会保留后台任务。两边都有修改时会暂停并提示手动处理。", "With auto sync on: syncs only while the app is open, on launch or after local changes; no background task survives after you leave. It pauses and asks you to resolve when both sides changed."))
         }
     }
@@ -660,9 +660,9 @@ internal fun WebDavPage(
                 Text(
                     text = tr(
                         "将清除本机保存的服务器地址、用户名、应用密码与加密密码；远端文件不会被删除。" +
-                            "已同步的本地账本保持不变。远端加密文件仍需用原密码解密。",
+                            "已同步的本地数据保持不变。远端加密文件仍需用原密码解密。",
                         "This removes the server URL, username, app password and encryption password stored on this device. The remote file is not deleted, " +
-                            "and the local ledger stays as it is. An encrypted remote file still requires the original password to decrypt.",
+                            "and the local data stays as it is. An encrypted remote file still requires the original password to decrypt.",
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
@@ -700,9 +700,9 @@ internal fun WebDavPage(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = if (upload) {
-                            tr("将用本机当前账本覆盖远端 JSON 文件；远端原有内容会被替换，无法自动恢复。", "The remote JSON file will be replaced with the ledger on this device; the previous remote content cannot be restored automatically.")
+                            tr("将用本机当前数据覆盖远端 JSON 文件；远端原有内容会被替换，无法自动恢复。", "The remote JSON file will be replaced with the data on this device; the previous remote content cannot be restored automatically.")
                         } else {
-                            tr("将用远端 JSON 文件覆盖本机账本；本机现有数据会被替换，建议先导出完整备份。", "The ledger on this device will be replaced with the remote JSON file; export a full backup first.")
+                            tr("将用远端 JSON 文件覆盖本机数据；本机现有数据会被替换，建议先导出完整备份。", "The data on this device will be replaced with the remote JSON file; export a full backup first.")
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
@@ -770,10 +770,10 @@ internal fun WebDavPage(
                     ConflictOption(tr("合并（按记录自动合并）", "Merge (record by record)"), tr("按每条记录的修改时间合并，两边的新增与修改都保留", "Merge each record by its last edit time; additions and edits from both sides are kept")) {
                         onResolveConflict(WebDavConflictChoice.MERGE)
                     }
-                    ConflictOption(tr("用本地覆盖远端", "Overwrite remote with local"), tr("上传本机账本，远端内容被替换", "Upload this device's ledger; remote content is replaced")) {
+                    ConflictOption(tr("用本地覆盖远端", "Overwrite remote with local"), tr("上传本机数据，远端内容被替换", "Upload this device's data; remote content is replaced")) {
                         onResolveConflict(WebDavConflictChoice.KEEP_LOCAL)
                     }
-                    ConflictOption(tr("用远端覆盖本地", "Overwrite local with remote"), tr("下载远端账本，本机内容被替换", "Download the remote ledger; local content is replaced")) {
+                    ConflictOption(tr("用远端覆盖本地", "Overwrite local with remote"), tr("下载远端数据，本机内容被替换", "Download the remote data; local content is replaced")) {
                         onResolveConflict(WebDavConflictChoice.KEEP_REMOTE)
                     }
                 }
@@ -792,14 +792,14 @@ internal fun WebDavPage(
         AlertDialog(
             onDismissRequest = onCancelDecrypt,
             shape = MileNoteShapes.extraLarge,
-            title = { Text(tr("远端账本已加密", "The remote ledger is encrypted")) },
+            title = { Text(tr("远端数据已加密", "The remote data is encrypted")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = tr(
-                            "远端账本使用 AES-256-GCM 加密。请输入本机或另一台设备设置的加密密码；" +
+                            "远端数据使用 AES-256-GCM 加密。请输入本机或另一台设备设置的加密密码；" +
                                 "解密成功后会记住该密码并继续刚才的操作。",
-                            "The remote ledger is encrypted with AES-256-GCM. Enter the encryption password set on this or another device; " +
+                            "The remote data is encrypted with AES-256-GCM. Enter the encryption password set on this or another device; " +
                                 "after a successful decryption the app remembers it and resumes the previous action.",
                         ),
                         style = MaterialTheme.typography.bodyMedium,

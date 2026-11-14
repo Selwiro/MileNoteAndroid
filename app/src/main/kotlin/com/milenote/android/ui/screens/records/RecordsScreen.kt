@@ -138,7 +138,7 @@ fun RecordsScreen(
                 onToggleSelectAll = {},
             )
             LoadingState(
-                label = tr("正在读取本机账本…", "Reading the local ledger…"),
+                label = tr("正在读取本机数据…", "Reading the local data…"),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 64.dp),

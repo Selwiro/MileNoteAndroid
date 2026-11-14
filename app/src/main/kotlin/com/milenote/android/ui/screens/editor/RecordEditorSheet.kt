@@ -460,7 +460,7 @@ private fun AddCategoryDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = tr("新增分类会保存到本车账本，之后记账可直接选择。", "New categories are saved in this vehicle's ledger and can be picked right away."),
+                    text = tr("新增分类会保存在当前车辆下，之后记账可直接选择。", "New categories are saved in this vehicle's data and can be picked right away."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

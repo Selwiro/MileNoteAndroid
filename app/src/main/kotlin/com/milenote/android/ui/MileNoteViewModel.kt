@@ -1211,9 +1211,9 @@ class MileNoteViewModel(
                     val stillBlocked = repository.persistenceBlocked.value
                     _state.value = _state.value.copy(
                         message = when {
-                            stillBlocked -> tr("仍无法读取本机账本，已继续暂停保存", "Still cannot read the local ledger — saving remains paused")
-                            blockedBefore -> tr("已重新读取本机账本", "The local ledger was re-read")
-                            else -> tr("已重新读取本机账本", "The local ledger was re-read")
+                            stillBlocked -> tr("仍无法读取本机数据，已继续暂停保存", "Still cannot read the local data — saving remains paused")
+                            blockedBefore -> tr("已重新读取本机数据", "The local data was re-read")
+                            else -> tr("已重新读取本机数据", "The local data was re-read")
                         },
                     )
                 }
@@ -1237,10 +1237,10 @@ class MileNoteViewModel(
     fun rollbackToReplaceSnapshot() {
         confirm(
             PendingConfirm(
-                title = tr("回滚到上次覆盖前的账本？", "Roll back to the ledger before the last overwrite?"),
+                title = tr("回滚到上次覆盖前的数据？", "Roll back to the data before the last overwrite?"),
                 message = tr(
-                    "将用本机快照替换当前账本；当前内容会先另存一份快照，可再次回滚。",
-                    "The current ledger will be replaced by the local snapshot; the current content is snapshotted first, so you can roll back again.",
+                    "将用本机快照替换当前数据；当前内容会先另存一份快照，可再次回滚。",
+                    "The current data will be replaced by the local snapshot; the current content is snapshotted first, so you can roll back again.",
                 ),
                 confirmLabel = tr("回滚", "Roll back"),
                 destructive = true,
@@ -1249,7 +1249,7 @@ class MileNoteViewModel(
                     val ok = runCatching { repository.rollbackToLatestSnapshot() }.getOrDefault(false)
                     _state.value = _state.value.copy(
                         message = if (ok) {
-                            tr("已回滚到上次覆盖前的账本", "Rolled back to the ledger before the last overwrite")
+                            tr("已回滚到上次覆盖前的数据", "Rolled back to the data before the last overwrite")
                         } else {
                             tr("回滚失败：没有可用的本机快照", "Rollback failed: no usable local snapshot")
                         },
@@ -1286,13 +1286,13 @@ class MileNoteViewModel(
     fun enterDemo() {
         clearListFilters()
         repository.enterDemo()
-        _state.value = _state.value.copy(vehicleSwitcher = false, message = tr("已进入演示账本（不保存）", "Demo ledger opened (changes are not saved)"))
+        _state.value = _state.value.copy(vehicleSwitcher = false, message = tr("已进入演示模式（不保存）", "Demo mode opened (changes are not saved)"))
     }
 
     fun exitDemo() {
         clearListFilters()
         repository.exitDemo()
-        _state.value = _state.value.copy(message = tr("已退出演示账本", "Demo ledger closed"))
+        _state.value = _state.value.copy(message = tr("已退出演示模式", "Demo mode closed"))
     }
 
     // ---------- WebDAV 同步 ----------
@@ -1312,7 +1312,7 @@ class MileNoteViewModel(
         encryptionPassword: String?,
     ) {
         if (_state.value.demo) {
-            _state.value = _state.value.copy(webDav = _state.value.webDav.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")))
+            _state.value = _state.value.copy(webDav = _state.value.webDav.copy(error = tr("演示模式不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in demo mode. Exit the demo first.")))
             return
         }
         viewModelScope.launch {
@@ -1386,7 +1386,7 @@ class MileNoteViewModel(
     /** 智能同步：比较本地与远端，自动上传/下载，冲突时弹选择。 */
     fun webDavSyncNow() {
         if (_state.value.demo) {
-            updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
+            updateWebDav { it.copy(error = tr("演示模式不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in demo mode. Exit the demo first.")) }
             return
         }
         viewModelScope.launch { runWebDavSync() }
@@ -1395,7 +1395,7 @@ class MileNoteViewModel(
     /** 强制把本地备份覆盖到远端（用户确认后）；沿用已保存的加密配置决定明文/密文。 */
     fun webDavUpload() {
         if (_state.value.demo) {
-            updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
+            updateWebDav { it.copy(error = tr("演示模式不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in demo mode. Exit the demo first.")) }
             return
         }
         viewModelScope.launch {
@@ -1430,7 +1430,7 @@ class MileNoteViewModel(
     /** 从远端恢复：MERGE 只新增；REPLACE 覆盖本地。远端加密且本机无密码时弹密码框。 */
     fun webDavDownload(mode: WebDavDownloadMode) {
         if (_state.value.demo) {
-            updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
+            updateWebDav { it.copy(error = tr("演示模式不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in demo mode. Exit the demo first.")) }
             return
         }
         viewModelScope.launch {
@@ -1495,7 +1495,7 @@ class MileNoteViewModel(
             WebDavConflictChoice.KEEP_REMOTE -> webDavDownload(WebDavDownloadMode.REPLACE)
             WebDavConflictChoice.MERGE -> {
                 if (_state.value.demo) {
-                    updateWebDav { it.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")) }
+                    updateWebDav { it.copy(error = tr("演示模式不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in demo mode. Exit the demo first.")) }
                     return
                 }
                 viewModelScope.launch {
@@ -1572,7 +1572,7 @@ class MileNoteViewModel(
         }
         if (_state.value.demo) {
             updateWebDav {
-                it.copy(decryptPrompt = prompt.copy(error = tr("演示账本不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in the demo ledger. Exit the demo first.")))
+                it.copy(decryptPrompt = prompt.copy(error = tr("演示模式不支持 WebDAV 同步，请先退出演示", "WebDAV sync is not available in demo mode. Exit the demo first.")))
             }
             return
         }
@@ -1583,7 +1583,7 @@ class MileNoteViewModel(
                 updateWebDav {
                     it.copy(
                         busy = false,
-                        decryptPrompt = prompt.copy(error = tr("远端账本内容已变化，请重新同步", "The remote ledger has changed — sync again")),
+                        decryptPrompt = prompt.copy(error = tr("远端数据已变化，请重新同步", "The remote data has changed — sync again")),
                     )
                 }
                 return@launch

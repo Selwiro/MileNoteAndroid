@@ -103,14 +103,14 @@ class GarageRepository(
                     blocked = !saved
                     _loadError.value = if (saved) {
                         tr(
-                            "本地账本读取失败：%s（原始数据已另存，可在 设置 → 备份与还原 导出）",
-                            "Failed to read the local ledger: %s (a copy of the original was saved — export it from Settings → Backup & restore)",
+                            "本地数据读取失败：%s（原始数据已另存，可在 设置 → 备份与还原 导出）",
+                            "Failed to read the local data: %s (a copy of the original was saved — export it from Settings → Backup & restore)",
                             e.message,
                         )
                     } else {
                         tr(
-                            "本地账本读取失败：%s（无法另存原始数据，已停止写入以保护原文件）",
-                            "Failed to read the local ledger: %s (could not save a copy — writing is disabled to protect the original file)",
+                            "本地数据读取失败：%s（无法另存原始数据，已停止写入以保护原文件）",
+                            "Failed to read the local data: %s (could not save a copy — writing is disabled to protect the original file)",
                             e.message,
                         )
                     }

@@ -43,20 +43,20 @@ object GarageOps {
      * 版本、记录（id/合法性/编号唯一）、提醒（id/标题/到期/里程）、车辆里程、图片。
      */
     fun validateLedger(ledger: Ledger): Ledger {
-        if (ledger.version != 1) throw BackupException(tr("账本格式无效", "Invalid ledger format"))
+        if (ledger.version != 1) throw BackupException(tr("数据格式无效", "Invalid data format"))
         val custom = ledger.customCategories.orEmpty()
         for (r in ledger.records) {
-            if (r.id.isEmpty()) throw BackupException(tr("账本包含无效费用记录", "The ledger contains an invalid expense record"))
-            if (validateRecord(r, custom).isNotEmpty()) throw BackupException(tr("账本包含无效费用记录", "The ledger contains an invalid expense record"))
+            if (r.id.isEmpty()) throw BackupException(tr("备份包含无效费用记录", "The data contains an invalid expense record"))
+            if (validateRecord(r, custom).isNotEmpty()) throw BackupException(tr("备份包含无效费用记录", "The data contains an invalid expense record"))
         }
         if (ledger.records.map { it.id }.toSet().size != ledger.records.size) {
             throw BackupException(tr("费用记录编号重复", "Duplicate expense record ID"))
         }
         for (r in ledger.reminders) {
-            if (r.id.isEmpty() || r.title.isEmpty()) throw BackupException(tr("账本包含无效提醒", "The ledger contains an invalid reminder"))
-            if (!Dates.isValid(r.dueDate) && r.dueKm == null) throw BackupException(tr("账本包含无效提醒", "The ledger contains an invalid reminder"))
+            if (r.id.isEmpty() || r.title.isEmpty()) throw BackupException(tr("备份包含无效提醒", "The data contains an invalid reminder"))
+            if (!Dates.isValid(r.dueDate) && r.dueKm == null) throw BackupException(tr("备份包含无效提醒", "The data contains an invalid reminder"))
             val dueKm = r.dueKm
-            if (dueKm != null && (!dueKm.isFinite() || dueKm < 0)) throw BackupException(tr("账本包含无效提醒", "The ledger contains an invalid reminder"))
+            if (dueKm != null && (!dueKm.isFinite() || dueKm < 0)) throw BackupException(tr("备份包含无效提醒", "The data contains an invalid reminder"))
         }
         val currentKm = ledger.vehicle.currentKm
         if (!currentKm.isFinite() || currentKm < 0) throw BackupException(tr("车辆里程无效", "Invalid vehicle mileage"))
@@ -76,7 +76,7 @@ object GarageOps {
             val car = com.milenote.android.domain.model.blankLedger().copy(id = Ids.newId())
             return Garage(version = 2, activeId = car.id, theme = "blue", cars = listOf(car))
         }
-        if (input.version != 2 || input.cars.isEmpty()) throw BackupException(tr("不是有效的多车账本", "Not a valid multi-vehicle ledger"))
+        if (input.version != 2 || input.cars.isEmpty()) throw BackupException(tr("不是有效的多车备份", "Not a valid multi-vehicle data"))
         val ids = mutableSetOf<String>()
         for (car in input.cars) {
             validateLedger(car)
@@ -209,7 +209,7 @@ object GarageOps {
     /** 恢复 v1 单车备份：只合并到当前车辆（Web `mergeGarage` 的 version===1 分支）。 */
     fun mergeLegacyBackup(current: Garage, legacy: Ledger): Garage {
         validateLedger(legacy)
-        val active = current.activeCar ?: throw BackupException(tr("不是有效的多车账本", "Not a valid multi-vehicle ledger"))
+        val active = current.activeCar ?: throw BackupException(tr("不是有效的多车备份", "Not a valid multi-vehicle data"))
         return replaceActive(current, mergeLedger(active, legacy))
     }
 

@@ -97,7 +97,7 @@ class WebDavLedgerCodecTest {
     }
 
     private companion object {
-        const val PASSWORD = "ledger-secret-123"
+        const val PASSWORD = "data-secret-123"
 
         /** 与 [com.milenote.android.domain.backup.BackupCodec.encode] 同形状的紧凑 JSON（含中文）。 */
         const val PLAIN = """{"version":2,"records":[{"id":"r1","amount":12.5,"note":"跨端"}]}"""

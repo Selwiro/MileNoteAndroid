@@ -66,7 +66,7 @@ object BackupCodec {
                 val garage = decodeAs<Garage>(text, Garage.serializer())
                 BackupPayload.MulticarGarage(garage)
             }
-            else -> throw BackupException(tr("不是有效的账本备份（缺少版本号）", "Not a valid ledger backup (missing version)"))
+            else -> throw BackupException(tr("不是有效的完整备份（缺少版本号）", "Not a valid data backup (missing version)"))
         }
     }
 
@@ -85,7 +85,7 @@ object BackupCodec {
         } catch (e: Exception) {
             throw BackupException(tr("备份文件不是有效的 JSON", "Backup file is not valid JSON"), e)
         }
-        return element as? JsonObject ?: throw BackupException(tr("不是有效的账本备份", "Not a valid ledger backup"))
+        return element as? JsonObject ?: throw BackupException(tr("不是有效的完整备份", "Not a valid data backup"))
     }
 
     private fun <T> decodeAs(text: String, serializer: kotlinx.serialization.KSerializer<T>): T = try {
@@ -93,6 +93,6 @@ object BackupCodec {
     } catch (e: BackupException) {
         throw e
     } catch (e: Exception) {
-        throw BackupException(tr("账本格式无效", "Invalid ledger format"), e)
+        throw BackupException(tr("数据格式无效", "Invalid data format"), e)
     }
 }

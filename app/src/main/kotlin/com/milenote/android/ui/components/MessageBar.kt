@@ -158,8 +158,8 @@ private fun MessageBarPreview() {
         ) {
             MessageBar("已保存", MessageKind.SUCCESS, actionLabel = "撤销", onAction = {})
             MessageBar("30 天内到期：机油机滤", MessageKind.WARNING)
-            MessageBar("本地账本暂时无法读取", MessageKind.ERROR, actionLabel = "重试", onAction = {})
-            MessageBar("演示账本 · 修改不会保留", MessageKind.DEMO, onDismiss = {})
+            MessageBar("本机数据暂时无法读取", MessageKind.ERROR, actionLabel = "重试", onAction = {})
+            MessageBar("演示模式 · 修改不会保留", MessageKind.DEMO, onDismiss = {})
         }
     }
 }

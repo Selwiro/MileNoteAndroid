@@ -370,8 +370,8 @@ private fun WizardBottomBar(wizard: ImportWizardState, onClose: () -> Unit) {
             text = {
                 Text(
                     tr(
-                        "有 %d 条记录与现有账本重复：忽略会跳过这些行，覆盖会用导入数据替换原记录。",
-                        "%d records duplicate the current ledger: ignoring skips them, overwriting " +
+                        "有 %d 条记录与现有数据重复：忽略会跳过这些行，覆盖会用导入数据替换原记录。",
+                        "%d records duplicate the current data: ignoring skips them, overwriting " +
                             "replaces the original records with the imported data.",
                         wizard.duplicateTableCount(),
                     ),
@@ -460,18 +460,18 @@ private fun SourceStep(wizard: ImportWizardState, ev: Boolean, onPick: () -> Uni
                 text = if (ev) {
                     tr(
                         "里程志 CSV：先在「备份与还原」导出费用 CSV，改完再导入；" +
-                            "钱迹：XLSX / JSON；账本备份 JSON 仅在系统分享导入时自动识别。" +
+                            "钱迹：XLSX / JSON；完整备份 JSON 仅在系统分享导入时自动识别。" +
                             "纯电车辆不提供小熊油耗（加油记录）导入。",
                         "MileNote CSV: export the expense CSV from Backup & restore, edit it, then import " +
-                            "it here. Qianji: XLSX / JSON. Ledger backup JSON is only auto-detected when " +
+                            "it here. Qianji: XLSX / JSON. Full backup JSON is only auto-detected when " +
                             "imported via system share. Bear fuel imports aren't available for EVs.",
                     )
                 } else {
                     tr(
                         "里程志 CSV：先在「备份与还原」导出费用 CSV，改完再导入；" +
-                            "小熊油耗：XLS；钱迹：XLSX / JSON；账本备份 JSON 仅在系统分享导入时自动识别。",
+                            "小熊油耗：XLS；钱迹：XLSX / JSON；完整备份 JSON 仅在系统分享导入时自动识别。",
                         "MileNote CSV: export the expense CSV from Backup & restore, edit it, then import " +
-                            "it here. Bear: XLS; Qianji: XLSX / JSON. Ledger backup JSON is only " +
+                            "it here. Bear: XLS; Qianji: XLSX / JSON. Full backup JSON is only " +
                             "auto-detected when imported via system share.",
                     )
                 },
@@ -706,7 +706,7 @@ private fun FileSummaryCard(wizard: ImportWizardState, onPick: () -> Unit) {
 private fun BackupSummaryCard(wizard: ImportWizardState) {
     SectionCard(
         title = tr("备份摘要", "Backup summary"),
-        subtitle = tr("确认后在现有账本上合并", "Merged into the current ledger after confirmation"),
+        subtitle = tr("确认后在现有数据上合并", "Merged into the current data after confirmation"),
     ) {
         val preview = wizard.backupPreview
         if (preview == null) {
@@ -926,7 +926,7 @@ private fun TableStatsCard(wizard: ImportWizardState) {
         Text(
             text = if (wizard.csvWriteBack) {
                 tr(
-                    "勾选要导入的行；带错误的行不可导入。带「记录编号」且与账本一致的行会在确认后原位更新，" +
+                    "勾选要导入的行；带错误的行不可导入。带「记录编号」且与现有数据一致的行会在确认后原位更新，" +
                         "其余行按判重规则处理；仅显示前 %d 行。",
                     "Tick the rows to import; rows with errors can't be imported. Rows whose record ID " +
                         "exists are updated in place on confirmation; the rest follow the duplicate rules. " +
@@ -979,7 +979,7 @@ private fun TablePreviewRow(
         hasError -> item.error
         duplicate && wizard.csvWriteBack ->
             tr("同编号记录，确认后原位更新", "Same record ID — updated in place on confirmation")
-        duplicate -> tr("与现有账本重复，确认时选择忽略或覆盖", "Duplicate of the current ledger — ignore or overwrite on confirmation")
+        duplicate -> tr("与现有数据重复，确认时选择忽略或覆盖", "Duplicate of the current data — ignore or overwrite on confirmation")
         !item.record.note.isNullOrBlank() -> item.record.note.orEmpty()
         else -> tr("可导入", "Ready to import")
     }
@@ -1187,8 +1187,8 @@ private fun RowEditDialog(
                 }
                 Text(
                     text = tr(
-                        "保存后按当前账本重新校验这一行；仍有错误时可再次打开继续修改。修改随原始行号保留，换映射或工作表后不丢失。",
-                        "Saving re-validates this row against the current ledger; reopen it while errors remain. " +
+                        "保存后按当前数据重新校验这一行；仍有错误时可再次打开继续修改。修改随原始行号保留，换映射或工作表后不丢失。",
+                        "Saving re-validates this row against the current data; reopen it while errors remain. " +
                             "Edits are kept per source row and survive mapping or worksheet changes.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -1290,8 +1290,8 @@ private fun ResultStep(wizard: ImportWizardState) {
         item {
             MessageBar(
                 message = tr(
-                    "导入已提交到账本。若数量与预览不同，以费用记录 / 保养计划表为准。",
-                    "Import submitted to the ledger. If counts differ from the preview, trust the " +
+                    "导入已完成。若数量与预览不同，以费用记录 / 保养计划表为准。",
+                    "Import complete. If counts differ from the preview, trust the " +
                         "records and service plan.",
                 ),
                 kind = MessageKind.INFO,

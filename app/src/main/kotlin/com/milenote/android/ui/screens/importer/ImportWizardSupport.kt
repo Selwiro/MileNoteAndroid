@@ -41,7 +41,7 @@ internal enum class ImportSource(val key: String) {
     /** 用户可见的来源名（随语言切换）。 */
     val title: String
         get() = when (this) {
-            BACKUP -> tr("账本备份 JSON", "Ledger backup JSON")
+            BACKUP -> tr("完整备份 JSON", "Full backup JSON")
             BEAR -> tr("小熊油耗 XLS", "Bear XLS")
             QIANJI -> tr("钱迹 XLSX / JSON", "Qianji XLSX / JSON")
             CSV -> tr("里程志 CSV（回灌）", "MileNote CSV (write-back)")
@@ -73,7 +73,7 @@ internal enum class ImportSource(val key: String) {
         fun fromKey(value: String?): ImportSource? {
             val key = value?.trim()?.lowercase() ?: return null
             return when (key) {
-                "backup", "json", "restore", "ledger_backup", "账本备份" -> BACKUP
+                "backup", "json", "restore", "ledger_backup", "账本备份", "完整备份" -> BACKUP
                 "bear", "xiaoxiong", "fuel", "小熊", "小熊油耗" -> BEAR
                 "qianji", "qianji_records", "钱迹", "钱迹记账" -> QIANJI
                 "milenote", "csv", "回灌", "里程志", "里程志 csv" -> CSV
@@ -431,7 +431,7 @@ internal fun parseJsonSpreadsheet(text: String): SpreadsheetData {
         throw ImportFileException(
             tr(
                 "JSON 账单解析失败：%s",
-                "Failed to parse the JSON ledger: %s",
+                "Failed to parse the JSON data: %s",
                 e.message ?: tr("格式不正确", "invalid format"),
             ),
             e,

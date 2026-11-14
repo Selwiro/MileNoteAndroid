@@ -116,8 +116,8 @@ class MarkdownTextTest {
 
     @Test
     fun `does not treat underscores inside words as italic`() {
-        val spans = parseInlineMarkdown("drive_ledger_encrypted 与 _强调_")
-        assertEquals("drive_ledger_encrypted 与 ", spans[0].text)
+        val spans = parseInlineMarkdown("drive_data_encrypted 与 _强调_")
+        assertEquals("drive_data_encrypted 与 ", spans[0].text)
         assertEquals("强调", spans[1].text)
         assertTrue(spans[1].italic)
     }

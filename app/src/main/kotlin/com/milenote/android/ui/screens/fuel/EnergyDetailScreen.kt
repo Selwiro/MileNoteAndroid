@@ -98,7 +98,7 @@ fun EnergyDetailScreen(
     val ledger = state.activeCar
     if (ledger == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            LoadingState(label = tr("正在加载账本…", "Loading ledger…"))
+            LoadingState(label = tr("正在加载数据…", "Loading data…"))
         }
         return
     }

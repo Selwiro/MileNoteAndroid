@@ -142,8 +142,8 @@ internal class ImportWizardState(
         // 纯电当前车不提供小熊油耗（加油记录对纯电无意义）。
         if (isEv && value == ImportSource.BEAR) {
             error = tr(
-                "纯电车辆不支持小熊油耗导入，请选择钱迹或账本备份",
-                "Bear fuel imports aren't available for EVs — choose Qianji or a ledger backup",
+                "纯电车辆不支持小熊油耗导入，请选择钱迹或完整备份",
+                "Bear fuel imports aren't available for EVs — choose Qianji or a full backup",
             )
             return false
         }
@@ -285,8 +285,8 @@ internal class ImportWizardState(
             if (isEv && detected == ImportSource.BEAR) {
                 throw ImportFileException(
                     tr(
-                        "纯电车辆不支持小熊油耗导入，请选择钱迹或账本备份",
-                        "Bear fuel imports aren't available for EVs — choose Qianji or a ledger backup",
+                        "纯电车辆不支持小熊油耗导入，请选择钱迹或完整备份",
+                        "Bear fuel imports aren't available for EVs — choose Qianji or a full backup",
                     ),
                 )
             }
