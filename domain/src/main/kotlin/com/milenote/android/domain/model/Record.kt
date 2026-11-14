@@ -75,4 +75,11 @@ data class Record(
     val time: String? = null,
     /** 燃油标号（仅油费记录）：取值见 [FUEL_GRADES]，缺省表示未指定。 */
     val fuelGrade: String? = null,
+    /**
+     * 本记录最后一次被修改的时刻（epoch 毫秒），供多设备同步「后写胜出」裁决。
+     *
+     * 只有真正改过内容的记录才写入（见 `SyncStamps.stampChanges`）；老备份 / 老版本没有该字段时
+     * 视为 null（最旧），合并时按 0 处理。备份编码时 null 省略，不影响 Web 备份互导。
+     */
+    val updatedAt: Long? = null,
 )

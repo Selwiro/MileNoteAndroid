@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 
 /**
  * WebDAV 同步门面：配置（密码加密存储）+ 同步状态 + 远端账本读写。
@@ -36,6 +37,7 @@ class WebDavRepository(
     private val appContext = context.applicationContext
     private val configStore = WebDavConfigStore(appContext)
     private val syncStateStore = WebDavSyncStateStore(appContext)
+    private val baselineStore = SyncBaselineStore(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
@@ -108,6 +110,8 @@ class WebDavRepository(
             previous.username != normalizedUsername
         ) {
             syncStateStore.clear()
+            // 换了远端文件，旧基线不再对应当前远端，必须一起清掉（否则三向合并会拿错 base）。
+            withContext(Dispatchers.IO) { baselineStore.clear() }
         }
     }
 
@@ -115,7 +119,25 @@ class WebDavRepository(
     suspend fun clear() {
         configStore.clear()
         syncStateStore.clear()
+        withContext(Dispatchers.IO) { baselineStore.clear() }
         encryptedRemoteCache = null
+    }
+
+    /**
+     * 上次同步基线（三向合并的 base，明文 JSON）；没有基线时返回 null。
+     *
+     * 基线读不出来（文件损坏 / 首次升级）时调用方按「无基线」降级合并，不会丢数据。
+     */
+    suspend fun readBaseline(): String? = withContext(Dispatchers.IO) { baselineStore.read() }
+
+    /** 保存本次同步后「两边一致」的明文 JSON 作为新基线。 */
+    suspend fun saveBaseline(plainJson: String) {
+        withContext(Dispatchers.IO) { baselineStore.write(plainJson) }
+    }
+
+    /** 清除基线（换服务器 / 清除配置；由 [save] / [clear] 内部调用）。 */
+    suspend fun clearBaseline() {
+        withContext(Dispatchers.IO) { baselineStore.clear() }
     }
 
     /**
@@ -176,9 +198,12 @@ class WebDavRepository(
      * 上传本地账本（[plainJson] 是 [com.milenote.android.domain.backup.BackupCodec.encode] 的明文 JSON）。
      *
      * 条件请求策略：
-     * - `force = false`（默认）：有 `syncState.lastEtag` → `If-Match`；没有 → `If-None-Match: *`
-     *   （只允许新建，避免覆盖其他设备已存在的文件；412 由调用方引导先同步）；
-     * - `force = true`：不带条件，直接覆盖远端（用户确认「用本地覆盖远端」时使用）。
+     * - `force = false`（默认）：`expectedEtag`（本次刚 fetch 到的 ETag）优先，其次 `syncState.lastEtag`
+     *   → `If-Match`；两者都没有 → `If-None-Match: *`（只允许新建，避免覆盖其他设备已存在的文件）；
+     * - `force = true`：不带条件，直接覆盖远端（用户确认「用本地覆盖远端」、或服务器不返回 ETag 时使用）。
+     *
+     * **412 重试**：自动同步遇到 412 会重新 fetch 并把新 ETag 通过 [expectedEtag] 传进来重试，
+     * 避免一直拿过期 `lastEtag` 死锁（T019）。
      *
      * 已保存加密密码时上传加密信封，否则上传明文。上传的是**明文 JSON**，加密/明文由配置决定，
      * 调用方不再自己处理字节。
@@ -186,7 +211,11 @@ class WebDavRepository(
      * @return 上传后的远端元信息（服务器未返回 ETag 时 `etag = null`）。
      * @throws WebDavException 加密已开启但密码读不出 / 加密失败 / 412 / 401/403 / 409 / 网络错误等。
      */
-    suspend fun uploadLedger(plainJson: String, force: Boolean = false): WebDavRemoteMeta {
+    suspend fun uploadLedger(
+        plainJson: String,
+        force: Boolean = false,
+        expectedEtag: String? = null,
+    ): WebDavRemoteMeta {
         val credentials = requireCredentials()
         val cfg = configStore.config.first()
             ?: throw WebDavException(tr("请先配置 WebDAV 服务器", "Configure the WebDAV server first"))
@@ -207,12 +236,16 @@ class WebDavRepository(
         } else {
             plainJson.toByteArray(Charsets.UTF_8)
         }
-        val lastEtag = syncState.value.lastEtag
+        val ifMatchEtag = when {
+            force -> null
+            !expectedEtag.isNullOrEmpty() -> expectedEtag
+            else -> syncState.value.lastEtag
+        }
         return client.put(
             credentials = credentials,
             bytes = bytes,
-            ifMatchEtag = if (force) null else lastEtag,
-            ifNoneMatchAny = !force && lastEtag == null,
+            ifMatchEtag = ifMatchEtag,
+            ifNoneMatchAny = !force && ifMatchEtag == null,
         )
     }
 

@@ -2,6 +2,7 @@ package com.milenote.android.data.garage
 
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.GarageOps
+import com.milenote.android.domain.backup.SyncStamps
 import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.demo.DemoData
 import com.milenote.android.domain.model.Garage
@@ -42,6 +43,8 @@ data class RestoreSummary(
 class GarageRepository(
     private val store: GarageStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** 当前时刻（epoch 毫秒），同步打点用；单测可注入固定时钟。 */
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
     private val mutex = Mutex()
@@ -124,12 +127,18 @@ class GarageRepository(
         return loaded
     }
 
-    /** 任务式写入；`syncHistory` 复刻 Web「保存即重算保养」的副作用。 */
+    /**
+     * 任务式写入；`syncHistory` 复刻 Web「保存即重算保养」的副作用。
+     *
+     * 写入前会做多设备同步打点（[SyncStamps.stampChanges]）：真改过的记录 / 提醒写 `updatedAt`，
+     * 被删的记录留墓碑。整体覆盖走 [replace]（不打点，远端时间戳原样采纳）。
+     */
     suspend fun update(syncHistory: Boolean = true, transform: (Garage) -> Garage): Garage? = mutex.withLock {
         val current = _garage.value ?: return@withLock null
         var next = transform(current)
         if (syncHistory) next = syncActiveLedger(next)
         next = GarageOps.normalizeGarage(next)
+        next = SyncStamps.stampChanges(current, next, clock())
         if (!_demoMode.value && !writeBlocked) {
             withContext(io) { store.write(BackupCodec.encode(next)) }
             persisted = next

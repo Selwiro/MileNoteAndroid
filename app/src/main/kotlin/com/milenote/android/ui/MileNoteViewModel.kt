@@ -14,6 +14,7 @@ import com.milenote.android.data.garage.RestoreSummary
 import com.milenote.android.data.settings.SettingsRepository
 import com.milenote.android.data.webdav.Plan
 import com.milenote.android.data.webdav.AutoSyncOutcome
+import com.milenote.android.data.webdav.SyncMessages
 import com.milenote.android.data.webdav.RemoteLedger
 import com.milenote.android.data.webdav.WebDavAutoSyncEngine
 import com.milenote.android.data.webdav.WebDavFetchResult
@@ -24,6 +25,7 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.domain.backup.SyncMerge
 import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.CategoryConfig
@@ -120,10 +122,17 @@ enum class WebDavDownloadMode { MERGE, REPLACE }
 /** WebDAV 冲突处理方式。 */
 enum class WebDavConflictChoice { KEEP_LOCAL, KEEP_REMOTE, MERGE }
 
-/** WebDAV 冲突：本地与远端都有改动。 */
+/**
+ * WebDAV 冲突：两边都有改动且无法自动裁决（同一条记录两边都改、时间戳相同）。
+ *
+ * 正常情况下自动同步会自己做记录级三向合并，不会弹这个弹层；这里只留给「真冲突」。
+ *
+ * @property detail 面向用户的说明（哪条记录需确认，来自 [SyncMessages.conflict]）。
+ */
 data class WebDavConflict(
     val localChanged: Boolean,
     val remoteChanged: Boolean,
+    val detail: String? = null,
 )
 
 /** 需要用户输入加密密码的待办动作（解密成功后重跑）。 */
@@ -1399,6 +1408,7 @@ class MileNoteViewModel(
                     val meta = webDavRepository.uploadLedger(localJson, force = true)
                     val encrypted = webDavRepository.hasEncryptionPassword()
                     webDavRepository.markSynced(meta.etag, localHash, localHash)
+                    webDavRepository.saveBaseline(localJson)
                     updateWebDav {
                         it.copy(
                             busy = false,
@@ -1452,6 +1462,7 @@ class MileNoteViewModel(
                             val localHash = webDavRepository.plainHash(localJson)
                             val remoteHash = webDavRepository.plainHash(text)
                             webDavRepository.markSynced(fetched.meta.etag, localHash, remoteHash)
+                            webDavRepository.saveBaseline(localJson)
                             updateWebDav {
                                 it.copy(
                                     busy = false,
@@ -1501,16 +1512,27 @@ class MileNoteViewModel(
                                 is WebDavFetchResult.Found -> {
                                     val text = fetched.ledger.text
                                     val current = _state.value.garage ?: repository.load()
-                                    val merged = BackupCodec.restore(current, text)
-                                    repository.replace(merged)
-                                    val mergedJson = repository.exportBackup()
+                                    // 记录级三向合并（有基线时按每条记录的 updatedAt 裁决）；无基线时降级为
+                                    // 「本机优先 + 只增」，与自动同步同一套逻辑，避免手动合并丢修改。
+                                    val base = runCatching {
+                                        webDavRepository.readBaseline()?.let { BackupCodec.decode(it) }
+                                    }.getOrNull()
+                                    val outcome = SyncMerge.mergeGarage(
+                                        base = base,
+                                        local = current,
+                                        remote = BackupCodec.decode(text),
+                                        now = System.currentTimeMillis(),
+                                    )
+                                    val applied = repository.replace(outcome.garage)
+                                    val mergedJson = BackupCodec.encode(applied)
                                     val mergedHash = webDavRepository.plainHash(mergedJson)
                                     val meta = webDavRepository.uploadLedger(mergedJson, force = true)
                                     webDavRepository.markSynced(meta.etag, mergedHash, mergedHash)
+                                    webDavRepository.saveBaseline(mergedJson)
                                     updateWebDav {
                                         it.copy(
                                             busy = false,
-                                            lastResult = tr("已合并远端记录并上传合并结果", "Merged remote records and uploaded the result"),
+                                            lastResult = SyncMessages.merged(outcome.summary),
                                             remoteExists = true,
                                             remoteSize = meta.size,
                                             remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
@@ -1627,6 +1649,8 @@ class MileNoteViewModel(
     /** 应用打开时调用：开启自动同步且已配置时，静默同步一次。 */
     fun maybeAutoSyncOnOpen() {
         viewModelScope.launch {
+            // 回前台是一道「可恢复」信号：上次网络/服务器失败留下的退避在这里清零。
+            webDavAutoSyncEngine.resetBackoff()
             val enabled = settingsRepository.settings.first().webDavAutoSync
             if (enabled && !_state.value.demo && webDavRepository.canSync()) autoSync()
         }
@@ -1659,7 +1683,9 @@ class MileNoteViewModel(
 
     private suspend fun runWebDavSync() {
         updateWebDav { it.copy(busy = true, error = null, lastResult = null, conflict = null) }
-        val outcome = webDavAutoSyncEngine.sync(recordAutoResult = false)
+        // 手动同步永远立即尝试（不受上次失败的退避限制）。
+        webDavAutoSyncEngine.resetBackoff()
+        val outcome = webDavAutoSyncEngine.sync(recordAutoResult = false, ignoreBackoff = true)
         if (outcome.kind == AutoSyncOutcome.Kind.NEEDS_PASSWORD) {
             // 手动路径：弹密码框而不是报错。
             askWebDavDecryptPassword(PendingWebDavAction.SYNC)
@@ -1670,7 +1696,7 @@ class MileNoteViewModel(
                 busy = false,
                 lastResult = outcome.message,
                 conflict = if (outcome.kind == AutoSyncOutcome.Kind.CONFLICT) {
-                    WebDavConflict(localChanged = true, remoteChanged = true)
+                    WebDavConflict(localChanged = true, remoteChanged = true, detail = outcome.message)
                 } else {
                     it.conflict
                 },

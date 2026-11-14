@@ -29,6 +29,17 @@ import okhttp3.Response
  */
 open class WebDavException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/**
+ * 412 Precondition Failed：带条件的上传发现远端已被其他设备改过。
+ *
+ * 单独成类型是因为同步引擎要据此**自动重新拉取 + 重新合并再重试**（T019），
+ * 而不是把 412 当普通错误报给用户。
+ */
+class WebDavPreconditionFailedException(
+    message: String,
+    cause: Throwable? = null,
+) : WebDavException(message, cause)
+
 /** 带 HTTP 状态码的异常（内部使用，便于对 409/412 等做差异化处理）。 */
 internal class WebDavHttpException(
     val status: Int,
@@ -340,7 +351,7 @@ class OkHttpWebDavClient(
                         "Remote directory is missing or cannot be created — check the WebDAV URL",
                     ),
                 )
-                412 -> throw WebDavException(
+                412 -> throw WebDavPreconditionFailedException(
                     tr("远端文件已被其他设备修改，请重新同步", "Remote file was modified by another device — sync again"),
                 )
                 else -> throw statusException(response.code)

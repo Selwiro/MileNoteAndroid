@@ -42,4 +42,24 @@ data class Ledger(
     val hiddenServiceProjects: Map<String, List<String>>? = null,
     /** 用户自定义的项目显示名：项目原始文字 → 显示名。 */
     val serviceProjectLabels: Map<String, String>? = null,
+    /**
+     * 删除墓碑：多设备同步时用来传播「这条记录已经被删掉」，避免另一台设备把旧副本同步回来。
+     *
+     * 删除记录时**仍从 [records] 里物理移除**（界面、统计、导出全部不受影响），只额外留一条墓碑；
+     * 撤销删除 / 重新创建同 id 记录时移除墓碑。null 表示没有墓碑（老备份缺省）。
+     * 墓碑超过 180 天在同步合并时修剪（见 `SyncMerge.TOMBSTONE_RETENTION_MS`）。
+     */
+    val tombstones: List<Tombstone>? = null,
+)
+
+/**
+ * 一条删除墓碑（多设备同步用）。
+ *
+ * @property id 被删除记录的编号。
+ * @property at 删除时刻（epoch 毫秒）；同一 id 多次删除取较大值。
+ */
+@Serializable
+data class Tombstone(
+    val id: String = "",
+    val at: Long = 0L,
 )

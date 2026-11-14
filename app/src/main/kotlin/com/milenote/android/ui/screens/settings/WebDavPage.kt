@@ -549,8 +549,8 @@ internal fun WebDavPage(
                         Text(tr("自动同步", "Auto sync"), style = MaterialTheme.typography.titleMedium)
                         Text(
                             text = tr(
-                                "仅在应用打开期间运行：打开应用或本地修改后同步；退出应用后不再后台执行。冲突时暂停自动处理。",
-                                "Runs only while the app is open: on launch or after local changes; nothing runs in the background after you leave. Auto handling pauses on conflicts.",
+                                "仅在应用打开期间运行：打开应用或本地修改后同步；退出应用后不再后台执行。两边都改过时会按记录自动合并，只有同一条记录在同一时刻被改才需要你确认。",
+                                "Runs only while the app is open: on launch or after local changes; nothing runs in the background after you leave. Edits from both sides are merged record by record; you are only asked when the same record was edited at the same moment.",
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant,
@@ -587,9 +587,10 @@ internal fun WebDavPage(
                 Text(
                     text = tr(
                         "说明：先比较本地账本与远端文件；只有本端有修改时上传，只有远端有修改时下载；" +
-                            "两边都有修改时弹出冲突选项，由你决定保留哪一边。",
-                        "How it works: local and remote are compared first; if only this device changed, it uploads, " +
-                            "if only the remote changed, it downloads. If both changed, you pick which side to keep.",
+                            "两边都有修改时按记录自动合并（每条记录以后改的时间为准），只有同一条记录在同一时刻被改才需要你确认。",
+                        "How it works: local and remote are compared first; only this device changed → upload, " +
+                            "only the remote changed → download, both changed → merge record by record (later edit wins). " +
+                            "You are only asked when the same record was edited at the same moment.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
@@ -753,22 +754,27 @@ internal fun WebDavPage(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = tr(
-                            "本地账本与远端文件在上次同步后都发生了变化，请选择保留方式：" +
-                                "「合并」只把远端新增记录并入本地，不删除本地数据。",
-                            "The local ledger and the remote file both changed since the last sync. Choose what to keep: " +
-                                "“Merge” only adds new remote records locally and never deletes local data.",
+                            "通常两边都改过时也会自动合并；这里出现说明同一条记录在两边都被改且时间相同，需要你确认。",
+                            "Edits on both sides are normally merged automatically. This prompt means the same record was edited on both devices at the same time — please confirm.",
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
                     )
+                    conflict.detail?.let { detail ->
+                        Text(
+                            text = detail,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.error,
+                        )
+                    }
+                    ConflictOption(tr("合并（按记录自动合并）", "Merge (record by record)"), tr("按每条记录的修改时间合并，两边的新增与修改都保留", "Merge each record by its last edit time; additions and edits from both sides are kept")) {
+                        onResolveConflict(WebDavConflictChoice.MERGE)
+                    }
                     ConflictOption(tr("用本地覆盖远端", "Overwrite remote with local"), tr("上传本机账本，远端内容被替换", "Upload this device's ledger; remote content is replaced")) {
                         onResolveConflict(WebDavConflictChoice.KEEP_LOCAL)
                     }
                     ConflictOption(tr("用远端覆盖本地", "Overwrite local with remote"), tr("下载远端账本，本机内容被替换", "Download the remote ledger; local content is replaced")) {
                         onResolveConflict(WebDavConflictChoice.KEEP_REMOTE)
-                    }
-                    ConflictOption(tr("合并（只新增远端记录）", "Merge (only add remote records)"), tr("保留本地并追加远端新增记录", "Keep local and append new remote records")) {
-                        onResolveConflict(WebDavConflictChoice.MERGE)
                     }
                 }
             },

@@ -51,6 +51,12 @@ data class Reminder(
     val source: String? = null,
     /** 备注。 */
     val note: String? = null,
+    /**
+     * 本提醒最后一次被修改的时刻（epoch 毫秒），供多设备同步「后写胜出」裁决。
+     *
+     * 语义与 `Record.updatedAt` 一致：只有内容真变化才写入，null 视为最旧。
+     */
+    val updatedAt: Long? = null,
 )
 
 /** `Reminder.historyBaseline`：历史反算前的原始基准。 */
