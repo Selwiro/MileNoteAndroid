@@ -86,6 +86,35 @@ data class ReportDelta(val current: Double, val previous: Double) {
     val percent: Double? get() = if (previous > 0.0) diff / previous * 100.0 else null
 }
 
+/**
+ * 一项指标的本期 / 上期 / 去年同期值（缺失或该视角不做对比时为 null）。
+ *
+ * 月报：上期 = 上月（环比），去年同期 = 去年同月（同比）；
+ * 年报的「上一期」就是上年，按同比给（[previous] 为 null，避免同一个对比出现两行）；
+ * 累计没有可比的期，全部为 null。
+ */
+data class ReportMetricDelta(
+    val current: Double? = null,
+    val previous: Double? = null,
+    val yearAgo: Double? = null,
+) {
+    /** 环比（仅月报有意义）。 */
+    val monthOverMonth: ReportDelta?
+        get() = if (current != null && previous != null) ReportDelta(current, previous) else null
+
+    /** 同比（月报 = 去年同月；年报 = 上年）。 */
+    val yearOverYear: ReportDelta?
+        get() = if (current != null && yearAgo != null) ReportDelta(current, yearAgo) else null
+}
+
+/** 报告里可做环比 / 同比的指标；累计视角全部为空。 */
+data class ReportMetrics(
+    val daily: ReportMetricDelta = ReportMetricDelta(),
+    val perKm: ReportMetricDelta = ReportMetricDelta(),
+    val records: ReportMetricDelta = ReportMetricDelta(),
+    val distance: ReportMetricDelta = ReportMetricDelta(),
+)
+
 /** 趋势图的一个月度点。 */
 data class MonthlyTotal(val year: Int, val month: Int, val total: Double)
 
@@ -131,6 +160,9 @@ data class ReportHighlights(
  * @property spanMonths 累计视角跨的自然月数
  * @property monthlyTrend 月报=近 12 个月；年报=当年 12 个月；累计且跨度 < 12 个月时也用这个
  * @property yearlyTrend 累计且跨度 ≥ 12 个月时按年；其余视角为空
+ * @property metrics 环比 / 同比指标；累计视角全部为空
+ * @property previousCategories 月报的上月各分类支出；上期无记录时为 null
+ * @property yearAgoCategories 同比各分类支出（年报 = 上年）；无对比时为 null
  */
 data class ReportData(
     val period: ReportPeriod,
@@ -159,6 +191,12 @@ data class ReportData(
     val monthsWithData: Int,
     val spanMonths: Int?,
     val categories: List<CategoryValue>,
+    /** 环比 / 同比指标（日均、每公里、记录、里程）；累计视角全部为空。 */
+    val metrics: ReportMetrics,
+    /** 月报：上月各分类支出；上期没有记录或非月报时为 null（界面据此不画「环比」）。 */
+    val previousCategories: Map<String, Double>?,
+    /** 同比：去年同月（年报 = 上年）各分类支出；没有可比的期时为 null。 */
+    val yearAgoCategories: Map<String, Double>?,
     val fuel: ReportEnergyLine?,
     val electric: ReportEnergyLine?,
     val monthlyTrend: List<MonthlyTotal>,
@@ -199,18 +237,7 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
     val odometerReadings = records.count { it.odometer != null }
 
     // 里程：无读数 → null；月/年报只有一条读数且期前没有基线 → null（算出来一定是 0，会误导）。
-    val priorOdometer = if (fullRange == null) {
-        null
-    } else {
-        ledger.records
-            .filter { it.odometer != null && it.date < range.from }
-            .maxByOrNull { it.date }
-    }
-    val distance = when {
-        odometerReadings == 0 -> null
-        fullRange != null && odometerReadings == 1 && priorOdometer == null -> null
-        else -> statsResult.distance
-    }
+    val distance = measuredDistance(ledger, if (fullRange == null) null else range.from, statsResult)
 
     val days = run {
         val from = Dates.parse(range.from) ?: today
@@ -237,6 +264,62 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
     val yearAgoDelta = yearAgoStats
         ?.takeIf { it.records.isNotEmpty() }
         ?.let { ReportDelta(statsResult.total, it.total) }
+
+    // 环比 / 同比：月报 = 上月 / 去年同月；年报的「上一期」就是上年，只按同比给（否则同一个对比会出现两行）。
+    val compareMonth = period.kind == ReportKind.MONTH
+    val yoyStats = when (period.kind) {
+        ReportKind.MONTH -> yearAgoStats
+        ReportKind.YEAR -> previousStats
+        ReportKind.ALL -> null
+    }
+    val previousDays = previousRange?.let { daysOf(it) }
+    val yearAgoDays = if (compareMonth) yearAgoRange?.let { daysOf(it) } else previousDays
+    val previousDistance = previousStats?.let { measuredDistance(ledger, previousRange?.from, it) }
+    val yearAgoDistance = if (compareMonth) {
+        yearAgoStats?.let { measuredDistance(ledger, yearAgoRange?.from, it) }
+    } else {
+        previousDistance
+    }
+    val previousDaily = previousStats?.let { s -> previousDays?.let { s.total / it } }
+    val yearAgoDaily = yoyStats?.let { s -> yearAgoDays?.let { s.total / it } }
+    val previousPerKm = previousDistance?.takeIf { it > 0.0 }?.let { d -> previousStats?.let { it.total / d } }
+    val yearAgoPerKm = yearAgoDistance?.takeIf { it > 0.0 }?.let { d -> yoyStats?.let { it.total / d } }
+    val metrics = if (period.kind == ReportKind.ALL) {
+        // 累计没有可比的期（跨度不同，比出来的百分比没有意义）。
+        ReportMetrics()
+    } else {
+        ReportMetrics(
+            daily = ReportMetricDelta(
+                current = statsResult.total / days,
+                previous = if (compareMonth) previousDaily else null,
+                yearAgo = yearAgoDaily,
+            ),
+            perKm = ReportMetricDelta(
+                current = distance?.takeIf { it > 0.0 }?.let { statsResult.total / it },
+                previous = if (compareMonth) previousPerKm else null,
+                yearAgo = yearAgoPerKm,
+            ),
+            records = ReportMetricDelta(
+                current = records.size.toDouble(),
+                previous = if (compareMonth) previousStats?.records?.size?.toDouble() else null,
+                yearAgo = yoyStats?.records?.size?.toDouble(),
+            ),
+            distance = ReportMetricDelta(
+                current = distance,
+                previous = if (compareMonth) previousDistance else null,
+                yearAgo = yearAgoDistance,
+            ),
+        )
+    }
+    // 分类环比 / 同比：对比期完全没有记录时整块为 null，界面不画「上期无」；那和「上期没这笔」是两件事。
+    val previousCategories = previousStats
+        ?.takeIf { compareMonth && it.records.isNotEmpty() }
+        ?.categories
+        ?.associate { it.name to it.value }
+    val yearAgoCategories = yoyStats
+        ?.takeIf { it.records.isNotEmpty() }
+        ?.categories
+        ?.associate { it.name to it.value }
 
     val profile = ledger.energyProfile
     val previousFuel = previousStats?.let { energyLine(ledger, it.records, EnergyKind.FUEL, it.fuelEnergy, null) }
@@ -318,6 +401,9 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
         monthsWithData = monthsWithData,
         spanMonths = spanMonths,
         categories = categories,
+        metrics = metrics,
+        previousCategories = previousCategories,
+        yearAgoCategories = yearAgoCategories,
         fuel = fuel,
         electric = electric,
         monthlyTrend = monthlyTrend,
@@ -333,6 +419,26 @@ private fun sameSpan(prev: DateRange, days: Int): DateRange {
     val to = prev.to.let { Dates.parse(it) } ?: return prev
     val end = from.plusDays((days - 1).toLong())
     return DateRange(prev.from, Dates.iso(if (end.isAfter(to)) to else end))
+}
+
+/** 闭区间天数（含首尾）；解析失败按 1 天兜底，避免除零。 */
+private fun daysOf(range: DateRange): Int {
+    val from = Dates.parse(range.from) ?: return 1
+    val to = Dates.parse(range.to) ?: return 1
+    return (ChronoUnit.DAYS.between(from, to) + 1).toInt().coerceAtLeast(1)
+}
+
+/**
+ * 报告口径的里程：无读数 → null；区间只有一条读数、且区间前没有基线 → null。
+ *
+ * [from] 为 null 表示累计视角（全量 [StatsResult.distance]，不做「单读数」判废）。
+ * 上期 / 去年同期必须用同一个口径，否则环比会把「本来算不出来」当成 0。
+ */
+private fun measuredDistance(ledger: Ledger, from: String?, result: StatsResult): Double? {
+    val readings = result.records.count { it.odometer != null }
+    if (readings == 0) return null
+    if (from != null && readings == 1 && ledger.records.none { it.odometer != null && it.date < from }) return null
+    return result.distance
 }
 
 private fun categoryOrder(name: String): Int {

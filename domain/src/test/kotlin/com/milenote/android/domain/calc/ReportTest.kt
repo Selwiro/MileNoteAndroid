@@ -164,6 +164,121 @@ class ReportTest {
         assertNull(delta.percent)
     }
 
+    // ---------------------------------------------------------------- 环比 / 同比
+
+    @Test
+    fun `month metrics compare with last month same span and a year ago`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-11-03", "保险", 100.0, odometer = 1000.0),
+                plain("2026-11-10", "保险", 100.0, odometer = 1300.0),
+                plain("2026-10-02", "保险", 200.0, odometer = 500.0),
+                plain("2026-10-10", "保险", 100.0, odometer = 700.0),
+                plain("2025-11-03", "保险", 50.0, odometer = 0.0),
+                plain("2025-11-10", "保险", 50.0, odometer = 200.0),
+            ),
+        )
+        val metrics = report(ledger, month(2026, 11), today).metrics
+
+        // 日均：本期 200 ÷ 13；上月同期 300 ÷ 13；去年同月同期 100 ÷ 13。
+        assertEquals(200.0 / 13, metrics.daily.current!!, 1e-9)
+        assertEquals(300.0 / 13, metrics.daily.previous!!, 1e-9)
+        assertEquals(100.0 / 13, metrics.daily.yearAgo!!, 1e-9)
+        assertEquals(-100.0 / 13, metrics.daily.monthOverMonth!!.diff, 1e-9)
+        // 每公里：本期 600 km（期前基线 700 → 1300）；上月 500 km（200 → 700）；去年同月 200 km（0 → 200）。
+        assertEquals(200.0 / 600.0, metrics.perKm.current!!, 1e-9)
+        assertEquals(300.0 / 500.0, metrics.perKm.previous!!, 1e-9)
+        assertEquals(100.0 / 200.0, metrics.perKm.yearAgo!!, 1e-9)
+        // 记录数：本期 2 笔，上月同期 2 笔，去年同月同期 2 笔。
+        assertEquals(2.0, metrics.records.current!!, 1e-9)
+        assertEquals(0.0, metrics.records.monthOverMonth!!.diff, 1e-9)
+        // 里程：本期 600 km，上月 500 km，去年同月 200 km。
+        assertEquals(600.0, metrics.distance.current!!, 1e-9)
+        assertEquals(500.0, metrics.distance.monthOverMonth!!.previous, 1e-9)
+        assertEquals(200.0, metrics.distance.yearOverYear!!.previous, 1e-9)
+    }
+
+    @Test
+    fun `year metrics compare with the previous year only as year over year`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-01-05", "保险", 1100.0),
+                plain("2025-03-05", "保险", 500.0),
+            ),
+        )
+        val metrics = report(ledger, year(2026), today).metrics
+        // 年报的上一期就是上年：只给同比，不再造一条重复的「环比」。
+        assertNull(metrics.daily.monthOverMonth)
+        assertEquals(600.0 / 317, metrics.daily.yearOverYear!!.diff, 1e-9)
+        assertEquals(1100.0 / 317, metrics.daily.current!!, 1e-9)
+        // 上年同期截成与今年同样的 317 天（到 2025-11-13）。
+        assertEquals(500.0 / 317, metrics.daily.yearAgo!!, 1e-9)
+        assertEquals(1.0, metrics.records.yearOverYear!!.previous, 1e-9)
+    }
+
+    @Test
+    fun `all view has no metrics and no category comparisons`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2024-03-05", "保险", 100.0),
+                plain("2026-11-05", "保险", 300.0),
+            ),
+        )
+        val data = report(ledger, all, today)
+        assertNull(data.metrics.daily.current)
+        assertNull(data.metrics.daily.monthOverMonth)
+        assertNull(data.metrics.daily.yearOverYear)
+        assertNull(data.metrics.distance.current)
+        assertNull(data.previousCategories)
+        assertNull(data.yearAgoCategories)
+    }
+
+    @Test
+    fun `category comparisons follow previous and year ago totals`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-10-05", "保险", 100.0),
+                plain("2026-10-06", "油费", 200.0),
+                plain("2026-09-05", "保险", 50.0),
+                plain("2025-10-05", "油费", 80.0),
+            ),
+        )
+        val data = report(ledger, month(2026, 10), today)
+        // 上月只花了保险 50；油费记 0 而不是消失，界面才知道「这笔是新增」。
+        val previous = data.previousCategories!!
+        assertEquals(50.0, previous.getValue("保险"), 1e-9)
+        assertEquals(0.0, previous.getValue("油费"), 1e-9)
+        // 同比看去年 10 月：油费 80，保险 0。
+        val yearAgo = data.yearAgoCategories!!
+        assertEquals(80.0, yearAgo.getValue("油费"), 1e-9)
+        assertEquals(0.0, yearAgo.getValue("保险"), 1e-9)
+    }
+
+    @Test
+    fun `category comparison block is hidden when the previous period has no records`() {
+        val ledger = ledgerWith(listOf(plain("2026-10-05", "保险", 100.0)))
+        val data = report(ledger, month(2026, 10), today)
+        assertNull(data.previousCategories)
+        assertNull(data.yearAgoCategories)
+    }
+
+    @Test
+    fun `distance comparison is null when a period has a single reading without baseline`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-11-02", "保险", 100.0, odometer = 1000.0),
+                plain("2026-11-10", "保险", 100.0, odometer = 1300.0),
+                plain("2026-10-05", "保险", 100.0, odometer = 800.0),
+            ),
+        )
+        val metrics = report(ledger, month(2026, 11), today).metrics
+        // 本期用 10-05 的 800 作基线：1300 − 800 = 500 km。
+        assertEquals(500.0, metrics.distance.current!!, 1e-9)
+        // 上月只有一条读数、期前也没有基线：这一期本来就算不出里程，环比不能拿 0 当分母。
+        assertNull(metrics.distance.monthOverMonth)
+        assertNull(metrics.perKm.monthOverMonth)
+    }
+
     // ---------------------------------------------------------------- 空态与构成
 
     @Test

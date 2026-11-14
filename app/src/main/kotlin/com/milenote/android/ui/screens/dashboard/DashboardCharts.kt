@@ -106,6 +106,19 @@ internal data class ChartCategory(
     val color: Color,
 )
 
+/**
+ * 环图的一段。
+ *
+ * [key] 用于选中联动（分类原始名，或折叠项的假名），[label] 已按当前车的分类显示名解析好，
+ * 环图本身不再依赖账本上下文。
+ */
+internal data class BreakdownSlice(
+    val key: String,
+    val label: String,
+    val value: Double,
+    val color: Color,
+)
+
 /** 某个月的堆叠柱数据。 */
 internal data class MonthBar(
     /** `YYYY-MM`。 */
@@ -1097,28 +1110,24 @@ internal fun CategoryRankRow(
 }
 
 /**
- * 费用构成卡内容：环图 + 图例。
+ * 费用构成卡内容：环图 +（可选）图例。
  *
  * 点击扇区或图例后，在对应扇区旁边（按扇区中心角计算）弹出气泡（分类 / 金额 / 占比），
  * 不再使用底部整宽信息条；再次点击取消、点空白关闭。
  *
- * @param categories 当前期间的分类聚合（含 0 值分类）。
+ * 报告页把图例关掉，改用下方带环比 / 同比的分类明细行（同一套色点即图例）。
+ *
+ * @param slices 已按金额降序排好的分段（含折叠后的「其他」）。
  * @param total 当前期间支出合计。
+ * @param showLegend 是否在环图下方画横排图例。
  */
 @Composable
 internal fun CategoryBreakdown(
-    categories: List<CategoryValue>,
+    slices: List<BreakdownSlice>,
     total: Double,
     modifier: Modifier = Modifier,
-    ev: Boolean = false,
+    showLegend: Boolean = true,
 ) {
-    val palette = LocalMileNoteCategoryColors.current
-    val darkTheme = LocalMileNoteDarkTheme.current
-    val slices = remember(categories, palette, darkTheme) {
-        categories
-            .filter { it.value > 0.0 }
-            .map { ChartCategory(it.name, it.value, chartColorOf(it.name, palette, darkTheme)) }
-    }
     if (slices.isEmpty() || total <= 0.0) {
         EmptyChartHint(text = tr("等待你的第一笔记录", "Waiting for your first entry"), modifier = modifier)
         return
@@ -1161,19 +1170,20 @@ internal fun CategoryBreakdown(
                     onSelect = toggle,
                     modifier = Modifier.size(DonutSize),
                 )
-                Spacer(modifier = Modifier.height(14.dp))
-                // 分类列表在环图下方横排：色点 + 分类名；点击图例同样弹出气泡。
-                CategoryLegend(
-                    entries = slices.map { it.name to it.color },
-                    modifier = Modifier.fillMaxWidth(),
-                    selected = selected,
-                    onSelect = toggle,
-                    ev = ev,
-                )
+                if (showLegend) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    // 分类列表在环图下方横排：色点 + 分类名；点击图例同样弹出气泡。
+                    CategoryLegend(
+                        entries = slices,
+                        modifier = Modifier.fillMaxWidth(),
+                        selected = selected,
+                        onSelect = toggle,
+                    )
+                }
             }
 
             val current = selected
-            val index = current?.let { name -> slices.indexOfFirst { it.name == name } } ?: -1
+            val index = current?.let { name -> slices.indexOfFirst { it.key == name } } ?: -1
             if (current != null && index >= 0) {
                 val slice = slices[index]
                 val startFraction = slices.take(index).sumOf { it.value } / total
@@ -1189,7 +1199,7 @@ internal fun CategoryBreakdown(
                 val x = rawX.coerceIn(0f, (widthPx - bubbleW).coerceAtLeast(0f))
                 val y = (pointY - bubbleH / 2f).coerceIn(0f, (donutPx - bubbleH).coerceAtLeast(0f))
                 ChartBubble(
-                    text = "${DataLabels.category(slice.name, ev)} · ${Units.currencySymbol}${Format.money(slice.value)}\n" +
+                    text = "${slice.label} · ${Units.currencySymbol}${Format.money(slice.value)}\n" +
                         percentText(slice.value, total),
                     modifier = Modifier
                         .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -1203,7 +1213,7 @@ internal fun CategoryBreakdown(
 /** 自绘环图：`sweep` 从 0 生长，选中扇区加粗、其余降到 50% 不透明度。 */
 @Composable
 private fun DonutChart(
-    slices: List<ChartCategory>,
+    slices: List<BreakdownSlice>,
     total: Double,
     selected: String?,
     onSelect: (String) -> Unit,
@@ -1246,7 +1256,7 @@ private fun DonutChart(
             var startAngle = -90f
             slices.forEach { slice ->
                 val sweep = (slice.value / total * 360.0).toFloat() * reveal
-                val isSelected = selected == slice.name
+                val isSelected = selected == slice.key
                 drawArc(
                     color = slice.color.copy(alpha = if (selected == null || isSelected) 1f else 0.5f),
                     startAngle = startAngle,
@@ -1288,19 +1298,18 @@ private fun DonutChart(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryLegend(
-    entries: List<Pair<String, Color>>,
+    entries: List<BreakdownSlice>,
     modifier: Modifier = Modifier,
     selected: String? = null,
     onSelect: ((String) -> Unit)? = null,
-    ev: Boolean = false,
 ) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        entries.forEach { (name, color) ->
-            val isSelected = selected == name
+        entries.forEach { slice ->
+            val isSelected = selected == slice.key
             val rowModifier = if (onSelect != null) {
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
@@ -1311,7 +1320,7 @@ private fun CategoryLegend(
                             Color.Transparent
                         },
                     )
-                    .clickable { onSelect(name) }
+                    .clickable { onSelect(slice.key) }
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             } else {
                 Modifier
@@ -1324,10 +1333,10 @@ private fun CategoryLegend(
                 Box(
                     modifier = Modifier
                         .size(8.dp)
-                        .background(color, CircleShape),
+                        .background(slice.color, CircleShape),
                 )
                 Text(
-                    text = DataLabels.category(name, ev),
+                    text = slice.label,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.onSurface
@@ -1555,7 +1564,7 @@ private fun resolveBarSlice(
 
 /** 由触点反查环图扇区（角度区间 + 环形半径校验）。 */
 private fun resolveDonutSlice(
-    slices: List<ChartCategory>,
+    slices: List<BreakdownSlice>,
     total: Double,
     center: Offset,
     touch: Offset,
@@ -1573,8 +1582,8 @@ private fun resolveDonutSlice(
     var cursor = 0.0
     slices.forEach { slice ->
         val sweep = slice.value / total * 360.0
-        if (angle >= cursor && angle < cursor + sweep) return slice.name
+        if (angle >= cursor && angle < cursor + sweep) return slice.key
         cursor += sweep
     }
-    return slices.lastOrNull()?.name
+    return slices.lastOrNull()?.key
 }

@@ -190,7 +190,7 @@ fun MineScreen(
                 ) {
                     MineValueRow(
                         icon = MileNoteIcons.FileText,
-                        title = tr("月报 / 年报 / 累计", "Monthly / yearly / all-time"),
+                        title = tr("用车报告", "Vehicle report"),
                         onClick = onOpenReport,
                     )
                     SectionDivider()

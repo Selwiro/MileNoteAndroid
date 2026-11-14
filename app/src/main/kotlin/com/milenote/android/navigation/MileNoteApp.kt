@@ -272,7 +272,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         }
         composable(route = Routes.REPORT) {
             DetailScaffold(
-                title = tr("报告", "Report"),
+                title = tr("用车报告", "Vehicle report"),
                 snackbarHostState = snackbarHostState,
                 onBack = { navController.popBackStack() },
             ) {

@@ -35,9 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
@@ -68,8 +70,10 @@ import com.milenote.android.ui.components.MoneyText
 import com.milenote.android.ui.components.MoneySize
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.icons.MileNoteIcons
-import com.milenote.android.ui.screens.dashboard.CategoryRankRow
+import com.milenote.android.ui.screens.dashboard.BreakdownSlice
+import com.milenote.android.ui.screens.dashboard.CategoryBreakdown
 import com.milenote.android.ui.screens.dashboard.chartColorOf
+import com.milenote.android.ui.screens.dashboard.percentText
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.theme.MileNoteDimens
@@ -81,16 +85,17 @@ import java.time.YearMonth
 import java.util.Locale
 import kotlin.math.abs
 
-/** 报告页的分类排行最多显示几行（多的折成「其他 N 类」）。 */
+/** 报告的费用构成明细最多显示几行（多的折成「其他 N 类」）。 */
 private const val ReportCategoryRows = 8
 
 /**
- * 月报 / 年报 / 累计报告（从「我的 → 数据与同步」推入）。
+ * 用车报告（从「我的 → 数据与同步 → 用车报告」推入）。
  *
  * 三个 tab 共用同一套卡片，只换口径与文案：月报=自然月、年报=自然年、累计=首条记录 → 今天。
  * 默认打开「本月」（进行中，对比走同期口径）。
  *
- * 数字全部来自 domain 的 [report]；本页只做展示与周期切换，不写账本。
+ * 报告结构：总览（支出 + 环比的对比）→ 环比 / 同比指标 → 费用构成（环图 + 分类明细）
+ * → 能源 → 趋势 → 之最。数字全部来自 domain 的 [report]；本页只做展示与周期切换，不写账本。
  *
  * @param vm 全局 ViewModel（当前车账本、演示态、读账错误）
  */
@@ -294,6 +299,11 @@ private fun ReportContent(
         } else {
             item(key = "overview") {
                 OverviewCard(ledger = ledger, data = data)
+            }
+            if (data.period.kind != ReportKind.ALL && data.hasEarlierRecords) {
+                item(key = "comparison") {
+                    ComparisonCard(data = data)
+                }
             }
             item(key = "categories") {
                 BreakdownCard(ledger = ledger, data = data)
@@ -693,8 +703,13 @@ private fun deltaText(delta: ReportDelta, emptyText: String): String {
     if (abs(delta.diff) < 0.5) return tr("基本持平", "About the same")
     val arrow = if (delta.diff > 0) "↑" else "↓"
     val amount = "${Units.currencySymbol}${Format.money(abs(delta.diff))}"
-    val percent = delta.percent?.let { " · ${oneDecimal(abs(it))}%" } ?: ""
-    return "$arrow $amount$percent"
+    val percent = delta.percent
+    // 与指标 / 分类行同一口径：基期很小时百分比会到五位数，改画倍数。
+    if (percent != null && percent >= 900.0) {
+        return "$arrow $amount · ${oneDecimal(delta.current / delta.previous)}×"
+    }
+    val suffix = percent?.let { " · ${oneDecimal(abs(it))}%" } ?: ""
+    return "$arrow $amount$suffix"
 }
 
 private fun deltaSummary(data: ReportData): String {
@@ -760,52 +775,283 @@ private fun ReportMetric(
 }
 
 // ---------------------------------------------------------------------------------------------
-// 费用构成
+// 环比 / 同比
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * 指标对比卡：日均、每公里、记录、里程的环比 / 同比。
+ *
+ * 支出合计的环比 / 同比留在总览卡里（紧贴大金额，不重复画一遍）；
+ * 累计视角没有可比的期（跨度不同），整张卡不出现。
+ */
+@Composable
+private fun ComparisonCard(data: ReportData) {
+    val month = data.period.kind == ReportKind.MONTH
+    val metrics = data.metrics
+    val records = metrics.records.current?.toInt() ?: 0
+    SectionCard(
+        title = if (month) tr("环比 · 同比", "MoM · YoY") else tr("同比", "YoY"),
+        subtitle = if (month) {
+            tr("较上月同期、去年同月", "vs last month and a year ago")
+        } else {
+            tr("较上年同期", "vs the same span last year")
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            MetricCompareRow(
+                label = tr("日均", "Daily avg"),
+                value = metrics.daily.current?.let { "${Units.currencySymbol}${Format.money(it)}" } ?: "—",
+                monthOverMonth = metrics.daily.monthOverMonth,
+                yearOverYear = metrics.daily.yearOverYear,
+            )
+            metrics.perKm.current?.let { perKm ->
+                MetricCompareRow(
+                    label = tr("每公里", "Per km"),
+                    value = "${Units.currencySymbol}${Format.money(perKm)}",
+                    monthOverMonth = metrics.perKm.monthOverMonth,
+                    yearOverYear = metrics.perKm.yearOverYear,
+                )
+            }
+            MetricCompareRow(
+                label = tr("记录", "Entries"),
+                value = if (records == 1) tr("1 笔", "1 entry") else tr("%d 笔", "%d entries", records),
+                monthOverMonth = metrics.records.monthOverMonth,
+                yearOverYear = metrics.records.yearOverYear,
+                countUnit = tr("笔", "entries"),
+            )
+            metrics.distance.current?.let { distance ->
+                MetricCompareRow(
+                    label = tr("里程", "Distance"),
+                    value = "${Format.fmt(distance)} ${Units.distanceUnit}",
+                    monthOverMonth = metrics.distance.monthOverMonth,
+                    yearOverYear = metrics.distance.yearOverYear,
+                    countUnit = Units.distanceUnit,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricCompareRow(
+    label: String,
+    value: String,
+    monthOverMonth: ReportDelta?,
+    yearOverYear: ReportDelta?,
+    countUnit: String? = null,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyLarge,
+                color = scheme.onSurface,
+                maxLines = 1,
+            )
+        }
+        val chips = buildList {
+            monthOverMonth?.let { add(metricCompareChip(tr("环比", "MoM"), it, countUnit)) }
+            yearOverYear?.let { add(metricCompareChip(tr("同比", "YoY"), it, countUnit)) }
+        }
+        Text(
+            text = chips.ifEmpty { listOf(tr("暂无可比数据", "No comparison yet")) }.joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * 分类行的环比 / 同比片段：上期这一分类没有支出 →「新增」，差额 < 0.5 元 →「≈」，其余给增减幅度。
+ *
+ * 分类金额都是钱，0.5 元阈值与总览「基本持平」同一口径。
+ */
+internal fun categoryDeltaChip(label: String, current: Double, previous: Double): String {
+    if (previous <= 0.0) return "$label ${tr("新增", "new")}"
+    val diff = current - previous
+    if (abs(diff) < 0.5) return "$label ≈"
+    return "$label ${changeArrow(current, previous)}"
+}
+
+/**
+ * 增减幅度：常规给百分比；涨幅 ≥ 900% 时改画倍数（`↑ 125.9×`），
+ * 避免「12,486.8%」这种基期太小时看着像错数的百分比。
+ *
+ * 跌幅上限是 −100%（本期 ≥ 0），不需要倍数分支。
+ */
+private fun changeArrow(current: Double, previous: Double): String {
+    val percent = (current - previous) / previous * 100.0
+    if (percent >= 900.0) return "↑ ${oneDecimal(current / previous)}×"
+    val arrow = if (percent > 0) "↑" else "↓"
+    return "$arrow ${oneDecimal(abs(percent))}%"
+}
+
+/**
+ * 指标行的环比 / 同比片段。
+ *
+ * [countUnit] 非空时用绝对值 + 单位（记录数 / 里程），否则用百分比（日均 / 每公里）。
+ * 上期为 0 时百分比没有意义，统一写「上期无」，不画 ∞。
+ */
+internal fun metricCompareChip(label: String, delta: ReportDelta, countUnit: String? = null): String {
+    if (delta.previous <= 0.0) return "$label ${tr("上期无", "no data")}"
+    if (countUnit != null) {
+        if (abs(delta.diff) < 0.5) return "$label ≈"
+        val sign = if (delta.diff > 0) "+" else "−"
+        return "$label $sign${Format.fmt(abs(delta.diff))} $countUnit"
+    }
+    val percent = delta.percent ?: return "$label ${tr("上期无", "no data")}"
+    if (abs(percent) < 0.05) return "$label ≈"
+    return "$label ${changeArrow(delta.current, delta.previous)}"
+}
+
+// ---------------------------------------------------------------------------------------------
+// 费用构成（环图 + 分类明细）
+// ---------------------------------------------------------------------------------------------
+
+/** 分类明细的一行；[names] 是它包含的原始分类名（折叠的「其他 N 类」会有多个）。 */
+private data class BreakdownRow(
+    val key: String,
+    val label: String,
+    val value: Double,
+    val color: Color,
+    val names: List<String>,
+)
 
 @Composable
 private fun BreakdownCard(ledger: Ledger, data: ReportData) {
     val palette = LocalMileNoteCategoryColors.current
     val dark = LocalMileNoteDarkTheme.current
+    val profile = ledger.energyProfile
+    val scheme = MaterialTheme.colorScheme
     val total = data.categories.sumOf { it.value }
     val shown = if (data.categories.size <= ReportCategoryRows) {
         data.categories
     } else {
         data.categories.take(ReportCategoryRows - 1)
     }
-    val otherCount = data.categories.size - shown.size
-    val otherValue = data.categories.drop(shown.size).sumOf { it.value }
-    val maxValue = data.categories.firstOrNull()?.value ?: 0.0
-    val profile = ledger.energyProfile
-
-    SectionCard(
-        title = tr("费用构成", "Breakdown"),
-        action = {
-            Text(
-                text = tr("合计 %s", "Total %s", "${Units.currencySymbol}${Format.money(total)}"),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-    ) {
+    val rest = data.categories.drop(shown.size)
+    val rows = buildList {
         shown.forEach { item ->
-            CategoryRankRow(
-                label = DataLabels.categoryFor(ledger, item.name, profile),
-                value = item.value,
-                total = total,
-                maxValue = maxValue,
-                color = chartColorOf(item.name, palette, dark),
-                onClick = null,
+            add(
+                BreakdownRow(
+                    key = item.name,
+                    label = DataLabels.categoryFor(ledger, item.name, profile),
+                    value = item.value,
+                    color = chartColorOf(item.name, palette, dark),
+                    names = listOf(item.name),
+                ),
             )
         }
-        if (otherCount > 0) {
-            CategoryRankRow(
-                label = tr("其他 %d 类", "Other %d", otherCount),
-                value = otherValue,
-                total = total,
-                maxValue = maxValue,
+        if (rest.isNotEmpty()) {
+            add(
+                BreakdownRow(
+                    key = "other",
+                    label = tr("其他 %d 类", "Other %d", rest.size),
+                    value = rest.sumOf { it.value },
+                    color = scheme.onSurfaceVariant,
+                    names = rest.map { it.name },
+                ),
+            )
+        }
+    }
+    val slices = rows.map { BreakdownSlice(key = it.key, label = it.label, value = it.value, color = it.color) }
+
+    SectionCard(title = tr("费用构成", "Breakdown")) {
+        if (rows.isEmpty()) {
+            // 有记录但全是 0 元（例如免费充电）：环图画不出来，别让「等待你的第一笔记录」误导。
+            Text(
+                text = tr("本期没有支出", "No spending this period"),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = null,
+            )
+            return@SectionCard
+        }
+        // 环图本身不再画横排图例：下面的明细行带色点、金额、占比和环比 / 同比，就是图例。
+        CategoryBreakdown(slices = slices, total = total, showLegend = false)
+        Spacer(modifier = Modifier.height(12.dp))
+        rows.forEach { row ->
+            CategoryCompareRow(
+                label = row.label,
+                value = row.value,
+                total = total,
+                color = row.color,
+                previous = data.previousCategories?.let { map -> row.names.sumOf { map[it] ?: 0.0 } },
+                yearAgo = data.yearAgoCategories?.let { map -> row.names.sumOf { map[it] ?: 0.0 } },
+            )
+        }
+    }
+}
+
+/**
+ * 分类明细行：色点 + 名称 + 金额 + 占比，第二行是环比 / 同比。
+ *
+ * [previous] / [yearAgo] 为 null 表示对比期完全没有记录（整行不画对比）；
+ * 0.0 表示对比期有记录、但这一分类没有支出（写「新增」而不是 ∞%）。
+ */
+@Composable
+private fun CategoryCompareRow(
+    label: String,
+    value: Double,
+    total: Double,
+    color: Color,
+    previous: Double?,
+    yearAgo: Double?,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(color, CircleShape),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "${Units.currencySymbol}${Format.money(value)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurface,
+                maxLines = 1,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = percentText(value, total),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(44.dp),
+            )
+        }
+        val chips = buildList {
+            previous?.let { add(categoryDeltaChip(tr("环比", "MoM"), value, it)) }
+            yearAgo?.let { add(categoryDeltaChip(tr("同比", "YoY"), value, it)) }
+        }
+        if (chips.isNotEmpty()) {
+            Text(
+                text = chips.joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 2.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
