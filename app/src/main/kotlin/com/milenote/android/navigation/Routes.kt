@@ -23,7 +23,7 @@ object Routes {
     /** 维修保养记录。 */
     const val SERVICE_HISTORY = "service-history"
 
-    /** 月报 / 年报 / 累计报告（从「我的」菜单推入）。 */
+    /** 用车报告（从「我的 → 数据与同步」推入；页内再分月报 / 年报 / 累计）。 */
     const val REPORT = "report"
 
     // —— 设置子页（从「我的」菜单推入；page 为 SettingsPage 的小写 key） ——
