@@ -101,6 +101,10 @@ class WebDavAutoSyncEngine(
             if (failure is WebDavPreconditionFailedException && attempt <= MAX_PRECONDITION_RETRIES) {
                 continue
             }
+            // 本地在同步过程中又被改过：丢弃这次基于旧快照的判断，重读重算（不能覆盖用户的新修改）。
+            if (failure is LocalChangedDuringSyncException && attempt <= MAX_LOCAL_CHANGE_RETRIES) {
+                continue
+            }
             return handleFailure(failure, recordAutoResult)
         }
     }
@@ -203,8 +207,8 @@ class WebDavAutoSyncEngine(
                     tr("已自动上传本地修改", "Local changes uploaded automatically")
                 },
             )
-            is SyncPlan.Download -> download(plan.garage, found)
-            is SyncPlan.UploadMerged -> uploadMerged(plan.garage, plan.summary, found)
+            is SyncPlan.Download -> download(local, plan.garage, found)
+            is SyncPlan.UploadMerged -> uploadMerged(local, plan.garage, plan.summary, found)
             is SyncPlan.Conflict -> AutoSyncOutcome(
                 AutoSyncOutcome.Kind.CONFLICT,
                 SyncMessages.conflict(plan.summary),
@@ -212,10 +216,21 @@ class WebDavAutoSyncEngine(
         }
     }
 
-    private suspend fun download(remoteGarage: Garage, found: WebDavFetchResult.Found?): AutoSyncOutcome {
+    /**
+     * 用远端覆盖本地。
+     *
+     * 覆盖前用 [GarageRepository.replaceIfUnchanged] 校验「本地仍是同步开始时的快照」：
+     * 同步期间用户又保存了记录时不覆盖，抛 [LocalChangedDuringSyncException] 让外层重算。
+     */
+    private suspend fun download(
+        local: Garage,
+        remoteGarage: Garage,
+        found: WebDavFetchResult.Found?,
+    ): AutoSyncOutcome {
         // found 一定存在（远端没有文件时不会走到 Download）；保守处理避免空指针。
         if (found == null) return success(tr("已是最新", "Already up to date"))
-        val applied = garage.replace(remoteGarage)
+        val applied = garage.replaceIfUnchanged(local, remoteGarage)
+            ?: throw LocalChangedDuringSyncException()
         val json = BackupCodec.encode(applied)
         val localHash = webDav.plainHash(json)
         webDav.markSynced(found.meta.etag, localHash, webDav.plainHash(found.ledger.text))
@@ -240,6 +255,7 @@ class WebDavAutoSyncEngine(
     }
 
     private suspend fun uploadMerged(
+        local: Garage,
         merged: Garage,
         summary: MergeSummary,
         found: WebDavFetchResult.Found?,
@@ -247,8 +263,10 @@ class WebDavAutoSyncEngine(
         if (found?.ledger is RemoteLedger.Decrypted && !webDav.hasEncryptionPassword()) {
             return blockedPlainUpload()
         }
-        // 先把合并结果落到本机（replace 会写快照，可回滚），再上传；上传失败下次会重新合并。
-        val applied = garage.replace(merged)
+        // 先把合并结果落到本机（写快照可回滚），再上传；上传失败下次会重新合并。
+        // 只有「本地仍是同步开始时的快照」才写，避免把同步期间用户刚保存的修改覆盖掉。
+        val applied = garage.replaceIfUnchanged(local, merged)
+            ?: throw LocalChangedDuringSyncException()
         val json = BackupCodec.encode(applied)
         val meta = uploadWithPrecondition(json, found)
         val hash = webDav.plainHash(json)
@@ -292,6 +310,11 @@ class WebDavAutoSyncEngine(
                 "The remote file keeps changing on another device — retried %d times, try again later",
                 MAX_PRECONDITION_RETRIES,
             )
+        } else if (t is LocalChangedDuringSyncException) {
+            tr(
+                "同步期间本地又保存了新修改，已放弃这次覆盖，稍后会自动重试",
+                "Local edits kept arriving during sync — this overwrite was skipped and will be retried",
+            )
         } else {
             tr(
                 "自动同步失败：%s",
@@ -325,9 +348,15 @@ class WebDavAutoSyncEngine(
         return WebDavProblem(kind, message, clock())
     }
 
+    /** 同步过程中本地账本又被改过（用户刚保存了一笔）：本次判断作废，重读重算。 */
+    private class LocalChangedDuringSyncException : Exception()
+
     private companion object {
         /** 412 后最多再重试几次（总共 3 次尝试）。 */
         const val MAX_PRECONDITION_RETRIES = 2
+
+        /** 本地改动打断同步时最多再重算几次。 */
+        const val MAX_LOCAL_CHANGE_RETRIES = 2
 
         const val BACKOFF_BASE_MS = 30_000L
 

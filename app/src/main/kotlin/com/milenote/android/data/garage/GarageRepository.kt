@@ -151,6 +151,18 @@ class GarageRepository(
     /** 整体替换（导入/恢复/远端覆盖后用）：覆盖前先留本地快照，便于回滚。 */
     suspend fun replace(garage: Garage): Garage = mutex.withLock { replaceLocked(garage, snapshot = true) }
 
+    /**
+     * 条件整体替换：只有内存账本仍是 [expected]（= 同步开始时的快照）时才覆盖。
+     *
+     * 用于 WebDAV 同步：同步要花一次网络往返，期间用户可能又保存了一笔记录；如果直接 [replace]，
+     * 会用「基于旧快照算出的合并结果」把这条新修改抹掉。返回 null 表示本地已被改过，
+     * 调用方应重读账本重新判定，而不是覆盖。
+     */
+    suspend fun replaceIfUnchanged(expected: Garage, garage: Garage): Garage? = mutex.withLock {
+        if (_garage.value != expected) return@withLock null
+        replaceLocked(garage, snapshot = true)
+    }
+
     private suspend fun replaceLocked(garage: Garage, snapshot: Boolean): Garage {
         val normalized = GarageOps.normalizeGarage(garage)
         if (!_demoMode.value && !writeBlocked) {

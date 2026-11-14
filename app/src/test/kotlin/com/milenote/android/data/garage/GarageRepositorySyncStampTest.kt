@@ -161,6 +161,42 @@ class GarageRepositorySyncStampTest {
     }
 
     @Test
+    fun `conditional replace is skipped when a local edit landed during sync`() = runBlocking {
+        val store = MemoryStore(null)
+        seed(store, record("r1"))
+        val repo = repository(store)
+        val snapshot = repo.load()
+
+        // 同步的网络往返期间，用户又保存了一笔。
+        repo.update { current ->
+            val car = current.cars.single()
+            current.copy(cars = listOf(car.copy(records = car.records + record("r2", 50.0))))
+        }
+
+        // 用「旧快照」做远端覆盖必须被拒绝，否则用户刚存的 r2 会被抹掉。
+        val applied = repo.replaceIfUnchanged(snapshot, garage(record("r1", 999.0)))
+
+        assertNull(applied)
+        val saved = BackupCodec.decode(store.content!!)
+        assertEquals(setOf("r1", "r2"), saved.cars.single().records.map { it.id }.toSet())
+        assertEquals(100.0, saved.cars.single().records.first { it.id == "r1" }.amount, 0.0)
+    }
+
+    @Test
+    fun `conditional replace applies when the local ledger is untouched`() = runBlocking {
+        val store = MemoryStore(null)
+        seed(store, record("r1"))
+        val repo = repository(store)
+        val snapshot = repo.load()
+
+        val applied = repo.replaceIfUnchanged(snapshot, garage(record("r9", 9.0)))
+
+        assertNotNull(applied)
+        val saved = BackupCodec.decode(store.content!!)
+        assertEquals(listOf("r9"), saved.cars.single().records.map { it.id })
+    }
+
+    @Test
     fun `undo delete removes the tombstone again`() = runBlocking {
         val store = MemoryStore(null)
         seed(store, record("r1"), record("r2"))
