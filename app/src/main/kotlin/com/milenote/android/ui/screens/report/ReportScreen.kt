@@ -23,7 +23,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -95,10 +94,22 @@ private const val ReportCategoryRows = 8
  * 报告结构：总览（支出 + 环比的对比）→ 环比 / 同比指标 → 费用构成（环图 + 分类明细）
  * → 能源 → 趋势 → 之最。数字全部来自 domain 的 [report]；本页只做展示与周期切换，不写账本。
  *
+ * 分享浮层由路由层顶栏右上角的分享按钮触发（[shareOpen]），本页只负责算数据、画浮层，
+ * 并把「本期有没有可分享的数据」回传给顶栏决定按钮是否出现。
+ *
  * @param vm 全局 ViewModel（当前车账本、演示态、读账错误）
+ * @param shareOpen 顶栏分享按钮是否已按下
+ * @param onDismissShare 关闭分享浮层
+ * @param onShareAvailableChange 本期是否有数据可分享（无数据时顶栏按钮不出现）
  */
 @Composable
-fun ReportScreen(vm: MileNoteViewModel, modifier: Modifier = Modifier) {
+fun ReportScreen(
+    vm: MileNoteViewModel,
+    shareOpen: Boolean,
+    onDismissShare: () -> Unit,
+    onShareAvailableChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val ledger = state.activeCar
     if (ledger == null) {
@@ -117,6 +128,9 @@ fun ReportScreen(vm: MileNoteViewModel, modifier: Modifier = Modifier) {
         ledger = ledger,
         demo = state.demo,
         loadError = state.loadError,
+        shareOpen = shareOpen,
+        onDismissShare = onDismissShare,
+        onShareAvailableChange = onShareAvailableChange,
         modifier = modifier,
     )
 }
@@ -127,6 +141,9 @@ private fun ReportContent(
     ledger: Ledger,
     demo: Boolean,
     loadError: String?,
+    shareOpen: Boolean,
+    onDismissShare: () -> Unit,
+    onShareAvailableChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = remember { Dates.today() }
@@ -137,7 +154,6 @@ private fun ReportContent(
     // 切车时把三个视角的期都重置为默认；旋转 / 重建不重置（trackedCar 随 saveable 一起回来）。
     var trackedCar by rememberSaveable { mutableStateOf(ledger.id) }
     var pickerOpen by remember { mutableStateOf(false) }
-    var shareOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(ledger.id) {
         if (trackedCar != ledger.id) {
@@ -156,6 +172,7 @@ private fun ReportContent(
         ReportKind.ALL -> ReportPeriod(ReportKind.ALL)
     }
     val data = remember(ledger, period, today) { report(ledger, period, today) }
+    LaunchedEffect(data.hasData) { onShareAvailableChange(data.hasData) }
 
     val dates = remember(ledger) { ledger.records.mapNotNull { Dates.parse(it.date) } }
     val firstDateIso = remember(dates) { dates.minOrNull()?.let { Dates.iso(it) } }
@@ -196,7 +213,7 @@ private fun ReportContent(
         }
     }
 
-    BackHandler(enabled = shareOpen) { shareOpen = false }
+    BackHandler(enabled = shareOpen) { onDismissShare() }
 
     Box(modifier = modifier.fillMaxSize()) {
     LazyColumn(
@@ -333,25 +350,11 @@ private fun ReportContent(
                     HighlightsCard(ledger = ledger, data = data, today = today)
                 }
             }
-            item(key = "share") {
-                TextButton(
-                    onClick = { shareOpen = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        MileNoteIcons.Share,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(tr("分享报告", "Share report"))
-                }
-            }
         }
     }
 
-        if (shareOpen) {
-            ReportShareOverlay(data = data, ledger = ledger, onDismiss = { shareOpen = false })
+        if (shareOpen && data.hasData) {
+            ReportShareOverlay(data = data, ledger = ledger, onDismiss = onDismissShare)
         }
     }
 

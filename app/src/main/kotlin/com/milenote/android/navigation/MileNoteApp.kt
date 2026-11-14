@@ -46,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -271,12 +272,35 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             }
         }
         composable(route = Routes.REPORT) {
+            // 分享入口在顶栏右上角：状态提到路由层，报告页只负责算数据与画浮层。
+            var shareOpen by rememberSaveable { mutableStateOf(false) }
+            // 先按「账本里有记录」给初值，避免进页第一帧没有图标；报告页算完本期数据后再校正。
+            var canShare by remember {
+                mutableStateOf(state.activeCar?.records?.isNotEmpty() == true)
+            }
             DetailScaffold(
                 title = tr("用车报告", "Vehicle report"),
                 snackbarHostState = snackbarHostState,
                 onBack = { navController.popBackStack() },
+                actions = if (canShare) {
+                    {
+                        IconButton(onClick = { shareOpen = true }) {
+                            Icon(
+                                imageVector = MileNoteIcons.Share,
+                                contentDescription = tr("分享报告", "Share report"),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
             ) {
-                ReportScreen(vm = vm)
+                ReportScreen(
+                    vm = vm,
+                    shareOpen = shareOpen,
+                    onDismissShare = { shareOpen = false },
+                    onShareAvailableChange = { canShare = it },
+                )
             }
         }
         composable(route = Routes.SERVICE_HISTORY) {
@@ -546,6 +570,7 @@ private fun DetailScaffold(
     title: String,
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
+    actions: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Scaffold(
@@ -570,6 +595,7 @@ private fun DetailScaffold(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                actions?.invoke()
             }
         },
     ) { innerPadding ->
