@@ -1527,6 +1527,17 @@ class MileNoteViewModel(
             updateWebDav { it.copy(busy = true, error = null, lastResult = null) }
             try {
                 webDavRepository.save(url, username, password, allowHttp, encryptionPassword, encryptionEnabled)
+                // 换了地址 / 账号就是另一台服务器：远端状态一律作废、重新判断。
+                // 否则新服务器没加密、旧的是加密的，界面会显示旧服务器的「加密」并提示去输一个
+                // 用不上的密码；测试连接失败时也还挂着旧服务器的「存在 · 1.0 KB」（审计 B36）。
+                updateWebDav {
+                    it.copy(
+                        remoteEncrypted = null,
+                        decryptPrompt = null,
+                        remoteExists = null,
+                        remoteSize = null,
+                    )
+                }
                 val meta = webDavRepository.testConnection()
                 updateWebDav {
                     it.copy(
@@ -1752,7 +1763,10 @@ class MileNoteViewModel(
                                     updateWebDav {
                                         it.copy(
                                             busy = false,
-                                            lastResult = SyncMessages.merged(outcome.summary),
+                                            lastResult = SyncMessages.merged(
+                                                outcome.summary,
+                                                noBaseline = base == null,
+                                            ),
                                             remoteExists = true,
                                             remoteSize = meta.size,
                                             remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,

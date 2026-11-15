@@ -11,8 +11,13 @@ import com.milenote.android.i18n.tr
  */
 object SyncMessages {
 
-    /** 合并成功：「已自动合并：新增 2、更新 1、删除 1（…）」 */
-    fun merged(summary: MergeSummary): String {
+    /**
+     * 合并成功：「已自动合并：新增 2、更新 1、删除 1（…）」。
+     *
+     * @param noBaseline 本次没有可用的上次同步基线（首次同步 / 换服务器 / 基线与账本都读不出来）：
+     *   此时三向合并降级为「本机优先 + 只增」，必须在结果里说明，否则用户看不出冲突裁决的依据变弱了。
+     */
+    fun merged(summary: MergeSummary, noBaseline: Boolean = false): String {
         val base = tr(
             "已自动合并：新增 %d、更新 %d、删除 %d",
             "Merged automatically: %d added, %d updated, %d deleted",
@@ -21,6 +26,9 @@ object SyncMessages {
             summary.deleted,
         )
         val notes = buildList {
+            if (noBaseline) {
+                add(tr("（本次未使用上次基线）", " (no previous baseline was used this time)"))
+            }
             if (summary.deleteVsEditKept > 0) {
                 add(
                     tr(

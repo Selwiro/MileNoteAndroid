@@ -439,52 +439,8 @@ class OkHttpWebDavClient(
         ),
     )
 
-    private fun statusException(code: Int): WebDavException = when {
-        code == 401 || code == 403 -> WebDavHttpException(
-            code,
-            tr("认证失败，请检查用户名和应用密码是否正确", "Authentication failed — check the username and app password"),
-        )
-        code == 404 || code == 410 -> WebDavHttpException(
-            code,
-            tr("远端文件不存在", "Remote file does not exist"),
-        )
-        code == 405 || code == 501 -> WebDavHttpException(
-            code,
-            tr(
-                "服务器不支持该操作（HTTP %d），请确认地址指向 WebDAV 文件",
-                "Server does not support this operation (HTTP %d) — make sure the URL points to a WebDAV file",
-                code,
-            ),
-        )
-        code == 409 -> WebDavHttpException(
-            code,
-            tr("远端目录不存在或冲突（HTTP 409）", "Remote directory is missing or conflicts (HTTP 409)"),
-        )
-        code == 412 -> WebDavHttpException(
-            code,
-            tr("远端文件已被其他设备修改，请重新同步", "Remote file was modified by another device — sync again"),
-        )
-        code == 413 -> WebDavHttpException(
-            code,
-            tr("备份文件过大，服务器拒绝接收", "Backup file is too large — the server rejected it"),
-        )
-        code == 423 -> WebDavHttpException(
-            code,
-            tr("远端文件被服务器锁定，请稍后重试", "Remote file is locked by the server — try again later"),
-        )
-        code == 507 -> WebDavHttpException(
-            code,
-            tr("远端存储空间不足", "Remote storage is full"),
-        )
-        code in 500..599 -> WebDavHttpException(
-            code,
-            tr("服务器错误（HTTP %d），请稍后重试", "Server error (HTTP %d) — try again later", code),
-        )
-        else -> WebDavHttpException(
-            code,
-            tr("服务器返回异常状态（HTTP %d），请稍后重试", "Server returned an unexpected status (HTTP %d) — try again later", code),
-        )
-    }
+    private fun statusException(code: Int): WebDavException =
+        WebDavHttpException(code, webDavStatusMessage(code))
 
     private fun parseHttpDateMillis(value: String?): Long? {
         val text = value?.trim().orEmpty()
@@ -511,6 +467,48 @@ class OkHttpWebDavClient(
             .retryOnConnectionFailure(true)
             .build()
     }
+}
+
+/**
+ * HTTP 状态码 → 可直接展示的文案（中英双语）。
+ *
+ * 401 与 403 必须分开：401 是用户名/应用密码不对，403 是密码没错但目录不可写（只读共享、
+ * 上传目录没有权限）。两者共用「认证失败」会让 403 的用户反复去改密码（审计 B28）。
+ *
+ * 抽成顶层函数便于单测：客户端本身依赖网络，JVM 测试里构造不出真实响应。
+ */
+internal fun webDavStatusMessage(code: Int): String = when {
+    code == 401 -> tr(
+        "认证失败，请检查用户名和应用密码是否正确",
+        "Authentication failed — check the username and app password",
+    )
+    code == 403 -> tr(
+        "服务器拒绝了写入（权限不足）：请确认该目录可写、共享不是只读",
+        "The server refused the write (permission denied) — make sure the folder is writable and the share is not read-only",
+    )
+    code == 404 || code == 410 -> tr("远端文件不存在", "Remote file does not exist")
+    code == 405 || code == 501 -> tr(
+        "服务器不支持该操作（HTTP %d），请确认地址指向 WebDAV 文件",
+        "Server does not support this operation (HTTP %d) — make sure the URL points to a WebDAV file",
+        code,
+    )
+    code == 409 -> tr(
+        "远端目录不存在或冲突（HTTP 409）",
+        "Remote directory is missing or conflicts (HTTP 409)",
+    )
+    code == 412 -> tr(
+        "远端文件已被其他设备修改，请重新同步",
+        "Remote file was modified by another device — sync again",
+    )
+    code == 413 -> tr("备份文件过大，服务器拒绝接收", "Backup file is too large — the server rejected it")
+    code == 423 -> tr("远端文件被服务器锁定，请稍后重试", "Remote file is locked by the server — try again later")
+    code == 507 -> tr("远端存储空间不足", "Remote storage is full")
+    code in 500..599 -> tr("服务器错误（HTTP %d），请稍后重试", "Server error (HTTP %d) — try again later", code)
+    else -> tr(
+        "服务器返回异常状态（HTTP %d），请稍后重试",
+        "Server returned an unexpected status (HTTP %d) — try again later",
+        code,
+    )
 }
 
 /**

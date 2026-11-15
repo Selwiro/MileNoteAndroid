@@ -215,7 +215,13 @@ class WebDavAutoSyncEngine(
                 },
             )
             is SyncPlan.Download -> download(local, plan.garage, found)
-            is SyncPlan.UploadMerged -> uploadMerged(local, plan.garage, plan.summary, found)
+            is SyncPlan.UploadMerged -> uploadMerged(
+                local = local,
+                merged = plan.garage,
+                summary = plan.summary,
+                found = found,
+                noBaseline = baseGarage == null,
+            )
             is SyncPlan.Conflict -> AutoSyncOutcome(
                 AutoSyncOutcome.Kind.CONFLICT,
                 SyncMessages.conflict(plan.summary),
@@ -266,6 +272,7 @@ class WebDavAutoSyncEngine(
         merged: Garage,
         summary: MergeSummary,
         found: WebDavFetchResult.Found?,
+        noBaseline: Boolean,
     ): AutoSyncOutcome {
         if (found?.ledger is RemoteLedger.Decrypted && !webDav.hasEncryptionPassword()) {
             return blockedPlainUpload()
@@ -279,7 +286,10 @@ class WebDavAutoSyncEngine(
         val hash = webDav.plainHash(json)
         webDav.markSynced(meta.etag, hash, hash)
         webDav.saveBaseline(json)
-        return AutoSyncOutcome(AutoSyncOutcome.Kind.MERGED, SyncMessages.merged(summary))
+        return AutoSyncOutcome(
+            AutoSyncOutcome.Kind.MERGED,
+            SyncMessages.merged(summary, noBaseline = noBaseline),
+        )
     }
 
     /**

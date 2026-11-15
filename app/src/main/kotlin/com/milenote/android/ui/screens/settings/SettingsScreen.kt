@@ -107,6 +107,9 @@ import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.components.SecondaryTabs
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.components.SectionHeader
+import com.milenote.android.ui.screens.importer.BACKUP_MAX_BYTES
+import com.milenote.android.ui.screens.importer.decodeText
+import com.milenote.android.ui.screens.importer.readUriBytes
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.AppTheme
 import com.milenote.android.ui.theme.MileNoteDimens
@@ -400,12 +403,15 @@ fun SettingsScreen(
         scope.launch {
             busy = true
             try {
+                // 先查大小、再限量读（与导入向导同一套）：不把超大文件整个读进内存再判长度，
+                // 上限统一 BACKUP_MAX_BYTES（20 MB），避免同一份文件两个页面结论不同（审计 B33）。
                 val text = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                        ?: throw IllegalStateException(tr("无法读取所选文件", "Could not read the selected file"))
-                }
-                if (text.length > 30_000_000) {
-                    throw IllegalStateException(tr("备份文件超过 30 MB，已取消导入", "Backup file is larger than 30 MB; import cancelled"))
+                    val limitMessage = tr(
+                        "备份文件超过 %d MB，已取消导入",
+                        "Backup file is larger than %d MB; import cancelled",
+                        (BACKUP_MAX_BYTES / (1024 * 1024)).toInt(),
+                    )
+                    decodeText(readUriBytes(context, uri, BACKUP_MAX_BYTES, limitMessage))
                 }
                 // 合并规则与提示由 VM/仓库统一处理（结果走全局 Snackbar）。
                 vm.restoreBackup(text)
@@ -1468,7 +1474,10 @@ private fun BackupRestorePage(
                     subtitle = if (demo) {
                         tr("演示模式下不可用", "Unavailable in demo mode")
                     } else {
-                        tr("只合并新增，不覆盖现有数据", "Merges new records only; never overwrites")
+                        tr(
+                            "只合并新增，不覆盖现有数据（上限 20 MB）",
+                            "Merges new records only; never overwrites (max 20 MB)",
+                        )
                     },
                     enabled = !busy && !demo,
                     onClick = onImportBackup,
