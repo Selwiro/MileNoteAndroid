@@ -165,9 +165,9 @@ private class XlsWorkbook(
 
     fun readGrid(sheet: Sheet, maxDataRows: Int): List<List<Any?>> {
         val cursor = BiffCursor(stream, sheet.start)
-        val bof = cursor.next() ?: throw IllegalStateException("工作表缺少 BOF 记录")
-        if (bof.type != REC_BOF || bof.length < 4) throw IllegalStateException("工作表 BOF 记录无效")
-        if (bof.u16(2) != 0x0010) throw IllegalStateException("不是工作表子流")
+        val bof = cursor.next() ?: throw IllegalStateException(tr("工作表缺少 BOF 记录", "Worksheet is missing its BOF record"))
+        if (bof.type != REC_BOF || bof.length < 4) throw IllegalStateException(tr("工作表 BOF 记录无效", "Worksheet BOF record is invalid"))
+        if (bof.u16(2) != 0x0010) throw IllegalStateException(tr("不是工作表子流", "Not a worksheet substream"))
 
         val cells = HashMap<Long, Any?>()
         var maxRow = -1
@@ -179,7 +179,7 @@ private class XlsWorkbook(
             if (col > maxCol) maxCol = col
             val value = valueOf(raw, xf)
             if (value != null) {
-                if (cells.size >= MAX_CELLS) throw IllegalStateException("单元格数量超出上限")
+                if (cells.size >= MAX_CELLS) throw IllegalStateException(tr("单元格数量超出上限", "Too many cells"))
                 cells[key(row, col)] = value
             }
         }
@@ -327,12 +327,12 @@ private class XlsWorkbook(
         fun open(bytes: ByteArray): XlsWorkbook {
             val compound = CompoundFile(bytes)
             val stream = compound.stream("Workbook") ?: compound.stream("Book")
-                ?: throw IllegalStateException("复合文档里没有 Workbook 流")
-            if (stream.size < 8) throw IllegalStateException("Workbook 流过短")
+                ?: throw IllegalStateException(tr("复合文档里没有 Workbook 流", "The compound document has no Workbook stream"))
+            if (stream.size < 8) throw IllegalStateException(tr("Workbook 流过短", "Workbook stream is too short"))
 
             val cursor = BiffCursor(stream, 0)
-            val bof = cursor.next() ?: throw IllegalStateException("工作簿缺少 BOF 记录")
-            if (bof.type != REC_BOF || bof.length < 4) throw IllegalStateException("工作簿 BOF 记录无效")
+            val bof = cursor.next() ?: throw IllegalStateException(tr("工作簿缺少 BOF 记录", "Workbook is missing its BOF record"))
+            if (bof.type != REC_BOF || bof.length < 4) throw IllegalStateException(tr("工作簿 BOF 记录无效", "Workbook BOF record is invalid"))
             val version = bof.u16(0)
             if (version != 0x0600) {
                 throw SpreadsheetReadException(
@@ -350,7 +350,7 @@ private class XlsWorkbook(
             var sharedStrings: List<String> = emptyList()
 
             while (true) {
-                val record = cursor.next() ?: throw IllegalStateException("全局记录流被截断")
+                val record = cursor.next() ?: throw IllegalStateException(tr("全局记录流被截断", "Global record stream is truncated"))
                 when (record.type) {
                     REC_EOF -> break
                     REC_FILEPASS -> throw SpreadsheetReadException(
@@ -408,7 +408,7 @@ private class XlsWorkbook(
             val cursor = SharedStringCursor(segments)
             cursor.u32() // 引用总数，不需要
             val unique = cursor.u32()
-            if (unique < 0 || unique > MAX_SHARED_STRINGS) throw IllegalStateException("共享字符串数量异常")
+            if (unique < 0 || unique > MAX_SHARED_STRINGS) throw IllegalStateException(tr("共享字符串数量异常", "Shared-string count is invalid"))
             val result = ArrayList<String>(unique.toInt())
             for (index in 0 until unique.toInt()) result.add(cursor.string())
             return result
@@ -531,7 +531,7 @@ private class BiffRecord(
 
     private fun requireRange(index: Int, size: Int) {
         if (index < 0 || size < 0 || index + size > length) {
-            throw IllegalStateException("BIFF 记录长度不足")
+            throw IllegalStateException(tr("BIFF 记录长度不足", "BIFF record length is too short"))
         }
     }
 }
@@ -575,7 +575,7 @@ private class SharedStringCursor(private val segments: List<ByteArray>) {
 
     fun u8(): Int {
         advanceSegment()
-        if (segment >= segments.size) throw IllegalStateException("SST 记录被截断")
+        if (segment >= segments.size) throw IllegalStateException(tr("SST 记录被截断", "SST record is truncated"))
         return segments[segment][offset++].toInt() and 0xFF
     }
 
@@ -589,18 +589,18 @@ private class SharedStringCursor(private val segments: List<ByteArray>) {
         var highByte = flags and 0x01 != 0
         val richRuns = if (flags and 0x08 != 0) u16() else 0
         val extensionBytes = if (flags and 0x04 != 0) u32() else 0
-        if (extensionBytes < 0 || extensionBytes > Int.MAX_VALUE) throw IllegalStateException("SST 扩展长度异常")
+        if (extensionBytes < 0 || extensionBytes > Int.MAX_VALUE) throw IllegalStateException(tr("SST 扩展长度异常", "SST extended length is invalid"))
 
         val builder = StringBuilder(chars)
         var remaining = chars
         while (remaining > 0) {
-            if (segment >= segments.size) throw IllegalStateException("SST 字符串被截断")
+            if (segment >= segments.size) throw IllegalStateException(tr("SST 字符串被截断", "SST string is truncated"))
             val current = segments[segment]
             if (offset >= current.size) {
                 // 字符数据跨 CONTINUE：新段以新的 fHighByte 标志字节开头。
                 segment++
                 offset = 0
-                if (segment >= segments.size) throw IllegalStateException("SST 字符串被截断")
+                if (segment >= segments.size) throw IllegalStateException(tr("SST 字符串被截断", "SST string is truncated"))
                 highByte = u8() and 0x01 != 0
                 continue
             }
@@ -608,7 +608,7 @@ private class SharedStringCursor(private val segments: List<ByteArray>) {
             if (offset + charBytes > current.size) {
                 segment++
                 offset = 0
-                if (segment >= segments.size) throw IllegalStateException("SST 字符串被截断")
+                if (segment >= segments.size) throw IllegalStateException(tr("SST 字符串被截断", "SST string is truncated"))
                 highByte = u8() and 0x01 != 0
                 continue
             }
@@ -632,7 +632,7 @@ private class SharedStringCursor(private val segments: List<ByteArray>) {
         var remaining = count
         while (remaining > 0) {
             advanceSegment()
-            if (segment >= segments.size) throw IllegalStateException("SST 记录被截断")
+            if (segment >= segments.size) throw IllegalStateException(tr("SST 记录被截断", "SST record is truncated"))
             val available = (segments[segment].size - offset).toLong()
             val take = minOf(available, remaining)
             offset += take.toInt()
@@ -670,12 +670,12 @@ private class CompoundFile(private val bytes: ByteArray) {
     private val miniStream: ByteArray
 
     init {
-        if (bytes.size < 512) throw IllegalStateException("复合文档头部不完整")
+        if (bytes.size < 512) throw IllegalStateException(tr("复合文档头部不完整", "Compound-document header is incomplete"))
         val sectorShift = leU16(bytes, 0x1E)
-        if (sectorShift !in 9..12) throw IllegalStateException("扇区大小异常")
+        if (sectorShift !in 9..12) throw IllegalStateException(tr("扇区大小异常", "Sector size is invalid"))
         sectorSize = 1 shl sectorShift
         val miniSectorShift = leU16(bytes, 0x20)
-        if (miniSectorShift != 6) throw IllegalStateException("迷你扇区大小异常")
+        if (miniSectorShift != 6) throw IllegalStateException(tr("迷你扇区大小异常", "Mini-sector size is invalid"))
         miniSectorSize = 1 shl miniSectorShift
         miniCutoff = leU32(bytes, 0x38).toLong() and 0xFFFFFFFFL
 
@@ -704,7 +704,7 @@ private class CompoundFile(private val bytes: ByteArray) {
             }
             difatSector = leU32(sector, last * 4)
         }
-        if (fatSectors.isEmpty()) throw IllegalStateException("缺少 FAT 扇区")
+        if (fatSectors.isEmpty()) throw IllegalStateException(tr("缺少 FAT 扇区", "FAT sectors are missing"))
 
         // 2) 读 FAT 表。
         fat = IntArray(fatSectors.size * (sectorSize / 4))
@@ -717,7 +717,7 @@ private class CompoundFile(private val bytes: ByteArray) {
         // 3) 目录项。
         entries = parseDirectory(readFatChain(directoryStart))
         val root = entries.firstOrNull { it.type == 5 }
-            ?: throw IllegalStateException("复合文档缺少根目录项")
+            ?: throw IllegalStateException(tr("复合文档缺少根目录项", "The compound document has no root directory entry"))
 
         // 4) 迷你流与迷你 FAT。
         miniStream = if (root.size > 0) readFatChain(root.startSector) else ByteArray(0)
@@ -740,9 +740,9 @@ private class CompoundFile(private val bytes: ByteArray) {
 
     private fun readStream(entry: Entry): ByteArray {
         if (entry.size <= 0) return ByteArray(0)
-        if (entry.size > bytes.size * 4L) throw IllegalStateException("流长度异常")
+        if (entry.size > bytes.size * 4L) throw IllegalStateException(tr("流长度异常", "Stream length is invalid"))
         val raw = if (entry.size < miniCutoff) readMiniChain(entry.startSector) else readFatChain(entry.startSector)
-        if (raw.size < entry.size) throw IllegalStateException("流被截断")
+        if (raw.size < entry.size) throw IllegalStateException(tr("流被截断", "Stream is truncated"))
         return raw.copyOf(entry.size.toInt())
     }
 
@@ -751,12 +751,12 @@ private class CompoundFile(private val bytes: ByteArray) {
         var sectorId = start
         var guard = 0
         while (sectorId >= 0) {
-            if (sectorId >= fat.size) throw IllegalStateException("FAT 扇区号越界")
+            if (sectorId >= fat.size) throw IllegalStateException(tr("FAT 扇区号越界", "FAT sector index is out of range"))
             output.write(sector(sectorId))
             val next = fat[sectorId]
             if (next < 0) break
             sectorId = next
-            if (guard++ > fat.size + 8) throw IllegalStateException("FAT 扇区链成环")
+            if (guard++ > fat.size + 8) throw IllegalStateException(tr("FAT 扇区链成环", "FAT sector chain loops"))
         }
         return output.toByteArray()
     }
@@ -766,24 +766,24 @@ private class CompoundFile(private val bytes: ByteArray) {
         var sectorId = start
         var guard = 0
         while (sectorId >= 0) {
-            if (sectorId >= miniFat.size) throw IllegalStateException("迷你 FAT 扇区号越界")
+            if (sectorId >= miniFat.size) throw IllegalStateException(tr("迷你 FAT 扇区号越界", "Mini-FAT sector index is out of range"))
             val startOffset = sectorId * miniSectorSize
             if (startOffset < 0 || startOffset + miniSectorSize > miniStream.size) {
-                throw IllegalStateException("迷你流越界")
+                throw IllegalStateException(tr("迷你流越界", "Mini stream is out of range"))
             }
             output.write(miniStream, startOffset, miniSectorSize)
             val next = miniFat[sectorId]
             if (next < 0) break
             sectorId = next
-            if (guard++ > miniFat.size + 8) throw IllegalStateException("迷你 FAT 链成环")
+            if (guard++ > miniFat.size + 8) throw IllegalStateException(tr("迷你 FAT 链成环", "Mini-FAT sector chain loops"))
         }
         return output.toByteArray()
     }
 
     private fun sector(sectorId: Int): ByteArray {
-        if (sectorId < 0) throw IllegalStateException("扇区号非法")
+        if (sectorId < 0) throw IllegalStateException(tr("扇区号非法", "Sector index is invalid"))
         val start = (sectorId.toLong() + 1) * sectorSize
-        if (start >= bytes.size) throw IllegalStateException("扇区越界")
+        if (start >= bytes.size) throw IllegalStateException(tr("扇区越界", "Sector is out of range"))
         val end = minOf(start + sectorSize, bytes.size.toLong())
         val sector = ByteArray(sectorSize)
         System.arraycopy(bytes, start.toInt(), sector, 0, (end - start).toInt())
@@ -791,7 +791,7 @@ private class CompoundFile(private val bytes: ByteArray) {
     }
 
     private fun parseDirectory(data: ByteArray): List<Entry> {
-        if (data.size < 128) throw IllegalStateException("目录为空")
+        if (data.size < 128) throw IllegalStateException(tr("目录为空", "Directory is empty"))
         val entries = ArrayList<Entry>(data.size / 128)
         var offset = 0
         while (offset + 128 <= data.size) {

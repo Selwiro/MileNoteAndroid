@@ -11,7 +11,10 @@ import com.milenote.android.domain.i18n.tr
  * - 只有**字段开头**的引号才开启引用；字段中间的引号按普通字符处理；
  * - 引号一直没闭合时抛 [SpreadsheetReadException]（带行号），不把后面所有行吞成一行；
  * - 兼容 CRLF / LF / CR 换行与 UTF-8 BOM；
- * - 完全空白的行会被忽略。
+ * - 完全空白的行会被忽略；
+ * - **边解析边计数**：非空行超过 [SpreadsheetLimits.MAX_DATA_ROWS] + 表头时立刻抛
+ *   [SpreadsheetLimits.tooManyRows]（B32：之前是整份解析完才在 [SpreadsheetGrid] 里数行数，
+ *   百万行窄 CSV 会先 OOM，而 OOM 是 Error，兜不成「文件太大」提示）。
  *
  * 输出的是未经截断的原始字符串行，表头规整由 [SpreadsheetFiles] / [SpreadsheetGrid] 完成。
  */
@@ -53,7 +56,11 @@ class CsvReader {
         return if (semicolons > commas) ';' else ','
     }
 
-    private fun parseDelimited(text: String, delimiter: Char): List<List<String>> {
+    private fun parseDelimited(
+        text: String,
+        delimiter: Char,
+        maxDataRows: Int = SpreadsheetLimits.MAX_DATA_ROWS,
+    ): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         var row = mutableListOf<String>()
         val cell = StringBuilder()
@@ -97,7 +104,13 @@ class CsvReader {
                     }
                     row.add(cell.toString())
                     cell.clear()
-                    if (row.any { it.isNotBlank() }) rows.add(row)
+                    if (row.any { it.isNotBlank() }) {
+                        rows += row
+                        // B32：超过上限立刻抛（带行号），不把后面的内容解析成上百万元素。
+                        if (rows.size - 1 > maxDataRows) {
+                            throw SpreadsheetLimits.tooManyRows(maxDataRows, atRow = rows.size)
+                        }
+                    }
                     row = mutableListOf()
                     atFieldStart = true
                 }
@@ -119,7 +132,14 @@ class CsvReader {
             )
         }
         row.add(cell.toString())
-        if (row.any { it.isNotBlank() }) rows.add(row)
+        if (row.any { it.isNotBlank() }) {
+            rows += row
+            // 最后一行没有换行符：同样要在返回前拦住（否则靠 SpreadsheetGrid 的后置检查，
+            // 那时已经为百万行分配过内存）。
+            if (rows.size - 1 > maxDataRows) {
+                throw SpreadsheetLimits.tooManyRows(maxDataRows, atRow = rows.size)
+            }
+        }
         return rows
     }
 

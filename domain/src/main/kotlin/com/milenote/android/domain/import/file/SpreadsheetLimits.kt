@@ -1,5 +1,7 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
+
 /**
  * 表格导入的硬性上限。
  *
@@ -23,9 +25,33 @@ object SpreadsheetLimits {
     internal fun formatCount(count: Int): String =
         count.toString().reversed().chunked(3).joinToString(",").reversed()
 
-    /** 构造统一的「超过行数上限」异常。 */
-    internal fun tooManyRows(limit: Int, actual: Int? = null): SpreadsheetReadException {
-        val suffix = actual?.let { "，当前文件有 ${formatCount(it)} 行" }.orEmpty()
-        return SpreadsheetReadException("单次最多导入 ${formatCount(limit)} 行$suffix")
+    /**
+     * 构造统一的「超过行数上限」异常（B30：中英双语）。
+     *
+     * @param actual 解析完成时已知的总行数；边解析边计数时用 [atRow] 代替（不必读完整个文件）。
+     * @param atRow 触发上限时的行号（含表头，1 起）。
+     */
+    internal fun tooManyRows(limit: Int, actual: Int? = null, atRow: Int? = null): SpreadsheetReadException {
+        val detail = when {
+            actual != null -> tr(
+                "，当前文件有 %s 行",
+                ", the file has %s rows",
+                formatCount(actual),
+            )
+            atRow != null -> tr(
+                "，读到第 %s 行（含表头）已超限",
+                ", the limit was reached at row %s (header included)",
+                formatCount(atRow),
+            )
+            else -> ""
+        }
+        return SpreadsheetReadException(
+            tr(
+                "单次最多导入 %s 行%s，请拆分文件后再导入",
+                "At most %s rows can be imported%s — split the file and import again",
+                formatCount(limit),
+                detail,
+            ),
+        )
     }
 }

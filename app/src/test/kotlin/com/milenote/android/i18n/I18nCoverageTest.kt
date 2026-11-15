@@ -42,10 +42,28 @@ class I18nCoverageTest {
 
     private enum class Kind { STRING, IDENT, LPAREN, RPAREN, COMMA, PLUS, DOT, OTHER }
 
-    private data class Token(val kind: Kind, val value: String?, val line: Int)
+    private data class Token(
+        val kind: Kind,
+        val value: String?,
+        val line: Int,
+        /** 字符串字面量的原始内容（含模板占位符、未反转义）；非常量串也能据此查中文。 */
+        val rawContent: String? = null,
+    )
+
+    /** 一条「异常 / 错误文案」嫌疑：位置 + 命中的中文片段。 */
+    private data class MessageSite(val path: String, val line: Int, val text: String)
 
     /** 懒扫描一次，几个测试共用；源码有问题时在第一个测试里报出根目录错误。 */
     private val scan: ScanResult by lazy { scanAll() }
+
+    /** 懒扫描一次：异常 / 错误文案里没走 tr() 的中文字面量（B30）。 */
+    private val messageSites: List<MessageSite> by lazy {
+        val roots = locateSourceRoots()
+        val files = (collectKotlinFiles(roots.app) + collectKotlinFiles(roots.domain))
+            .distinct()
+            .sortedBy { it.path }
+        scanMessageSites(files, roots.project)
+    }
 
     @Test
     fun `scanner finds tr calls in app and domain sources`() {
@@ -180,6 +198,77 @@ class I18nCoverageTest {
         failOn(problems, "% 占位符数量不一致")
     }
 
+    /**
+     * 规则 4（B30）：异常 / 错误文案不允许直接写中文字面量。
+     *
+     * 这些文案会经 `e.message` 原样弹到界面上（导入向导、保养方案保存都是这个链路），
+     * 英文界面就会弹中文。检查范围：
+     * - 异常构造：`IllegalStateException(...)`、`SpreadsheetReadException(...)`、任何 `*Exception(` / `*Error(`；
+     * - `error(...)` / `TODO(...)`；
+     * - `require(...) { "…" }` / `requireNotNull` / `check` / `checkNotNull` 的 lambda 消息；
+     * 字符串实参本身是 `tr(...)` 调用、或拼接里包含 `tr(...)` 的，视为已翻译（中文键由规则 1–3 管）。
+     */
+    @Test
+    fun `exception messages do not embed untranslated Chinese literals`() {
+        failOn(
+            messageSites.map { "${it.path}:${it.line} 异常文案里有未翻译的中文，请改用 tr(中文, English)：${it.text}" },
+            "异常文案含中文字面量",
+        )
+    }
+
+    /**
+     * 新规则自检：人工样例里「裸中文字面量」要被抓到，`tr()` 包裹、英文、模板串、lambda 消息都要判对。
+     */
+    @Test
+    fun `message scanner detects bare Chinese and accepts tr calls`() {
+        val root = Files.createTempDirectory("i18n-messages").toFile()
+        try {
+            val appRoot = File(root, "app/src/main/kotlin/sample").apply { mkdirs() }
+            val sample = """
+                package sample
+
+                fun badOne() {
+                    throw IllegalStateException("裸中文错误")
+                }
+
+                fun badTwo() {
+                    // 模板串也要抓
+                    throw IllegalArgumentException("${'$'}name：裸中文模板")
+                }
+
+                fun badThree() {
+                    require(true) { "lambda 里的裸中文" }
+                }
+
+                fun goodOne() {
+                    throw IllegalStateException(tr("已翻译", "Translated"))
+                }
+
+                fun goodTwo() {
+                    error(tr("已翻译 %s", "Translated %s", "x"))
+                }
+
+                fun goodThree() {
+                    require(true) { tr("已翻译", "Translated") }
+                }
+
+                fun goodFour() {
+                    throw IllegalStateException("English only")
+                }
+
+                val trNote = "这里是数据不是文案"
+            """.trimIndent()
+            File(appRoot, "MessageSample.kt").writeText(sample)
+            val sites = scanMessageSites(listOf(File(appRoot, "MessageSample.kt")), root)
+            assertEquals(
+                listOf("裸中文错误", "${'$'}name：裸中文模板", "lambda 里的裸中文"),
+                sites.map { it.text },
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun failOn(problems: List<String>, title: String) {
         if (problems.isEmpty()) return
         val total = scan.calls.size
@@ -212,6 +301,154 @@ class I18nCoverageTest {
             calls += scanFile(file, file.relativeTo(projectRoot).path)
         }
         return ScanResult(files.size, calls)
+    }
+
+    // ---------------------------------------------------------------- 异常文案扫描（B30）
+
+    /** Kotlin 标准库里的「错误文案」工厂函数；异常类另按名字后缀识别。 */
+    private val messageFactories = setOf(
+        "error", "TODO", "require", "requireNotNull", "check", "checkNotNull",
+    )
+
+    /** 消息在尾随 lambda 里（`require(x) { "…" }`）而不是第一个实参里的工厂。 */
+    private val lambdaMessageFactories = setOf("require", "requireNotNull", "check", "checkNotNull")
+
+    private fun isMessageFactory(name: String): Boolean =
+        name in messageFactories || name.endsWith("Exception") || name.endsWith("Error")
+
+    /**
+     * 扫描一批文件里的「异常 / 错误文案中的中文字面量」。
+     *
+     * 解析规则：工厂名（异常构造 / `error` / `require` …）后跟 `(`，取**第一个实参**里的
+     * 中文字符串（`tr(...)` 内部的不算）；`require` / `check` 这类再看调用后紧跟的 `{ … }`。
+     * 非字面量（变量、函数返回值）无从判断，跳过；注释与字符字面量已被词法器丢弃。
+     */
+    private fun scanMessageSites(files: List<File>, projectRoot: File): List<MessageSite> {
+        val sites = mutableListOf<MessageSite>()
+        for (file in files) {
+            val path = file.relativeTo(projectRoot).path
+            val tokens = Lexer(file.readText()).lex()
+            for (i in 0 until tokens.size - 1) {
+                val token = tokens[i]
+                if (token.kind != Kind.IDENT) continue
+                val name = token.value ?: continue
+                if (!isMessageFactory(name)) continue
+                // `fun error(...)` / `override fun ...` 是定义不是调用。
+                val previous = tokens.getOrNull(i - 1)
+                if (previous?.kind == Kind.IDENT && previous.value == "fun") continue
+                if (tokens[i + 1].kind != Kind.LPAREN) continue
+                val parsed = splitTopLevelArgsWithEnd(tokens, i + 1) ?: continue
+                val (args, callEnd) = parsed
+                val firstArg = args.firstOrNull().orEmpty()
+                if (name in lambdaMessageFactories) {
+                    // 消息在尾随 lambda：`require(cond) { "…" }`
+                    val braceIndex = (callEnd + 1 until minOf(tokens.size, callEnd + 3))
+                        .firstOrNull { tokens[it].kind == Kind.OTHER && tokens[it].value == "{" }
+                    if (braceIndex != null) {
+                        collectChineseOutsideTr(tokens, braceIndex + 1, matchingBrace(tokens, braceIndex))
+                            .forEach { sites += MessageSite(path, it.line, it.rawContent.orEmpty()) }
+                    }
+                } else {
+                    collectChineseOutsideTr(tokens, 0, firstArg.size, firstArg)
+                        .forEach { sites += MessageSite(path, it.line, it.rawContent.orEmpty()) }
+                }
+            }
+        }
+        return sites
+    }
+
+    private fun splitTopLevelArgsWithEnd(tokens: List<Token>, lparenIndex: Int): Pair<List<List<Token>>, Int>? {
+        val args = mutableListOf<MutableList<Token>>()
+        var current = mutableListOf<Token>()
+        var depth = 1
+        var i = lparenIndex + 1
+        while (i < tokens.size) {
+            val token = tokens[i]
+            when (token.kind) {
+                Kind.LPAREN -> {
+                    depth++
+                    current += token
+                }
+                Kind.RPAREN -> {
+                    depth--
+                    if (depth == 0) {
+                        args += current
+                        return args to i
+                    }
+                    current += token
+                }
+                Kind.COMMA -> if (depth == 1) {
+                    args += current
+                    current = mutableListOf()
+                } else {
+                    current += token
+                }
+                else -> current += token
+            }
+            i++
+        }
+        return null
+    }
+
+    /** 从 `{` 所在下标找到配对的 `}`（找不到时返回 tokens.size）。 */
+    private fun matchingBrace(tokens: List<Token>, braceIndex: Int): Int {
+        var depth = 0
+        var i = braceIndex
+        while (i < tokens.size) {
+            val token = tokens[i]
+            if (token.kind == Kind.OTHER) {
+                if (token.value == "{") depth++
+                if (token.value == "}") {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return tokens.size
+    }
+
+    /**
+     * 在 [from]..[to) 里找中文字符串，跳过 `tr(...)` 调用内部（那是已翻译的键）。
+     * 传入 [argument] 时按该实参的 token 区间扫（实参已从原 token 流里摘出来）。
+     */
+    private fun collectChineseOutsideTr(
+        tokens: List<Token>,
+        from: Int,
+        to: Int,
+        argument: List<Token>? = null,
+    ): List<Token> {
+        val slice = argument ?: tokens.subList(from, to)
+        val found = mutableListOf<Token>()
+        var i = 0
+        while (i < slice.size) {
+            val token = slice[i]
+            if (token.kind == Kind.IDENT && token.value == "tr" &&
+                i + 1 < slice.size && slice[i + 1].kind == Kind.LPAREN
+            ) {
+                var depth = 0
+                var j = i + 1
+                while (j < slice.size) {
+                    when (slice[j].kind) {
+                        Kind.LPAREN -> depth++
+                        Kind.RPAREN -> {
+                            depth--
+                            if (depth == 0) break
+                        }
+                        else -> {}
+                    }
+                    j++
+                }
+                i = j + 1
+                continue
+            }
+            if (token.kind == Kind.STRING) {
+                val raw = token.rawContent
+                if (raw != null && hasCjkIdeograph(raw)) found += token
+            }
+            i++
+        }
+        return found
     }
 
     private data class SourceRoots(val project: File, val app: File, val domain: File)
@@ -450,6 +687,7 @@ class I18nCoverageTest {
             val startLine = line
             val raw = src.startsWith("\"\"\"", i)
             i += if (raw) 3 else 1
+            val contentStart = i
             val text = StringBuilder()
             var constant = true
             while (i < src.length) {
@@ -486,7 +724,16 @@ class I18nCoverageTest {
                     }
                 }
             }
-            tokens += Token(Kind.STRING, if (constant) text.toString() else null, startLine)
+            val contentEnd = when {
+                raw -> (i - 3).coerceAtLeast(contentStart)
+                else -> (i - 1).coerceAtLeast(contentStart)
+            }
+            tokens += Token(
+                kind = Kind.STRING,
+                value = if (constant) text.toString() else null,
+                line = startLine,
+                rawContent = src.substring(contentStart, minOf(contentEnd, src.length)),
+            )
         }
 
         /** 位于 `$`：`${...}` 递归按代码解析（里面的嵌套 tr() 也能被扫到），`$name` 只跳过标识符。 */

@@ -1,5 +1,7 @@
 package com.milenote.android.domain.export
 
+import com.milenote.android.domain.i18n.tr
+
 /**
  * 最小 XLSX 写入器（零依赖，只用 `java.util.zip`）。
  *
@@ -24,7 +26,7 @@ object XlsxWriter {
 
     /** 生成完整 `.xlsx` 字节。工作表名超长 / 重名时按 Excel 规则截断去重。 */
     fun write(sheets: List<XlsxSheet>): ByteArray {
-        require(sheets.isNotEmpty()) { "至少需要一张工作表" }
+        require(sheets.isNotEmpty()) { tr("至少需要一张工作表", "At least one worksheet is required") }
         val names = uniqueSheetNames(sheets)
         val output = java.io.ByteArrayOutputStream()
         java.util.zip.ZipOutputStream(output).use { zip ->

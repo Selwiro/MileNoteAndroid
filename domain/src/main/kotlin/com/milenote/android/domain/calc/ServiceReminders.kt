@@ -1,5 +1,6 @@
 package com.milenote.android.domain.calc
 
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.HistoryBaseline
 import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.Record
@@ -21,7 +22,9 @@ fun defaultServiceReminders(
     powertrain: String? = null,
 ): List<Reminder> {
     if (Dates.dateValue(baseDate).isEmpty() || baseKm == null || !baseKm.isFinite() || baseKm < 0) {
-        throw IllegalArgumentException("请填写有效基准日期和里程")
+        throw IllegalArgumentException(
+            tr("请填写有效基准日期和里程", "Enter a valid base date and mileage"),
+        )
     }
     return defaultServicePlan(powertrain)
         .filter { includeFirst || it.firstOnly != true }

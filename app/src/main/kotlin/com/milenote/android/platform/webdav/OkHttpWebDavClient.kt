@@ -399,36 +399,47 @@ class OkHttpWebDavClient(
         throw mapNetworkError(operation, e)
     }
 
+    /**
+     * 网络错误 → 双语 [WebDavException]。
+     *
+     * 文案直接写在 tr() 里（B30）：之前走 `networkMessage(operation, zh, en)` 的辅助函数，
+     * 中英是分开的形参，i18n 扫描看不见、也就验不了；这里展开成常量键，扫描能覆盖。
+     */
     private fun mapNetworkError(operation: String, error: IOException): WebDavException = when (error) {
         is SocketTimeoutException -> WebDavException(
-            networkMessage(operation, "连接服务器超时，请检查网络后重试", "connection timed out — check your network and retry"),
+            tr(
+                "%s 失败：连接服务器超时，请检查网络后重试",
+                "%s failed: connection timed out — check your network and retry",
+                operation,
+            ),
             error,
         )
         is UnknownHostException -> WebDavException(
-            networkMessage(operation, "无法解析服务器地址，请检查地址和网络", "cannot resolve the server address — check the URL and network"),
+            tr(
+                "%s 失败：无法解析服务器地址，请检查地址和网络",
+                "%s failed: cannot resolve the server address — check the URL and network",
+                operation,
+            ),
             error,
         )
         is SSLException -> WebDavException(
-            networkMessage(
+            tr(
+                "%s 失败：HTTPS 证书校验失败，请检查服务器证书或改用正确地址",
+                "%s failed: HTTPS certificate validation failed — check the server certificate or use the correct URL",
                 operation,
-                "HTTPS 证书校验失败，请检查服务器证书或改用正确地址",
-                "HTTPS certificate validation failed — check the server certificate or use the correct URL",
             ),
             error,
         )
         else -> WebDavException(
-            networkMessage(
+            tr(
+                "%s 失败：网络错误（%s）",
+                "%s failed: network error (%s)",
                 operation,
-                "网络错误（${error.message ?: "请稍后重试"}）",
-                "network error (${error.message ?: "try again later"})",
+                error.message ?: tr("请稍后重试", "try again later"),
             ),
             error,
         )
     }
-
-    /** 网络错误前缀：中文 `HEAD 失败：…` / 英文 `HEAD failed: …`。 */
-    private fun networkMessage(operation: String, zh: String, en: String): String =
-        "$operation ${tr("失败：$zh", "failed: $en")}"
 
     /** HTTP 状态码 → 中文异常。 */
     private fun oversizedLedger(size: Long): WebDavException = WebDavException(

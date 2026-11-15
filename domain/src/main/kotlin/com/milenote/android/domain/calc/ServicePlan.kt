@@ -1,5 +1,7 @@
 package com.milenote.android.domain.calc
 
+import com.milenote.android.domain.i18n.tr
+
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.POWERTRAIN_EV
 import com.milenote.android.domain.model.POWERTRAIN_PHEV
@@ -75,15 +77,29 @@ fun resolveServicePlan(entries: List<PlanEntry>? = null, powertrain: String? = n
         val fallback = defaults.firstOrNull { it.key == plan.key }
         val title = plan.title.orEmpty().trim()
         if (title.isEmpty() || !titles.add(title)) {
-            throw IllegalArgumentException("项目名称不能为空或重复")
+            throw IllegalArgumentException(
+                tr("项目名称不能为空或重复", "Project names must be non-empty and unique"),
+            )
         }
         val km = plan.intervalKm ?: fallback?.intervalKm
         val months = plan.intervalMonths ?: fallback?.intervalMonths
         if ((km != null && (!km.isFinite() || km <= 0)) || (months != null && (months <= 0 || months > 600))) {
-            throw IllegalArgumentException("$title：公里数须为正数，时长须为 1–600 的整月")
+            throw IllegalArgumentException(
+                tr(
+                    "%s：公里数须为正数，时长须为 1–600 的整月",
+                    "%s: distance must be positive and duration must be 1–600 whole months",
+                    title,
+                ),
+            )
         }
         if (km == null && months == null) {
-            throw IllegalArgumentException("$title：自定义项目至少填写公里数或时长")
+            throw IllegalArgumentException(
+                tr(
+                    "%s：自定义项目至少填写公里数或时长",
+                    "%s: a custom project needs a distance or a duration",
+                    title,
+                ),
+            )
         }
         plan.copy(title = title, intervalKm = km, intervalMonths = months)
     }
@@ -111,7 +127,9 @@ fun applyServicePlan(
     includeFirst: Boolean,
 ): Ledger {
     if (Dates.dateValue(baseDate).isEmpty() || baseKm == null || !baseKm.isFinite() || baseKm < 0) {
-        throw IllegalArgumentException("请填写有效基准日期和里程")
+        throw IllegalArgumentException(
+            tr("请填写有效基准日期和里程", "Enter a valid base date and mileage"),
+        )
     }
     val plan = resolveServicePlan(entries, ledger.vehicle.powertrainKey)
     var next = ledger.copy(

@@ -708,7 +708,9 @@ object DemoData {
             .filter { Categories.isEnergy(it.category) }
             .sortedByDescending { it.date }
             .firstOrNull()
-            ?: throw IllegalStateException("演示数据缺少能源费记录")
+            ?: throw IllegalStateException(
+                tr("演示数据缺少能源费记录", "Demo data is missing an energy-cost record"),
+            )
         val dateText = Dates.iso(date)
         if (ledger.isEv) {
             return listOf(
@@ -739,7 +741,9 @@ object DemoData {
             .filter { it.source == "小熊油耗" }
             .sortedByDescending { it.date }
             .firstOrNull()
-            ?: throw IllegalStateException("演示数据缺少小熊油耗记录")
+            ?: throw IllegalStateException(
+                tr("演示数据缺少小熊油耗记录", "Demo data is missing a Bear-fuel record"),
+            )
         return listOf(
             listOf("日期", "分类", "金额", "备注", "key"),
             listOf(fuel.date, "油费", 200, tr("加油付款 · 与小熊同日金额冲突", "Fuel payment · same-day amount conflict with Bear"), "demo-q-fuel-1"),

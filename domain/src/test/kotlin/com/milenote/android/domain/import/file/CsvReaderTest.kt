@@ -1,5 +1,6 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.DomainI18n
 import java.nio.charset.Charset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -135,5 +136,45 @@ class CsvReaderTest {
             reader.read("   \n\n".toByteArray(Charsets.UTF_8), "空.csv")
         }
         assertTrue(exception.message!!.contains("没有可读取"))
+    }
+
+    // ---------------- B32：20,000 行上限边解析边计数 ----------------
+
+    private fun csvWithDataRows(count: Int): String = buildString {
+        append("日期,金额\n")
+        repeat(count) { index -> append("2024-01-01,").append(index + 1).append('\n') }
+    }
+
+    @Test
+    fun `rejects more than the row limit with a readable message`() {
+        val text = csvWithDataRows(SpreadsheetLimits.MAX_DATA_ROWS + 1)
+        val exception = assertThrows(SpreadsheetReadException::class.java) {
+            reader.read(text.toByteArray(Charsets.UTF_8), "大文件.csv")
+        }
+        val message = exception.message.orEmpty()
+        assertTrue("提示里要有上限数字：$message", message.contains("20,000"))
+        assertTrue("提示里要有超限行号：$message", message.contains("20,002") || message.contains("超"))
+    }
+
+    @Test
+    fun `accepts exactly the row limit`() {
+        val text = csvWithDataRows(SpreadsheetLimits.MAX_DATA_ROWS)
+        val data = reader.read(text.toByteArray(Charsets.UTF_8), "刚好.csv")
+        assertEquals(SpreadsheetLimits.MAX_DATA_ROWS, data.rows.size)
+    }
+
+    @Test
+    fun `row limit message is translated for English ui`() {
+        DomainI18n.setEnglish(true)
+        try {
+            val exception = assertThrows(SpreadsheetReadException::class.java) {
+                reader.read(csvWithDataRows(SpreadsheetLimits.MAX_DATA_ROWS + 1).toByteArray(Charsets.UTF_8))
+            }
+            val message = exception.message.orEmpty()
+            assertTrue("英文界面不能出现中文：$message", message.none { it.code in 0x4E00..0x9FFF })
+            assertTrue(message.contains("20,000"))
+        } finally {
+            DomainI18n.setEnglish(false)
+        }
     }
 }

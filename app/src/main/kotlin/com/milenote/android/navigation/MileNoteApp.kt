@@ -424,7 +424,8 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         "${Dates.displayDots(record.date)} · ${com.milenote.android.i18n.DataLabels.category(record.category, profile)}" +
-                            " · ¥${Format.money(record.amount)}",
+                            // B42：符号跟随货币设置（1.0 锁定人民币，但不再写死 ¥）
+                            " · ${com.milenote.android.i18n.Units.currencySymbol}${Format.money(record.amount)}",
                     )
                     Text(
                         tr(
