@@ -44,6 +44,23 @@ class RecordEditorDirtyTest {
     }
 
     @Test
+    fun `switching category alone on a new record is not dirty`() {
+        val form = RecordEditorState(ledger, EditorTarget(category = "停车费"))
+        form.category = "保养"
+        assertFalse("只点分类、没写任何内容，不应弹放弃确认", form.isDirty)
+
+        form.amount = "300"
+        assertTrue(form.isDirty)
+    }
+
+    @Test
+    fun `changing only the date on a new record is not dirty`() {
+        val form = RecordEditorState(ledger, EditorTarget(category = "停车费"))
+        form.date = "2026-11-01"
+        assertFalse(form.isDirty)
+    }
+
+    @Test
     fun `discard decision survives a revert`() {
         val form = RecordEditorState(ledger, EditorTarget(category = "停车费"))
         form.amount = "25"

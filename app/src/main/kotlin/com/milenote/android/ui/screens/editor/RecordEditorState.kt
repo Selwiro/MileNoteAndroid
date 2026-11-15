@@ -133,13 +133,22 @@ internal class RecordEditorState(
     /**
      * 表单是否有未保存的改动（返回时据此确认是否丢弃）。
      *
-     * 编辑既有记录时与回填值比较；新增记录与初始默认值比较（日期默认今天，
-     * 改过日期、金额、分类、备注等任一字段即视为有改动）。
+     * 编辑既有记录时与回填值比较；新增记录只有在**写过内容**之后才比较，
+     * 避免「只点了一下别的分类 / 只动了日期」也弹放弃确认。
      */
     val isDirty: Boolean
-        get() = snapshot() != initialSnapshot
+        get() = if (original != null) {
+            snapshot() != initialSnapshot
+        } else {
+            hasUserContent() && snapshot() != initialSnapshot
+        }
 
     private val initialSnapshot: String = snapshot()
+
+    /** 新增记录里是否真的填过东西（分类、日期、加满等纯选项不算）。 */
+    private fun hasUserContent(): Boolean =
+        listOf(amount, odometer, liters, kwh, unitPrice, payable, discount, rate, distance, note, location, newProjects)
+            .any { it.isNotBlank() } || projects.isNotEmpty()
 
     private fun snapshot(): String = listOf(
         amount,

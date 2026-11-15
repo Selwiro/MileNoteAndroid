@@ -507,13 +507,14 @@ internal fun ProjectPickerSection(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(text = title, style = MaterialTheme.typography.titleSmall)
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // 芯片自带 48dp 触控区的上下留白；这里再叠 8dp 会显得很空，收到 2dp。
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             form.projectOptions.forEach { project ->
                 val selected = form.projects.contains(project)
@@ -576,7 +577,7 @@ internal fun ServiceFields(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         FormField(
             value = form.location,
