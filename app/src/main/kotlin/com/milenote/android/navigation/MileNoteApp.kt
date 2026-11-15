@@ -803,14 +803,16 @@ private fun MileNoteBottomBar(
                         contentColor = scheme.onPrimary,
                         shadowElevation = 3.dp,
                         modifier = Modifier
-                            .width(54.dp)
-                            .height(38.dp),
+                            // 底栏 48dp 后主按钮也略放大一点，跟图标比例保持一致。
+                            .width(56.dp)
+                            .height(40.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = MileNoteIcons.Add,
                                 contentDescription = tr("记一笔", "Add entry"),
-                                modifier = Modifier.size(22.dp),
+                                // 栏高 48dp（B37 后）留 8dp 上下，图标 24 → 28dp：视觉比例与旧版一致、不再显得空。
+            modifier = Modifier.size(28.dp),
                             )
                         }
                     }

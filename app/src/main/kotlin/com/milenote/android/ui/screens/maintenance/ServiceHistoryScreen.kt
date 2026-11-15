@@ -358,7 +358,7 @@ private fun ServiceHistoryCard(record: Record, ledger: Ledger, onClick: () -> Un
             ) {
                 Text(
                     text = projects?.let { raw ->
-                        raw.split("、").joinToString(tr("、", ", ")) { DataLabels.projectFor(ledger, it) }
+                        raw.split("、", "，", ",").joinToString(tr("，", ", ")) { DataLabels.projectFor(ledger, it) }
                     } ?: DataLabels.categoryFor(ledger, record.category, ledger.vehicle.energyProfile),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,

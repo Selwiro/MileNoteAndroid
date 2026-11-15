@@ -85,9 +85,13 @@ object MileNoteIcons {
 
     /** 保养（选中：实心扳手）。 */
     val MaintenanceFilled: ImageVector by lazy {
-        filledIcon(
+        // 选中态：**同一条扳手路径 + 加粗描边**，而不是换成另一套几何。
+        // 之前用 Material 实心 build 图标，方向和描边版相反（点前朝右、点后朝左），
+        // 切 tab 时扳手会「翻个面」，看起来像两个图标（2026-11-15 用户反馈）。
+        strokeIcon(
             name = "MileNote.MaintenanceFilled",
-            "M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.4-2.4c.4-.4.4-1 0-1.3z",
+            pathData = arrayOf("M14 6a5 5 0 0 0-6 6l-5 5a2 2 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-3 3-4-4z"),
+            strokeWidth = ICON_STROKE_WIDTH * 1.7f,
         )
     }
 
@@ -571,13 +575,15 @@ private fun strokeIcon(
     name: String,
     vararg pathData: String,
     autoMirror: Boolean = false,
+    /** 描边宽度；选中态图标用它做「实心感」（同几何加粗，避免切换时图标翻面）。 */
+    strokeWidth: Float = ICON_STROKE_WIDTH,
 ): ImageVector = baseBuilder(name, autoMirror).apply {
     pathData.forEach { path ->
         addPath(
             pathData = addPathNodes(path),
             fill = null,
             stroke = SolidColor(Color.Black),
-            strokeLineWidth = ICON_STROKE_WIDTH,
+            strokeLineWidth = strokeWidth,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round,
         )

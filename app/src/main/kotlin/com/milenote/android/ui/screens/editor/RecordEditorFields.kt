@@ -582,7 +582,7 @@ internal fun ProjectPickerSection(
                 modifier = Modifier.weight(1f),
                 label = { Text(tr("新增其他项目", "Add other items"), style = MaterialTheme.typography.bodyMedium) },
                 placeholder = {
-                    Text(tr("多个用顿号分隔", "Separate multiple items with commas"), style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("多个用逗号分隔", "Separate multiple items with commas"), style = MaterialTheme.typography.bodyMedium)
                 },
                 singleLine = true,
                 shape = MileNoteShapes.medium,

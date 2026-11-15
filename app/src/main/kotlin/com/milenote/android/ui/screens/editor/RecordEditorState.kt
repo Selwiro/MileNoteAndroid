@@ -516,7 +516,7 @@ internal class RecordEditorState(
                     tr(
                         "首保项目需包含：%s",
                         "The first service must include: %s",
-                        missing.joinToString("、") { DataLabels.projectFor(ledger, it) },
+                        missing.joinToString("，") { DataLabels.projectFor(ledger, it) },
                     ),
                 )
             }
