@@ -101,9 +101,9 @@ object LedgerExports {
         return wrapCalendar(events)
     }
 
-    /** 备份文件名，如 `里程志备份-2026-11-04.json`。 */
+    /** 备份文件名，如 `里程志备份-2026-11-04.json`；与固定目录备份共用 domain 命名规则。 */
     fun backupFileName(date: LocalDate = Dates.today()): String =
-        "里程志备份-${Dates.iso(date)}.json"
+        com.milenote.android.domain.backup.backupFileName(date)
 
     fun csvFileName(date: LocalDate = Dates.today()): String = "里程志-${Dates.iso(date)}.csv"
 

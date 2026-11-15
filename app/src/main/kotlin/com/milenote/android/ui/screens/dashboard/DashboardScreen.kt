@@ -67,6 +67,7 @@ import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.calc.ReminderLevel
 import com.milenote.android.domain.calc.StatsResult
 import com.milenote.android.domain.calc.currentKm
+import com.milenote.android.data.settings.backupOverdueDays
 import com.milenote.android.domain.calc.groupReminders
 import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.serviceProgress
@@ -83,6 +84,7 @@ import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.Routes
+import com.milenote.android.platform.BackupFolder
 import com.milenote.android.ui.screens.settings.SettingsPage
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
@@ -105,6 +107,10 @@ import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapeTokens
 import com.milenote.android.ui.theme.MileNoteShapes
 import com.milenote.android.ui.theme.moneyMedium
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
+import kotlinx.coroutines.launch
 import com.milenote.android.util.DataUrlImages
 import java.time.LocalDate
 
@@ -136,6 +142,39 @@ fun DashboardScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var backupBusy by remember { mutableStateOf(false) }
+    var reminderDismissed by rememberSaveable { mutableStateOf(false) }
+    // 30 天未备份：只在有固定目录时给「一键备份」，否则引导去备份页选目录（F4）。
+    val overdueDays = remember(settings.lastBackupAt) { backupOverdueDays(settings.lastBackupAt) }
+
+    fun backupNow() {
+        val raw = settings.backupFolderUri ?: return
+        if (backupBusy) return
+        scope.launch {
+            backupBusy = true
+            try {
+                val text = vm.exportBackup()
+                BackupFolder.backupNow(context, Uri.parse(raw), settings.backupKeepCount, text)
+                vm.markBackupDone()
+                vm.notifyMessage(tr("完整备份已写入固定目录", "Full backup written to the folder"))
+            } catch (t: BackupFolder.BackupFolderUnavailableException) {
+                vm.setBackupFolder(null)
+                vm.notifyMessage(
+                    tr("备份文件夹授权已失效，请重新选择", "The backup folder permission is no longer valid — choose it again"),
+                )
+            } catch (t: Throwable) {
+                vm.notifyMessage(
+                    tr("备份失败：%s", "Backup failed: %s", t.message ?: tr("无法写入备份文件夹", "Could not write to the backup folder")),
+                )
+            } finally {
+                backupBusy = false
+            }
+        }
+    }
+
     val ledger = state.activeCar
     if (ledger == null) {
         DashboardLoadState(
@@ -154,6 +193,13 @@ fun DashboardScreen(
         onEnterDemo = vm::enterDemo,
         onExitDemo = vm::exitDemo,
         onReloadLedger = vm::reloadLedger,
+        overdueDays = overdueDays,
+        hasBackupFolder = settings.backupFolderUri != null,
+        backupBusy = backupBusy,
+        onBackupNow = { backupNow() },
+        onOpenBackupPage = { onNavigate(Routes.settingsPageRoute(SettingsPage.BACKUP.key)) },
+        reminderDismissed = reminderDismissed,
+        onDismissReminder = { reminderDismissed = true },
         modifier = modifier,
     )
 }
@@ -167,6 +213,13 @@ private fun DashboardContent(
     onEnterDemo: () -> Unit,
     onExitDemo: () -> Unit,
     onReloadLedger: () -> Unit,
+    overdueDays: Int?,
+    hasBackupFolder: Boolean,
+    backupBusy: Boolean,
+    onBackupNow: () -> Unit,
+    onOpenBackupPage: () -> Unit,
+    reminderDismissed: Boolean,
+    onDismissReminder: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = Today.current
@@ -227,6 +280,33 @@ private fun DashboardContent(
                         Text(tr("重新读取数据", "Re-read the data"))
                     }
                 }
+            }
+        }
+        if (overdueDays != null && !reminderDismissed) {
+            item(key = "backup-reminder") {
+                MessageBar(
+                    message = if (hasBackupFolder) {
+                        tr(
+                            "已 %d 天没有备份。点一下写入固定目录。",
+                            "%d days since the last backup. Tap to back up to your folder.",
+                            overdueDays,
+                        )
+                    } else {
+                        tr(
+                            "已 %d 天没有备份。先选一个文件夹，以后一键备份。",
+                            "%d days since the last backup. Pick a folder once, then back up in one tap.",
+                            overdueDays,
+                        )
+                    },
+                    kind = MessageKind.WARNING,
+                    actionLabel = when {
+                        backupBusy -> tr("备份中…", "Backing up…")
+                        hasBackupFolder -> tr("一键备份", "Back up")
+                        else -> tr("去选择", "Choose")
+                    },
+                    onAction = if (hasBackupFolder) onBackupNow else onOpenBackupPage,
+                    onDismiss = onDismissReminder,
+                )
             }
         }
         item(key = "hero") {

@@ -81,6 +81,7 @@ import com.milenote.android.data.settings.backupOverdueDays
 import com.milenote.android.data.settings.formatBackupAt
 import com.milenote.android.data.update.UpdateCheckResult
 import com.milenote.android.data.update.UpdateChecker
+import com.milenote.android.domain.backup.BACKUP_FILE_KEEP_OPTIONS
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.currentKm
@@ -94,6 +95,7 @@ import com.milenote.android.i18n.AppLanguage
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
+import com.milenote.android.platform.BackupFolder
 import com.milenote.android.platform.FileExporter
 import com.milenote.android.platform.LedgerExports
 import com.milenote.android.ui.MileNoteViewModel
@@ -251,6 +253,19 @@ fun SettingsScreen(
     var pendingCsv by remember { mutableStateOf<ByteArray?>(null) }
     var pendingXlsx by remember { mutableStateOf<ByteArray?>(null) }
     var pendingRaw by remember { mutableStateOf<ByteArray?>(null) }
+    var backupFolderName by remember { mutableStateOf<String?>(null) }
+
+    // 固定目录备份：目录显示名（SAF 查询放 IO，避免组合期读 ContentResolver）。
+    LaunchedEffect(settings.backupFolderUri) {
+        val raw = settings.backupFolderUri
+        backupFolderName = if (raw == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching { BackupFolder.displayName(context, Uri.parse(raw)) }.getOrNull()
+            }
+        }
+    }
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.fromKey(initialPage).name) }
     // 「关于 → 隐私与数据 / 开源许可」是页内切换，没有导航栈；用这个标记让返回回「关于」而不是直接回「我的」。
     var cameFromAbout by rememberSaveable { mutableStateOf(false) }
@@ -394,6 +409,72 @@ fun SettingsScreen(
                         MessageKind.ERROR,
                     )
                 }
+        }
+    }
+
+    val chooseBackupFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // 持久授权：重启 / 升级后仍可写；个别 provider 不支持，失败就提示换一个。
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+            .onSuccess {
+                vm.setBackupFolder(uri.toString())
+                notify(tr("已选择备份文件夹", "Backup folder selected"), MessageKind.SUCCESS)
+            }
+            .onFailure {
+                notify(
+                    tr(
+                        "这个文件夹不支持长期授权，请换一个（例如「文档」里的子文件夹）",
+                        "This folder cannot be kept across restarts — pick another (for example a subfolder of Documents).",
+                    ),
+                    MessageKind.ERROR,
+                )
+            }
+    }
+
+    fun backupToFolder() {
+        val raw = settings.backupFolderUri
+        if (raw == null) {
+            notify(tr("先选择备份文件夹", "Choose a backup folder first"), MessageKind.WARNING)
+            return
+        }
+        scope.launch {
+            busy = true
+            try {
+                val text = vm.exportBackup()
+                val (name, pruned) = BackupFolder.backupNow(
+                    context = context,
+                    treeUri = Uri.parse(raw),
+                    keep = settings.backupKeepCount,
+                    text = text,
+                )
+                vm.markBackupDone()
+                notify(
+                    text = if (pruned > 0) {
+                        tr("已备份 %s，并清理 %d 份旧备份", "Backed up %s and removed %d old backups", name, pruned)
+                    } else {
+                        tr("已备份到「%s」：%s", "Backed up to %s: %s", backupFolderName ?: tr("备份文件夹", "backup folder"), name)
+                    },
+                    kind = MessageKind.SUCCESS,
+                    actionLabel = tr("分享", "Share"),
+                    onAction = { shareBackup(text) },
+                )
+            } catch (t: BackupFolder.BackupFolderUnavailableException) {
+                vm.setBackupFolder(null)
+                notify(
+                    tr("备份文件夹授权已失效，请重新选择", "The backup folder permission is no longer valid — choose it again"),
+                    MessageKind.WARNING,
+                )
+            } catch (t: Throwable) {
+                notify(
+                    tr("备份失败：%s", "Backup failed: %s", t.message ?: tr("无法写入备份文件夹", "Could not write to the backup folder")),
+                    MessageKind.ERROR,
+                )
+            } finally {
+                busy = false
+            }
         }
     }
 
@@ -698,6 +779,8 @@ fun SettingsScreen(
                         carsCount = cars.size,
                         recordsCount = cars.sumOf { it.records.size },
                         lastBackupAt = settings.lastBackupAt,
+                        backupFolderName = backupFolderName,
+                        backupKeepCount = settings.backupKeepCount,
                         demo = state.demo,
                         loadError = state.loadError,
                         quarantinedRaw = state.quarantinedRaw,
@@ -705,6 +788,9 @@ fun SettingsScreen(
                         busy = busy,
                         message = message,
                         onExportBackup = { exportBackupFile() },
+                        onChooseBackupFolder = { chooseBackupFolder.launch(null) },
+                        onBackupToFolder = { backupToFolder() },
+                        onChangeBackupKeep = { vm.setBackupKeepCount(it) },
                         onExportCsv = { exportCsvFile() },
                         onExportXlsx = { exportXlsxFile() },
                         onExportRaw = { exportRawFile() },
@@ -1352,6 +1438,8 @@ private fun BackupRestorePage(
     carsCount: Int,
     recordsCount: Int,
     lastBackupAt: Long?,
+    backupFolderName: String?,
+    backupKeepCount: Int,
     demo: Boolean,
     loadError: String?,
     quarantinedRaw: QuarantinedRaw?,
@@ -1359,6 +1447,9 @@ private fun BackupRestorePage(
     busy: Boolean,
     message: SettingsMessage?,
     onExportBackup: () -> Unit,
+    onChooseBackupFolder: () -> Unit,
+    onBackupToFolder: () -> Unit,
+    onChangeBackupKeep: (Int) -> Unit,
     onExportCsv: () -> Unit,
     onExportXlsx: () -> Unit,
     onExportRaw: () -> Unit,
@@ -1433,6 +1524,66 @@ private fun BackupRestorePage(
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item("folder") {
+            SectionCard(
+                title = tr("固定目录备份", "Folder backup"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                SettingsActionRow(
+                    icon = MileNoteIcons.Folder,
+                    title = tr("备份文件夹", "Backup folder"),
+                    subtitle = when {
+                        demo -> tr("演示模式下不可用", "Unavailable in demo mode")
+                        backupFolderName != null -> backupFolderName
+                        else -> tr("未选择 · 选一次后即可一键备份", "Not set — choose once, then back up in one tap")
+                    },
+                    enabled = !busy && !demo,
+                    onClick = onChooseBackupFolder,
+                )
+                SectionDivider()
+                SettingsActionRow(
+                    icon = MileNoteIcons.Export,
+                    title = tr("立即备份到此处", "Back up to this folder now"),
+                    subtitle = if (backupFolderName == null) {
+                        tr("先选择文件夹", "Choose a folder first")
+                    } else {
+                        tr(
+                            "写入 %s · 保留最近 %d 份",
+                            "Writes %s · keeps the latest %d",
+                            LedgerExports.backupFileName(),
+                            backupKeepCount,
+                        )
+                    },
+                    enabled = !busy && !demo && backupFolderName != null,
+                    onClick = onBackupToFolder,
+                )
+                SectionDivider()
+                Column(modifier = Modifier.padding(vertical = 10.dp)) {
+                    Text(
+                        text = tr("保留份数", "Keep"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SegmentedChoiceRow(
+                        options = BACKUP_FILE_KEEP_OPTIONS.map { it to it.toString() },
+                        selected = backupKeepCount,
+                        onSelect = onChangeBackupKeep,
+                    )
+                }
+                Text(
+                    text = tr(
+                        "只清理本应用写出的备份文件；同一文件夹里的其他文件不会被删除。" +
+                            "Android 11+ 不能选择存储根目录或「下载」根目录。",
+                        "Only files written by this app are cleaned up; other files in the folder are left untouched. " +
+                            "On Android 11+ the storage root and the Download root cannot be selected.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
         }

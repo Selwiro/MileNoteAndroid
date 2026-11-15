@@ -24,4 +24,13 @@ data class AppSettings(
      * 只存在本机设置里，**不进账本备份**、不参与 WebDAV 同步。
      */
     val lastBackupAt: Long? = null,
+    /**
+     * 固定目录备份（F4）：用户选过的 SAF 目录树 Uri；`null` = 还没选。
+     *
+     * 只是本机设置，不进账本、不参与同步；授权由 `takePersistableUriPermission` 持久化，
+     * 失效时清空并让用户重选。
+     */
+    val backupFolderUri: String? = null,
+    /** 固定目录备份保留份数（默认 7；只清理本应用命名规则的文件）。 */
+    val backupKeepCount: Int = com.milenote.android.domain.backup.BACKUP_FILE_KEEP_DEFAULT,
 )

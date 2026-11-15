@@ -516,6 +516,14 @@ object MileNoteIcons {
         )
     }
 
+    /** 文件夹（固定目录备份）。 */
+    val Folder: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Folder",
+            "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+        )
+    }
+
     /** 费用 CSV（表格文件）。 */
     val FileText: ImageVector by lazy {
         strokeIcon(

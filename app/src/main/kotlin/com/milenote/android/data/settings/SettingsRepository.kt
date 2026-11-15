@@ -3,6 +3,7 @@ package com.milenote.android.data.settings
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -22,6 +23,8 @@ class SettingsRepository(private val context: Context) {
         val distanceUnit = stringPreferencesKey("distance_unit")
         val volumeUnit = stringPreferencesKey("volume_unit")
         val lastBackupAt = longPreferencesKey("last_backup_at")
+        val backupFolderUri = stringPreferencesKey("backup_folder_uri")
+        val backupKeepCount = intPreferencesKey("backup_keep_count")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -41,6 +44,9 @@ class SettingsRepository(private val context: Context) {
                 ?.let { name -> com.milenote.android.i18n.VolumeUnit.entries.firstOrNull { it.name == name } }
                 ?: com.milenote.android.i18n.VolumeUnit.LITER,
             lastBackupAt = prefs[Keys.lastBackupAt],
+            backupFolderUri = prefs[Keys.backupFolderUri],
+            backupKeepCount = prefs[Keys.backupKeepCount]
+                ?: com.milenote.android.domain.backup.BACKUP_FILE_KEEP_DEFAULT,
         )
     }
 
@@ -64,6 +70,15 @@ class SettingsRepository(private val context: Context) {
 
     /** 记录最近一次 JSON 完整备份写出成功的时刻（epoch millis）。 */
     suspend fun setLastBackupAt(epochMillis: Long) = edit { it[Keys.lastBackupAt] = epochMillis }
+
+    /** 固定目录备份：保存 / 清空用户选过的 SAF 目录树 Uri。 */
+    suspend fun setBackupFolder(uri: String?) = edit { prefs ->
+        if (uri == null) prefs.remove(Keys.backupFolderUri) else prefs[Keys.backupFolderUri] = uri
+    }
+
+    /** 固定目录备份：保留份数（至少 1）。 */
+    suspend fun setBackupKeepCount(count: Int) =
+        edit { it[Keys.backupKeepCount] = count.coerceAtLeast(1) }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsDataStore.edit { prefs -> block(prefs) }

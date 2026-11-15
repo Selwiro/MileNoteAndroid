@@ -410,6 +410,11 @@ class MileNoteViewModel(
         _state.value = _state.value.copy(message = null)
     }
 
+    /** 页面侧的一次性提示（走根级消息条，与保存 / 同步提示同一通道）。 */
+    fun notifyMessage(text: String) {
+        _state.value = _state.value.copy(message = text)
+    }
+
     /** 系统分享进来的导入内容。 */
     fun setSharedImport(value: SharedImport?) {
         if (value != null && _state.value.demo) {
@@ -1430,6 +1435,16 @@ class MileNoteViewModel(
      */
     fun markBackupDone(nowMillis: Long = System.currentTimeMillis()) {
         viewModelScope.launch { settingsRepository.setLastBackupAt(nowMillis) }
+    }
+
+    /** 固定目录备份：记住 / 清空用户选过的 SAF 目录树 Uri（授权失效时传 null）。 */
+    fun setBackupFolder(uri: String?) {
+        viewModelScope.launch { settingsRepository.setBackupFolder(uri) }
+    }
+
+    /** 固定目录备份：保留份数。 */
+    fun setBackupKeepCount(count: Int) {
+        viewModelScope.launch { settingsRepository.setBackupKeepCount(count) }
     }
 
     /** 撤销最近一次导入：回到导入前的本机快照（B23）。 */
