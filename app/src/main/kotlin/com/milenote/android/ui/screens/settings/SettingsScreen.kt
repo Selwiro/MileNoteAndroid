@@ -996,7 +996,10 @@ private fun VehicleCard(
                 }
             }
 
+            // 底部一行固定预留触控目标高度：当前车只有「当前」徽标（~20dp），
+            // 其他车有 48dp 的「设为当前」按钮，不预留会让未选中卡片比选中卡片高一截。
             Row(
+                modifier = Modifier.heightIn(min = MileNoteDimens.TouchTarget),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
