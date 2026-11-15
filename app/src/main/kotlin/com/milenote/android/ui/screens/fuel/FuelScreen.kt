@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -455,6 +456,15 @@ internal fun fuelLocationIssueText(issue: FuelLocationIssue): String = when (iss
     )
 }
 
+/**
+ * 油价卡「下次调价」是否折到第二行。
+ *
+ * 和 [com.milenote.android.ui.screens.report.compareColumnScale] 同思路：固定单行放不下时按字号换行，
+ * 不裁字。1.0× 保持原来的单行右对齐；1.3× 起同一行已经塞不下「下次调价：11月26日24时」，
+ * 换到价格行下面单独一行（仍右对齐）。
+ */
+internal fun fuelCardStacksNextAdjustment(fontScale: Float): Boolean = fontScale >= 1.3f
+
 /** 打开本应用的系统设置页：让用户在被拒权限后能自己回去打开定位（B40 的「去设置」）。 */
 private fun openAppSettings(context: Context) {
     val intent = Intent(
@@ -584,8 +594,16 @@ private fun FuelPriceCard(
                 } else {
                     null
                 }
+                // 「下次调价：11月26日24时」在 1.0× 放得进价格行右侧；字号放大后同一行放不下
+                // （2.0× 时会被挤出卡片右边缘，只剩「下次调价：」），改成价格行下面单独一行。
+                val nextAdjustmentLabel = info.nextAdjustmentText?.let { raw ->
+                    // 仓库层已按语言生成日期，只有中文文案里的空格需要去掉。
+                    val clean = if (com.milenote.android.i18n.I18n.english) raw else raw.replace(" ", "")
+                    tr("下次调价：%s", "Next price change: %s", clean)
+                } ?: tr("下次调价：时间待公布", "Next price change: date to be announced")
+                val stackNextAdjustment = fuelCardStacksNextAdjustment(LocalDensity.current.fontScale)
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // 上排：标号 + 油价 + 单位 + 下次调价，同一基线（「下次调价」底边与「元/升」齐）。
+                    // 上排：标号 + 油价 + 单位 (+ 下次调价)，同一基线（「下次调价」底边与「元/升」齐）。
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = shownGrade,
@@ -609,18 +627,28 @@ private fun FuelPriceCard(
                                 .alignByBaseline()
                                 .padding(start = 4.dp),
                         )
-                        Spacer(modifier = Modifier.weight(1f))
+                        if (!stackNextAdjustment) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            Text(
+                                text = nextAdjustmentLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.onSurfaceVariant,
+                                textAlign = TextAlign.End,
+                                maxLines = 1,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                        }
+                    }
+                    if (stackNextAdjustment) {
                         Text(
-                            text = info.nextAdjustmentText?.let { raw ->
-                                // 仓库层已按语言生成日期，只有中文文案里的空格需要去掉。
-                                val clean = if (com.milenote.android.i18n.I18n.english) raw else raw.replace(" ", "")
-                                tr("下次调价：%s", "Next price change: %s", clean)
-                            } ?: tr("下次调价：时间待公布", "Next price change: date to be announced"),
+                            text = nextAdjustmentLabel,
                             style = MaterialTheme.typography.bodyMedium,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.End,
-                            maxLines = 1,
-                            modifier = Modifier.alignByBaseline(),
+                            maxLines = 2,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp),
                         )
                     }
                     HorizontalDivider(

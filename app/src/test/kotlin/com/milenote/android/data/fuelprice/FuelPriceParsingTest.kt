@@ -216,7 +216,8 @@ class FuelPriceParsingTest {
         assertEquals(10.96, info.price98!!, 1e-9)
         assertEquals(8.65, info.price0!!, 1e-9)
         assertEquals("下调", info.trend)
-        assertEquals("11 月 13 日", info.nextAdjustmentText)
+        // next.date 是生效日（11-13 00:00 生效）→ 公告口径「11 月 12 日 24 时」
+        assertEquals("11 月 12 日 24 时", info.nextAdjustmentText)
     }
 
     @Test
@@ -374,7 +375,38 @@ class FuelPriceParsingTest {
         assertFalse(info.dataStale)
         assertEquals(8.37, info.price92!!, 1e-9)
         assertEquals("搁浅", info.trend)
-        assertEquals("11 月 27 日", info.nextAdjustmentText)
+        // 2026-11-27 生效 = 11 月 26 日 24 时（2026 年第 23 轮窗口，与官方调价日历一致）
+        assertEquals("11 月 26 日 24 时", info.nextAdjustmentText)
+    }
+
+    @Test
+    fun `next adjustment date is read from the oil price json`() {
+        // 真实文件末尾形态（`next` 对象在 500 KB 文件的最后；传入尾部片段也要能解析）
+        val text = """..."elapsed_days":2},"next":{"date":"2026-11-27","days_left":12,"direction":"可能搁浅","last_adjust":"2026-11-13","disclaimer":"……"}}"""
+        assertEquals(
+            "11 月 26 日 24 时",
+            FuelPriceRepository.parseNextAdjustmentDate(text, LocalDate.parse("2026-11-15")),
+        )
+    }
+
+    @Test
+    fun `json without a usable next date yields nothing`() {
+        val today = LocalDate.parse("2026-11-15")
+        // 没有 next / 没有 date 字段（截断的尾部同样适用）
+        assertNull(FuelPriceRepository.parseNextAdjustmentDate("""..."next":{"days_left":12}}""", today))
+        assertNull(FuelPriceRepository.parseNextAdjustmentDate("""...{"provinces_data":{}}""", today))
+        assertNull(FuelPriceRepository.parseNextAdjustmentDate("", today))
+        // 上一轮窗口（已生效）与远期脏值都不展示
+        assertNull(
+            FuelPriceRepository.parseNextAdjustmentDate(
+                """"next":{"date":"2026-11-13","days_left":0}""", today,
+            ),
+        )
+        assertNull(
+            FuelPriceRepository.parseNextAdjustmentDate(
+                """"next":{"date":"2027-06-01","days_left":200}""", today,
+            ),
+        )
     }
 
     @Test

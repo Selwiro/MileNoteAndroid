@@ -67,4 +67,30 @@ class FuelPriceAdjustmentTest {
         assertNull(nextAdjustmentLabel(month = 2, day = 30, today = date("2026-11-06")))
         assertNull(nextAdjustmentLabel(month = 2, day = 29, today = date("2026-11-06")))
     }
+
+    // ---- 生效日口径（oil-price 数据集的 next.date）----
+
+    @Test
+    fun `effective date shows as the announcement day 24h`() {
+        // 2026-11-27 00:00 生效 = 公告口径 11 月 26 日 24 时（2026 年第 23 轮调价窗口）
+        assertEquals(
+            "11 月 26 日 24 时",
+            effectiveAdjustmentLabel(date("2026-11-27"), date("2026-11-15")),
+        )
+        // 生效日就在明天 → 公告日是今天
+        assertEquals(
+            "11 月 15 日 24 时",
+            effectiveAdjustmentLabel(date("2026-11-16"), date("2026-11-15")),
+        )
+    }
+
+    @Test
+    fun `effective dates in the past or too far ahead are hidden`() {
+        assertNull(effectiveAdjustmentLabel(null, date("2026-11-15")))
+        // 上一轮（11-13 生效）已过，不能当成「下次」
+        assertNull(effectiveAdjustmentLabel(date("2026-11-13"), date("2026-11-15")))
+        assertNull(effectiveAdjustmentLabel(date("2026-10-29"), date("2026-11-15")))
+        // 超过 31 天的远期日期不展示（数据源异常 / 跨年脏值）
+        assertNull(effectiveAdjustmentLabel(date("2027-03-01"), date("2026-11-15")))
+    }
 }

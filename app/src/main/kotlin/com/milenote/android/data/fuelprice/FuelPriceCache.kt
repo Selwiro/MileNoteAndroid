@@ -52,8 +52,13 @@ class FuelPriceCache(context: Context) {
          *
          * - 6（2026-11-15）：修掉 JSON null 被当成字符串 "null" 的解析问题，旧缓存里的
          *   「下次调价：null」作废重抓。
+         * - 7（2026-11-15）：下次调价补上「主源没给日期时查 oil-price 的 next.date」，
+         *   且生效日统一换算成公告日 24 时（11-27 生效 → 11 月 26 日 24 时），旧缓存的
+         *   「时间待公布 / 11 月 27 日」一并作废。
+         * - 8（2026-11-15）：7 的补充查询用 Range 取尾部（CDN 返回压缩片段解析不出）已改整包，
+         *   7 版留下过「时间待公布」的缓存，再作废一次。
          */
-        const val CACHE_VERSION = 6
+        const val CACHE_VERSION = 8
 
         private val json = Json { ignoreUnknownKeys = true }
 

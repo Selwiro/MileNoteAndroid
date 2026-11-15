@@ -27,3 +27,23 @@ internal fun nextAdjustmentLabel(month: Int, day: Int, today: LocalDate): String
     // 所以这里不做语言切换——否则抓取发生在语言偏好加载完成前时，缓存里会留下英文格式。
     return "${target.monthValue} 月 ${target.dayOfMonth} 日 24 时"
 }
+
+/**
+ * 「生效日」→ 展示文案（公告日 24 时口径）。
+ *
+ * 不是所有上游都给「11 月 26 日 24 时」这种原文：部分数据集（oil-price 的 `next.date`、
+ * `meta.date_to`）给的是**生效日**——`2026-11-27` 表示 27 日 0 时生效，即公告口径的
+ * 「11 月 26 日 24 时」。直接显示 27 日会让用户以为是 27 日调价（多一天）。
+ *
+ * 与 [nextAdjustmentLabel] 共用同一套窗口规则（只认今天之后 31 天内的「下一次」，
+ * 生效时刻已过 / 数据太旧都返回 null，由界面显示「时间待公布」）。
+ *
+ * @param effective 生效日（次日 0 时），可空
+ * @param today 当前日期（上海时区），测试可注入
+ */
+internal fun effectiveAdjustmentLabel(effective: LocalDate?, today: LocalDate): String? {
+    if (effective == null) return null
+    val announce = effective.minusDays(1)
+    if (announce.isBefore(today.minusDays(1)) || announce.isAfter(today.plusDays(31))) return null
+    return "${announce.monthValue} 月 ${announce.dayOfMonth} 日 24 时"
+}

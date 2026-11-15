@@ -213,10 +213,54 @@ class FuelPriceRepository(
             }.getOrNull()
             if (info == null || !info.hasPrice) continue
             val labeled = info.copy(source = source.id)
-            if (!info.dataStale) return@withContext withCityPrice(labeled, location)
+            if (!info.dataStale) return@withContext complete(withCityPrice(labeled, location))
             if (staleFallback == null) staleFallback = labeled
         }
-        staleFallback?.let { withCityPrice(it, location) }
+        staleFallback?.let { complete(withCityPrice(it, location)) }
+    }
+
+    /**
+     * 补齐主源缺失的字段。
+     *
+     * fanzbus 的价格最轻（4 KB）但「下次调价」经常是 JSON null，而 oil-price 数据集的
+     * `next.date` 是有的。这里只在主源没给日期时补一次查询，且按「今天」在进程内缓存：
+     * 同一天切城市 / 换车不会重复请求。
+     */
+    private fun complete(info: FuelPriceInfo): FuelPriceInfo =
+        if (info.nextAdjustmentText != null) info else info.copy(nextAdjustmentText = nextAdjustmentFromCalendar())
+
+    /** 进程内缓存（按上海时区的「今天」）：日期只在调价窗口那一天变，同一天不必反复取。 */
+    @Volatile
+    private var adjustmentCache: Pair<LocalDate, String?>? = null
+
+    private fun nextAdjustmentFromCalendar(): String? {
+        val today = LocalDate.now(SHANGHAI)
+        adjustmentCache?.takeIf { it.first == today }?.let { return it.second }
+        val label = runCatching { fetchNextAdjustmentBody(today) }.getOrNull()
+        // 失败（离线 / 超时）不写缓存：这一趟拿不到，下次进页面还能再试。
+        if (label != null) adjustmentCache = today to label
+        return label
+    }
+
+    /**
+     * 取 oil-price 数据集的 `next.date`（含生效日换算）。
+     *
+     * 为什么整包下载：`next` 对象在 500 KB 文件的最后，本想只取尾部几 KB，
+     * 但实测 jsDelivr 对带 Range 的请求返回的是**压缩流的末尾片段**（解码后仍是乱码），
+     * 解析不出字段。这里退化为整包 GET（OkHttp 自带 gzip 解压），而且只在「主源没给日期」
+     * 时才会走到、同一天进程内只请求一次，缓存命中后整车页面都不再下载。
+     */
+    private fun fetchNextAdjustmentBody(today: LocalDate): String? {
+        val request = Request.Builder()
+            .url(OIL_PRICE_PRICES_URL)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json")
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            return parseNextAdjustmentDate(body, today)
+        }
     }
 
     /**
@@ -342,7 +386,7 @@ class FuelPriceRepository(
         client,
         id = "oil-price-json",
         urls = listOf(
-            "https://cdn.jsdelivr.net/gh/wangzhaolong616-byte/oil-price@main/docs/prices.json",
+            OIL_PRICE_PRICES_URL,
             "https://raw.githubusercontent.com/wangzhaolong616-byte/oil-price/main/docs/prices.json",
         ),
     ) {
@@ -504,6 +548,25 @@ class FuelPriceRepository(
                 if (byCity.isNotEmpty()) result[provinceName] = byCity
             }
             return result
+        }
+
+        /** oil-price 数据集（东方财富零售价 + 调价窗口日期）在 jsDelivr 上的地址。 */
+        internal const val OIL_PRICE_PRICES_URL =
+            "https://cdn.jsdelivr.net/gh/wangzhaolong616-byte/oil-price@main/docs/prices.json"
+
+        /**
+         * 从 `prices.json` 文本里取出 `next.date` 并换算成「公告日 24 时」。
+         *
+         * 文件末尾形如 `..."next":{"date":"2026-11-27","days_left":12,...}}`；
+         * `next` 对象里没有嵌套对象，所以用窄正则取这一个字段即可（传入尾部片段也能工作）。
+         */
+        internal fun parseNextAdjustmentDate(text: String, today: LocalDate): String? {
+            val iso = Regex("\"next\"\\s*:\\s*\\{[^}]*?\"date\"\\s*:\\s*\"(\\d{4}-\\d{2}-\\d{2})\"")
+                .find(text)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?: return null
+            return effectiveAdjustmentLabel(parseIsoDate(iso), today)
         }
 
         /**
@@ -727,7 +790,8 @@ class FuelPriceRepository(
             val adjustment = if (stale) {
                 null
             } else {
-                next?.text("date")?.let { isoAdjustmentLabel(it, today) }
+                // `next.date` 是**生效日**（如 2026-11-27 00:00 生效 = 11 月 26 日 24 时）。
+                effectiveAdjustmentLabel(parseIsoDate(next?.text("date")), today)
             }
             return FuelPriceInfo(
                 regionName = regionName,
@@ -776,12 +840,6 @@ class FuelPriceRepository(
          * 上游 `next.date` 是**生效日期**（13 日 0 时生效 = 12 日 24 时），所以这里不再追加「24 时」，
          * 避免显示成「13 日 24 时」而晚一天。离今天太远/非法返回 null。
          */
-        private fun isoAdjustmentLabel(isoDate: String, today: LocalDate): String? {
-            val target = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return null
-            if (target.isBefore(today.minusDays(1)) || target.isAfter(today.plusDays(31))) return null
-            return "${target.monthValue} 月 ${target.dayOfMonth} 日"
-        }
-
         /**
          * 通用 JSON 解析：不绑定某个 API 的 schema。
          *
