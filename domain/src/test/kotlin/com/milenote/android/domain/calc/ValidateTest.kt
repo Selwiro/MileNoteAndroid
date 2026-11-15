@@ -82,6 +82,23 @@ class ValidateTest {
     }
 
     @Test
+    fun `repair records accept a missing odometer`() {
+        // 2026-11-15 用户要求：维修的里程改为选填（只有保养影响保养周期、必须填）。
+        val repair = Record(
+            id = "r1",
+            date = "2026-11-01",
+            category = "维修",
+            amount = 120.0,
+            odometer = null,
+        )
+        assertEquals("", validateRecord(repair, requireServiceOdometer = true))
+        assertNull(recordIssue(repair, requireServiceOdometer = true))
+        // 旧分类「维修保养」归一成保养，仍按保养要求里程。
+        val legacy = repair.copy(category = "维修保养")
+        assertTrue(validateRecord(legacy, requireServiceOdometer = true).isNotEmpty())
+    }
+
+    @Test
     fun `pre-1970 dates are rejected only when the caller asks`() {
         val old = evRecord().copy(date = "1899-12-31")
         assertEquals("", validateRecord(old))

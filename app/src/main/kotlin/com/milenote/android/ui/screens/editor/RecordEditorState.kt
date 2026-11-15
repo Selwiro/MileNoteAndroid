@@ -253,7 +253,7 @@ internal class RecordEditorState(
     val isService: Boolean
         get() = Categories.normalize(category) in SERVICE_CATEGORIES
 
-    /** 是否必须填写总里程（保养 / 维修 / 旧维修保养；汽车美容不强制）。 */
+    /** 是否必须填写总里程（只有保养必填；维修 / 汽车美容选填，2026-11-15 用户要求）。 */
     val requiresOdometer: Boolean
         get() = Categories.normalize(effectiveCategory) in ODOMETER_REQUIRED_CATEGORIES
 

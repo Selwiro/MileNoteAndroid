@@ -7,12 +7,14 @@ import com.milenote.android.domain.i18n.tr
 val SERVICE_CATEGORIES: Set<String> = setOf("维修保养", "保养", "维修", "汽车美容")
 
 /**
- * 必须填写总里程的分类（B12）。
+ * 必须填写总里程的分类（B12；2026-11-15 按用户要求收窄）。
  *
- * 汽车美容（洗车 / 打蜡）虽然也是服务类，但与保养周期无关，不强制里程；
- * 保养 / 维修 / 旧「维修保养」会更新保养提醒，必须填。
+ * 只有**保养**会更新保养提醒（按最近一次实际保养的日期 + 里程起算），所以必须填。
+ * 维修 / 汽车美容虽然也是服务类，但不影响保养周期，里程改为**选填**：
+ * 补胎、修空调这类小修用户未必记得当时读数，强制填写只会逼人乱填/放弃记录。
+ * 旧分类「维修保养」由 [Categories.normalize] 归一成「保养」，因此不必单列。
  */
-val ODOMETER_REQUIRED_CATEGORIES: Set<String> = setOf("维修保养", "保养", "维修")
+val ODOMETER_REQUIRED_CATEGORIES: Set<String> = setOf("保养")
 
 /**
  * 校验失败指向的表单字段。
@@ -53,7 +55,7 @@ fun recordIssue(
     /**
      * 是否要求服务类记录必须填总里程。
      *
-     * 编辑器 / 导入向导传 true（B12：所有保养记录总里程必填）；备份校验保持默认 false，
+     * 编辑器 / 导入向导传 true（B12：保养记录总里程必填，维修 / 汽车美容选填）；备份校验保持默认 false，
      * 否则老备份里没里程的保养记录会被整份拒绝，破坏 `version:2` 兼容。
      */
     requireServiceOdometer: Boolean = false,
@@ -102,7 +104,7 @@ fun recordIssue(
     ) {
         return RecordIssue(
             RecordField.ODOMETER,
-            tr("保养 / 维修记录请填写总里程", "Enter the odometer for service or repair records"),
+            tr("保养记录请填写总里程", "Enter the odometer for maintenance records"),
         )
     }
     if (record.kind == "manual" && !((record.rate ?: 0.0) > 0)) {

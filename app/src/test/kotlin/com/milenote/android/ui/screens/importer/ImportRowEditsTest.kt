@@ -102,14 +102,17 @@ class ImportRowEditsTest {
 
     @Test
     fun `editing category uses standard categories without custom config`() {
-        // B12：维修 / 保养需要总里程；编辑分类时一并填里程才通过。
+        // 维修的里程是选填（2026-11-15 用户要求）；保养仍必填。
         val fixed = applyRowEdit(item(record(category = "")), ImportRowEdit(category = "维修", odometer = "42000"))
 
         assertEquals("维修", fixed.record.category)
         assertTrue(fixed.error.isEmpty())
 
-        val missingOdometer = applyRowEdit(item(record(category = "")), ImportRowEdit(category = "维修"))
-        assertTrue(missingOdometer.error.contains("总里程"))
+        val repairWithoutOdometer = applyRowEdit(item(record(category = "")), ImportRowEdit(category = "维修"))
+        assertTrue(repairWithoutOdometer.error.isEmpty())
+
+        val maintenanceWithoutOdometer = applyRowEdit(item(record(category = "")), ImportRowEdit(category = "保养"))
+        assertTrue(maintenanceWithoutOdometer.error.contains("总里程"))
     }
 
     @Test
