@@ -573,11 +573,12 @@ class MileNoteViewModel(
                     tr("已删除 %d 条记录，保养提醒已恢复", "Deleted %d records — service reminders restored", count)
                 else -> tr("已删除 %d 条记录", "Deleted %d records", count)
             }
+            val shown = savedMessage(message)
             _state.value = _state.value.copy(
                 recordDelete = null,
                 editor = _state.value.editor?.takeIf { it.record?.id !in ids },
-                deleteUndo = carId?.let { DeleteUndo(message = message, carId = it, deleted = deleted) },
-                message = savedMessage(message),
+                deleteUndo = carId?.let { DeleteUndo(message = shown, carId = it, deleted = deleted) },
+                message = shown,
             )
         }
     }
@@ -742,6 +743,8 @@ class MileNoteViewModel(
                 viewModelScope.launch {
                     runCatching { repository.deleteData("one", id) }
                         .onSuccess {
+                            // 删除前留了快照：让「备份与还原」页立刻出现回滚入口。
+                            runCatching { refreshReplaceSnapshot() }
                             _state.value = _state.value.copy(
                                 message = savedMessage(tr("已删除车辆", "Vehicle deleted")),
                             )
@@ -798,6 +801,7 @@ class MileNoteViewModel(
                 viewModelScope.launch {
                     runCatching { repository.deleteData("all") }
                         .onSuccess {
+                            runCatching { refreshReplaceSnapshot() }
                             _state.value = _state.value.copy(
                                 message = savedMessage(tr("已清空数据", "All data cleared")),
                             )

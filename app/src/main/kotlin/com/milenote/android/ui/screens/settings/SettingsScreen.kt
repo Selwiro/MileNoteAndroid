@@ -1549,8 +1549,8 @@ private fun BackupRestorePage(
                         icon = MileNoteIcons.Refresh,
                         title = tr("回滚到上次覆盖前", "Roll back to before the last overwrite"),
                         subtitle = tr(
-                            "快照：%s（WebDAV 下载或还原前的本机数据）",
-                            "Snapshot: %s (local data before a WebDAV download or restore)",
+                            "快照：%s（WebDAV 下载、还原或删除前的本机数据）",
+                            "Snapshot: %s (local data before a WebDAV download, restore or delete)",
                             formatBackupAt(replaceSnapshot.savedAtMillis),
                         ),
                         enabled = !busy && !demo,

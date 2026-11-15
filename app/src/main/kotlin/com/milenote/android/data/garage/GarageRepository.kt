@@ -290,11 +290,11 @@ class GarageRepository(
         store.latestQuarantined() ?: if (writeBlocked) store.currentFile().takeIf { it.exists() } else null
     }
 
-    /** 最近一次整体覆盖前的本地快照（设置页据此显示「回滚」入口）。 */
+    /** 最近一次破坏性操作（整体覆盖 / 删除）前的本地快照（设置页据此显示「回滚」入口）。 */
     suspend fun latestReplaceSnapshot(): File? = withContext(io) { store.latestSnapshot() }
 
     /**
-     * 回滚到最近一次覆盖前的快照。
+     * 回滚到最近一次破坏性操作（覆盖 / 删除）前的快照。
      *
      * 回滚本身也写快照（便于再次反悔），但不会递归回滚到回滚前状态。
      *
