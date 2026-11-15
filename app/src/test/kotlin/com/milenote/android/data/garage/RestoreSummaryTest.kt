@@ -6,6 +6,7 @@ import com.milenote.android.domain.backup.BackupPayload
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.ui.screens.importer.inspectBackup
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -130,5 +131,37 @@ class RestoreSummaryTest {
     fun `inspect backup rejects non ledger json with a non blank message`() {
         val error = assertThrows(BackupException::class.java) { inspectBackup("""{"version":3,"cars":[]}""") }
         assertTrue(error.message?.isNotBlank() == true)
+    }
+
+    // ---- UX3：恢复后自动切车的摘要 ----
+
+    @Test
+    fun `summary mentions the car it switched to`() {
+        val summary = RestoreSummary(cars = 2, records = 12, reminders = 1, switchedTo = "我的爱车")
+        val message = restoreSummaryMessage(summary)
+        assertTrue(message, message.contains("已恢复备份"))
+        assertTrue(message, message.contains("已切换到"))
+        assertTrue(message, message.contains("我的爱车"))
+    }
+
+    @Test
+    fun `summary without a switch keeps the plain wording`() {
+        val message = restoreSummaryMessage(RestoreSummary(cars = 1, records = 3, reminders = 0))
+        assertTrue(message, message.contains("已恢复备份"))
+        assertFalse(message, message.contains("已切换到"))
+    }
+
+    @Test
+    fun `summary is translated for english ui`() {
+        com.milenote.android.i18n.I18n.applyEnglish(true)
+        try {
+            val message = restoreSummaryMessage(
+                RestoreSummary(cars = 2, records = 12, reminders = 1, switchedTo = "My car"),
+            )
+            assertFalse("英文界面不能落中文：$message", message.any { it.code in 0x4E00..0x9FFF })
+            assertTrue(message, message.contains("switched to"))
+        } finally {
+            com.milenote.android.i18n.I18n.applyEnglish(false)
+        }
     }
 }

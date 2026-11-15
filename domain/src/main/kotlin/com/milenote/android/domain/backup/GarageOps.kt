@@ -206,6 +206,26 @@ object GarageOps {
         return result
     }
 
+    /**
+     * 恢复备份后自动选中的车辆（UX3）。
+     *
+     * 新装 App 恢复备份时，`mergeGarage` 按 Web 口径保持 `activeId` 不变，
+     * 于是当前车还是那辆刚建的空白「我的车」——首页空空、报告全 0，用户以为恢复失败。
+     * 这里在恢复后把当前车换成「第一辆有内容的车」（有记录或提醒）：
+     * - 当前车本来就有内容 → 不动（用户主动选过的车要尊重）；
+     * - 当前车是空车 → 换成第一辆有内容的车；一辆都没有 → 保持原样。
+     */
+    fun activeCarWithRecords(garage: Garage): Garage {
+        val active = garage.activeCar
+        if (active != null && active.hasContent()) return garage
+        val candidate = garage.cars.firstOrNull { it.hasContent() } ?: return garage
+        if (candidate.id == garage.activeId) return garage
+        return garage.copy(activeId = candidate.id)
+    }
+
+    /** 这辆车是否有内容（有记录或提醒）：用于恢复后自动选车，空车不抢焦点。 */
+    private fun Ledger.hasContent(): Boolean = records.isNotEmpty() || reminders.isNotEmpty()
+
     /** 恢复 v1 单车备份：只合并到当前车辆（Web `mergeGarage` 的 version===1 分支）。 */
     fun mergeLegacyBackup(current: Garage, legacy: Ledger): Garage {
         validateLedger(legacy)

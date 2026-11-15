@@ -25,6 +25,7 @@ class WebDavSyncStateStore(private val context: Context) {
         val lastAutoSyncAt = longPreferencesKey("last_auto_sync_at")
         val lastAutoSyncResult = stringPreferencesKey("last_auto_sync_result")
         val lastProblemKind = stringPreferencesKey("last_problem_kind")
+        val lastProblemCategory = stringPreferencesKey("last_problem_category")
         val lastProblemMessage = stringPreferencesKey("last_problem_message")
         val lastProblemAt = longPreferencesKey("last_problem_at")
     }
@@ -39,6 +40,7 @@ class WebDavSyncStateStore(private val context: Context) {
             lastAutoSyncAt = prefs[Keys.lastAutoSyncAt],
             lastAutoSyncResult = prefs[Keys.lastAutoSyncResult],
             lastProblemKind = prefs[Keys.lastProblemKind],
+            lastProblemCategory = prefs[Keys.lastProblemCategory],
             lastProblemMessage = prefs[Keys.lastProblemMessage],
             lastProblemAt = prefs[Keys.lastProblemAt],
         )
@@ -55,6 +57,7 @@ class WebDavSyncStateStore(private val context: Context) {
             state.lastAutoSyncResult?.let { prefs[Keys.lastAutoSyncResult] = it } ?: prefs.remove(Keys.lastAutoSyncResult)
             state.lastProblemKind?.let { prefs[Keys.lastProblemKind] = it } ?: prefs.remove(Keys.lastProblemKind)
             state.lastProblemMessage?.let { prefs[Keys.lastProblemMessage] = it } ?: prefs.remove(Keys.lastProblemMessage)
+            state.lastProblemCategory?.let { prefs[Keys.lastProblemCategory] = it } ?: prefs.remove(Keys.lastProblemCategory)
             state.lastProblemAt?.let { prefs[Keys.lastProblemAt] = it } ?: prefs.remove(Keys.lastProblemAt)
         }
     }

@@ -339,7 +339,12 @@ class WebDavAutoSyncEngine(
                 t.message ?: tr("网络或服务器错误", "Network or server error"),
             )
         }
-        val problem = WebDavProblem(WebDavProblemKind.ERROR, message, clock())
+        val problem = WebDavProblem(
+            kind = WebDavProblemKind.ERROR,
+            message = message,
+            at = clock(),
+            category = classifyWebDavFailure(t),
+        )
         runCatching {
             webDav.recordSyncOutcome(problem, autoResult = message.takeIf { recordAutoResult })
         }
@@ -362,7 +367,11 @@ class WebDavAutoSyncEngine(
             AutoSyncOutcome.Kind.CONFLICT -> WebDavProblemKind.CONFLICT
             AutoSyncOutcome.Kind.NEEDS_PASSWORD -> WebDavProblemKind.NEEDS_PASSWORD
         }
-        return WebDavProblem(kind, message, clock())
+        val category = when (kind) {
+            WebDavProblemKind.NEEDS_PASSWORD -> WebDavFailureCategory.ENCRYPTION
+            else -> WebDavFailureCategory.OTHER
+        }
+        return WebDavProblem(kind, message, clock(), category)
     }
 
     /** 同步过程中本地账本又被改过（用户刚保存了一笔）：本次判断作废，重读重算。 */

@@ -62,6 +62,8 @@ data class WebDavProblem(
     val kind: WebDavProblemKind,
     val message: String,
     val at: Long,
+    /** 归一类别（UX6）：界面据此给「一句话说明 + 一个动作按钮」。 */
+    val category: WebDavFailureCategory = WebDavFailureCategory.OTHER,
 )
 
 /**
@@ -83,6 +85,8 @@ data class WebDavSyncState(
     val lastAutoSyncResult: String? = null,
     /** 最近一次同步异常类别（[WebDavProblemKind] 名称）；正常时为 null。 */
     val lastProblemKind: String? = null,
+    /** 最近一次同步异常的归一类别（UX6，旧版本写入时为 null → OTHER）。 */
+    val lastProblemCategory: String? = null,
     /** 最近一次同步异常说明；正常时为 null。 */
     val lastProblemMessage: String? = null,
     /** 最近一次同步异常时刻（毫秒）；正常时为 null。 */
@@ -100,7 +104,10 @@ data class WebDavSyncState(
             val kind = lastProblemKind
                 ?.let { name -> WebDavProblemKind.entries.firstOrNull { it.name == name } }
                 ?: WebDavProblemKind.ERROR
-            return WebDavProblem(kind = kind, message = message, at = lastProblemAt ?: 0L)
+            val category = lastProblemCategory
+                ?.let { name -> WebDavFailureCategory.entries.firstOrNull { it.name == name } }
+                ?: WebDavFailureCategory.OTHER
+            return WebDavProblem(kind = kind, message = message, at = lastProblemAt ?: 0L, category = category)
         }
 }
 
@@ -122,6 +129,7 @@ fun WebDavSyncState.afterSynced(
     lastSyncAt = now,
     lastProblemKind = null,
     lastProblemMessage = null,
+    lastProblemCategory = null,
     lastProblemAt = null,
 )
 
@@ -142,6 +150,8 @@ fun WebDavSyncState.afterSyncOutcome(
     lastAutoSyncResult = autoResult ?: lastAutoSyncResult,
     lastProblemKind = problem?.kind?.name,
     lastProblemMessage = problem?.message,
+    // 只有 ERROR 才需要细分动作；冲突 / 需密码有各自的流程，类别置空即可。
+    lastProblemCategory = problem?.category?.name,
     lastProblemAt = problem?.at,
 )
 

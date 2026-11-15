@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.settings
 
+import com.milenote.android.data.webdav.WebDavFailureCategory
 import com.milenote.android.data.webdav.WebDavProblemKind
 import com.milenote.android.i18n.I18n
 import org.junit.After
@@ -110,5 +111,43 @@ class MineSyncStatusTest {
         )
         assertEquals("上次备份 昨天 · 同步已开启", line.text)
         assertFalse(line.warn)
+    }
+
+    // ---- UX6：失败短标签按归一类别给方向 ----
+
+    @Test
+    fun `sync failure label tells which category to fix`() {
+        assertEquals(
+            "同步失败·认证",
+            mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.AUTH).text,
+        )
+        assertEquals(
+            "同步失败·权限",
+            mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.PERMISSION).text,
+        )
+        assertEquals(
+            "同步失败·文件不存在",
+            mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.NOT_FOUND).text,
+        )
+        assertEquals(
+            "同步失败·网络",
+            mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.NETWORK).text,
+        )
+        assertEquals(
+            "同步失败·加密密码",
+            mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.ENCRYPTION).text,
+        )
+        // 未分类（旧数据 / 其它错误）保持原来的短标签
+        assertEquals("同步失败", mineSyncStatus(true, WebDavProblemKind.ERROR, null).text)
+        assertEquals("同步失败", mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.OTHER).text)
+    }
+
+    @Test
+    fun `sync failure labels are translated for english ui`() {
+        I18n.applyEnglish(true)
+        val status = mineSyncStatus(true, WebDavProblemKind.ERROR, WebDavFailureCategory.AUTH)
+        assertEquals("Sync failed: auth", status.text)
+        assertTrue(status.warn)
+        assertFalse(status.text.any { it.code in 0x4E00..0x9FFF })
     }
 }

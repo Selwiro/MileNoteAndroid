@@ -25,6 +25,8 @@ data class RestoreSummary(
     val cars: Int,
     val records: Int,
     val reminders: Int,
+    /** 恢复后自动切换到的车辆名（[GarageOps.activeCarWithRecords]，UX3）；没切换为 null。 */
+    val switchedTo: String? = null,
 )
 
 /**
@@ -357,9 +359,16 @@ class GarageRepository(
         // 读基线、合并、替换必须在同一把锁内，避免并发写丢更新。
         val current = _garage.value ?: loadLocked()
         val payload = BackupCodec.decodePayload(text)
-        val merged = withContext(io) { BackupCodec.restore(current, text) }
+        val restored = withContext(io) { BackupCodec.restore(current, text) }
+        // UX3：新装时当前车是刚建的空白车，恢复后自动切到第一辆有内容的车，
+        // 否则首页/报告全 0，用户会以为恢复失败。
+        val merged = GarageOps.activeCarWithRecords(restored)
+        val switchedTo = merged.activeCar
+            ?.takeIf { it.id != restored.activeId }
+            ?.vehicle?.name
+            ?.takeIf { it.isNotBlank() }
         replaceLocked(merged, snapshot = true)
-        summarizeRestore(payload, merged)
+        summarizeRestore(payload, merged).copy(switchedTo = switchedTo)
     }
 
     /**

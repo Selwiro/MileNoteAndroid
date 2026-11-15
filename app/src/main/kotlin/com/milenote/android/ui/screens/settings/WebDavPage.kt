@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.BuildConfig
+import com.milenote.android.data.webdav.WebDavFailureCategory
 import com.milenote.android.data.webdav.WebDavProblemKind
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.WebDavConflictChoice
@@ -274,14 +275,40 @@ internal fun WebDavPage(
         // 否则从「我的」看到「同步失败」进来却找不到解释（重启后内存里的 error 已清空）。
         if (state.error == null && state.problem != null) {
             val problem = state.problem
-            MessageBar(
-                message = if (problem.at > 0L) {
-                    tr("%s（%s）", "%s (%s)", problem.message, formatSyncTime(problem.at))
-                } else {
-                    problem.message
-                },
-                kind = if (problem.kind == WebDavProblemKind.ERROR) MessageKind.ERROR else MessageKind.WARNING,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MessageBar(
+                    message = if (problem.at > 0L) {
+                        tr("%s（%s）", "%s (%s)", problem.message, formatSyncTime(problem.at))
+                    } else {
+                        problem.message
+                    },
+                    kind = if (problem.kind == WebDavProblemKind.ERROR) MessageKind.ERROR else MessageKind.WARNING,
+                )
+                // UX6：失败按五类归一，每类给一句「该改什么」+ 一个动作按钮，
+                // 不让用户只看到「同步失败」然后自己猜。
+                if (problem.kind == WebDavProblemKind.ERROR) {
+                    WebDavFailureHint(category = problem.category)
+                    val uploadInstead = problem.category == WebDavFailureCategory.NOT_FOUND
+                    OutlinedButton(
+                        onClick = {
+                            if (uploadInstead) overwriteAction = WebDavOverwrite.UPLOAD else onSyncNow()
+                        },
+                        enabled = !state.busy,
+                        shape = MileNoteShapeTokens.full,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = MileNoteDimens.ButtonMinHeight),
+                    ) {
+                        Text(
+                            if (uploadInstead) {
+                                tr("上传到远端（重新创建）", "Upload to remote (recreate)")
+                            } else {
+                                tr("重试同步", "Retry sync")
+                            },
+                        )
+                    }
+                }
+            }
         }
 
         // ---------------- 连接表单 ----------------
@@ -868,6 +895,45 @@ internal fun WebDavPage(
 }
 
 /** WebDAV 子页的信息行（标签 88dp + 值）。 */
+/**
+ * 同步失败分类的「该改什么」提示（UX6）。
+ *
+ * 只解释、不重复错误文案（MessageBar 已显示原因）；[WebDavFailureCategory.OTHER]
+ * 没有更具体的建议，直接不渲染（只留「重试同步」按钮）。
+ */
+@Composable
+private fun WebDavFailureHint(category: WebDavFailureCategory) {
+    val scheme = MaterialTheme.colorScheme
+    val hint = when (category) {
+        WebDavFailureCategory.AUTH -> tr(
+            "用户名或应用密码不对：确认后重新填写并保存配置，再点重试。",
+            "Wrong username or app password — re-enter and save the config, then retry.",
+        )
+        WebDavFailureCategory.PERMISSION -> tr(
+            "服务器拒绝写入（权限不足）：确认该目录可写、共享不是只读，再点重试。",
+            "The server refused the write (permission denied) — make sure the folder is writable and the share is not read-only, then retry.",
+        )
+        WebDavFailureCategory.NOT_FOUND -> tr(
+            "远端文件不存在（可能被其它设备删了）：可以点下面的按钮把本机数据重新上传。",
+            "The remote file is missing (another device may have deleted it) — use the button below to upload this device's data again.",
+        )
+        WebDavFailureCategory.NETWORK -> tr(
+            "连不上服务器（断网 / 超时 / 域名解析失败）：检查网络与代理后再点重试。",
+            "Cannot reach the server (offline / timeout / DNS) — check the network and proxy, then retry.",
+        )
+        WebDavFailureCategory.ENCRYPTION -> tr(
+            "远端数据已加密，本机没有加密密码：在下方「加密上传」里填写加密密码后重试。",
+            "The remote data is encrypted and this device has no encryption password — fill it in under the encrypted-upload section below, then retry.",
+        )
+        WebDavFailureCategory.OTHER -> null
+    } ?: return
+    Text(
+        text = hint,
+        style = MaterialTheme.typography.bodySmall,
+        color = scheme.onSurfaceVariant,
+    )
+}
+
 @Composable
 private fun WebDavInfoRow(label: String, value: String, maxLines: Int = 1) {
     Row(

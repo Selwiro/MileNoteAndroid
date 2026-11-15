@@ -5,6 +5,7 @@ import com.milenote.android.domain.backup.BackupException
 import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.webdav.OkHttpWebDavClient
+import com.milenote.android.platform.webdav.WebDavCryptoException
 import com.milenote.android.platform.webdav.WebDavClient
 import com.milenote.android.platform.webdav.WebDavCredentials
 import com.milenote.android.platform.webdav.WebDavException
@@ -179,7 +180,7 @@ class WebDavRepository(
         val plain = try {
             LedgerCrypto.decryptIfEncrypted(text, password)
         } catch (e: BackupException) {
-            throw WebDavException(
+            throw WebDavCryptoException(
                 e.message ?: tr("解密失败：密码不正确或文件已损坏", "Decryption failed: wrong password or corrupted file"),
                 e,
             )

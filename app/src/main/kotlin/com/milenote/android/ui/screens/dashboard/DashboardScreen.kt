@@ -83,6 +83,7 @@ import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.Routes
+import com.milenote.android.ui.screens.settings.SettingsPage
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.UiState
 import com.milenote.android.ui.components.CategoryBadge
@@ -246,6 +247,12 @@ private fun DashboardContent(
                     onAction = onAddRecord,
                     secondaryLabel = tr("看看演示", "See the demo"),
                     onSecondaryAction = onEnterDemo,
+                    // UX7（便宜版）：先把车建对（动力类型 / 起始里程），再记第一笔；
+                    // 完整 3 步向导按 D2=A 留 1.1，这里只给一个直达入口。
+                    tertiaryLabel = tr("完善车辆信息", "Complete vehicle info"),
+                    onTertiaryAction = {
+                        onNavigate(Routes.settingsPageRoute(SettingsPage.VEHICLES.key))
+                    },
                 )
             }
             return@LazyColumn

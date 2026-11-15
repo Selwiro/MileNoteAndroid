@@ -11,6 +11,7 @@ import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.data.share.SharedImport
 import com.milenote.android.data.garage.RestoreSummary
+import com.milenote.android.data.garage.restoreSummaryMessage
 import com.milenote.android.data.settings.SettingsRepository
 import com.milenote.android.data.webdav.Plan
 import com.milenote.android.data.webdav.AutoSyncOutcome
@@ -20,6 +21,9 @@ import com.milenote.android.data.webdav.WebDavAutoSyncEngine
 import com.milenote.android.data.webdav.WebDavFetchResult
 import com.milenote.android.data.webdav.WebDavProblem
 import com.milenote.android.data.webdav.WebDavRemoteMeta
+import com.milenote.android.data.webdav.WebDavFailureCategory
+import com.milenote.android.data.webdav.WebDavProblemKind
+import com.milenote.android.data.webdav.classifyWebDavFailure
 import com.milenote.android.data.webdav.WebDavRepository
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
@@ -387,10 +391,18 @@ class MileNoteViewModel(
     }
 
     fun selectVehicle(id: String) {
+        val name = _state.value.garage?.cars?.firstOrNull { it.id == id }?.vehicle?.name
+        val wasActive = _state.value.activeCar?.id == id
         // 切车重置列表筛选：不把 A 车的分类 / 关键词带到 B 车。
-        if (id != _state.value.activeCar?.id) clearListFilters()
+        if (!wasActive) clearListFilters()
         viewModelScope.launch {
             repository.update(syncHistory = false) { it.copy(activeId = id) }
+            if (name != null && !wasActive) {
+                // 车辆列表里「设为当前」是显式动作：切完给一句确认，避免用户不知道当前车变了。
+                _state.value = _state.value.copy(
+                    message = tr("已切换到「%s」", "Switched to \"%s\"", DataLabels.vehicleName(name)),
+                )
+            }
         }
     }
 
@@ -733,7 +745,13 @@ class MileNoteViewModel(
      * @param prunePowertrainReminders 切换动力类型时是否一并删除不再适用的未完成保养提醒
      *   （默认 false，保持既有调用点行为不变）。
      */
-    fun saveVehicle(vehicle: Vehicle, prunePowertrainReminders: Boolean = false) {
+    fun saveVehicle(
+        vehicle: Vehicle,
+        prunePowertrainReminders: Boolean = false,
+        /// 要保存到哪辆车（UX5：编辑非当前车时按 id 写，不再先把当前车切过去）；
+        /// null = 当前车。
+        vehicleId: String? = null,
+    ) {
         // 插混 / 纯电不保留旧版油费成本口径（否则钱迹来源的加油/充电记录会被判成 0）。
         val nextVehicle = if (vehicle.powertrainKey != POWERTRAIN_FUEL) {
             vehicle.copy(fuelCostSource = null)
@@ -742,7 +760,7 @@ class MileNoteViewModel(
         }
         viewModelScope.launch {
             val result = repository.update(syncHistory = false) { garage ->
-                updateActive(garage) { ledger ->
+                updateCar(garage, vehicleId) { ledger ->
                     var next = ledger.copy(vehicle = nextVehicle)
                     if (ledger.vehicle.powertrainKey != nextVehicle.powertrainKey) {
                         next = migratePowertrain(
@@ -1512,11 +1530,7 @@ class MileNoteViewModel(
         return summary
     }
 
-    private fun restoreSummaryText(summary: RestoreSummary): String = tr(
-        "已恢复备份：%d 辆车 · %d 条记录 · %d 条提醒",
-        "Backup restored: %d vehicles · %d records · %d reminders",
-        summary.cars, summary.records, summary.reminders,
-    )
+    private fun restoreSummaryText(summary: RestoreSummary): String = restoreSummaryMessage(summary)
 
     fun enterDemo() {
         clearListFilters()
@@ -1624,7 +1638,9 @@ class MileNoteViewModel(
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: tr("连接失败", "Connection failed")) }
+                val message = t.message ?: tr("连接失败", "Connection failed")
+                recordWebDavFailure(t, message)
+                updateWebDav { it.copy(busy = false, error = message) }
             }
         }
     }
@@ -1668,7 +1684,9 @@ class MileNoteViewModel(
                     }
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: tr("上传失败", "Upload failed")) }
+                val message = t.message ?: tr("上传失败", "Upload failed")
+                recordWebDavFailure(t, message)
+                updateWebDav { it.copy(busy = false, error = message) }
             }
         }
     }
@@ -1728,7 +1746,9 @@ class MileNoteViewModel(
                     }
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: tr("下载失败", "Download failed")) }
+                val message = t.message ?: tr("下载失败", "Download failed")
+                recordWebDavFailure(t, message)
+                updateWebDav { it.copy(busy = false, error = message) }
             }
         }
     }
@@ -1990,6 +2010,25 @@ class MileNoteViewModel(
             )
     }
 
+    /**
+     * 记录一次手动 WebDAV 失败（UX6）。
+     *
+     * 自动同步的失败由引擎持久化；手动「上传 / 下载」以前只在本次会话的 `error` 里，
+     * 退出页面就没了，「我的」页也看不到。这里同样落一份带分类的异常快照。
+     */
+    private suspend fun recordWebDavFailure(t: Throwable, message: String) {
+        runCatching {
+            webDavRepository.recordSyncOutcome(
+                WebDavProblem(
+                    kind = WebDavProblemKind.ERROR,
+                    message = message,
+                    at = System.currentTimeMillis(),
+                    category = classifyWebDavFailure(t),
+                ),
+            )
+        }
+    }
+
     private fun updateWebDav(transform: (WebDavUiState) -> WebDavUiState) {
         _state.value = _state.value.copy(webDav = transform(_state.value.webDav))
     }
@@ -2016,6 +2055,18 @@ class MileNoteViewModel(
         val active = garage.activeCar ?: return garage
         val updated = transform(active)
         return garage.copy(cars = garage.cars.map { if (it.id == active.id) updated else it })
+    }
+
+    /**
+     * 按车辆 id 变换（[carId] 为 null 时取当前车）。
+     *
+     * UX5：编辑非当前车辆时不能靠 `updateActive` —— 那样要么写错车，要么先把当前车切走；
+     * 这里按 id 定位，当前车不变。
+     */
+    private fun updateCar(garage: Garage, carId: String?, transform: (Ledger) -> Ledger): Garage {
+        val target = carId?.let { id -> garage.cars.firstOrNull { it.id == id } } ?: garage.activeCar ?: return garage
+        val updated = transform(target)
+        return garage.copy(cars = garage.cars.map { if (it.id == target.id) updated else it })
     }
 
     /**

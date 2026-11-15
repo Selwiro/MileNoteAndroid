@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.milenote.android.data.garage.restoreSummaryMessage
 import com.milenote.android.BuildConfig
 import com.milenote.android.R
 import com.milenote.android.data.settings.AppSettings
@@ -413,8 +414,10 @@ fun SettingsScreen(
                     )
                     decodeText(readUriBytes(context, uri, BACKUP_MAX_BYTES, limitMessage))
                 }
-                // 合并规则与提示由 VM/仓库统一处理（结果走全局 Snackbar）。
-                vm.restoreBackup(text)
+                // 合并规则与提示由 VM/仓库统一处理；结果除了全局消息，还在本页顶部的
+                // 消息区显示一份 —— 设置子页里实测看不到全局 Snackbar（UX3 走查发现）。
+                val summary = vm.restoreBackupAwait(text)
+                notify(restoreSummaryMessage(summary), MessageKind.SUCCESS)
             } catch (t: Throwable) {
                 notify(
                     tr(
@@ -496,8 +499,8 @@ fun SettingsScreen(
     }
 
     fun openVehicleEditor(id: String?) {
-        // 编辑非当前车辆时先切到目标车，避免 saveVehicle 把数据写到别的账本；新增不切车。
-        if (id != null) vm.selectVehicle(id)
+        // UX5：编辑非当前车辆时**不再**顺手切车 —— 点卡片是「编辑」，切车是另一个显式动作
+        // （卡片右下角「设为当前」）。保存按 id 写，所以不需要切车也能写对账本。
         val ledger: Ledger? = id?.let { target -> cars.firstOrNull { it.id == target } }
         editing = VehicleEditTarget(
             id = id,
@@ -591,6 +594,12 @@ fun SettingsScreen(
                                             ledger = car,
                                             selected = car.id == activeId,
                                             onClick = { openVehicleEditor(car.id) },
+                                            // UX5：切车是显式动作，不再和「点卡片编辑」混在一起。
+                                            onSelect = if (car.id == activeId) {
+                                                null
+                                            } else {
+                                                { vm.selectVehicle(car.id) }
+                                            },
                                         )
                                     }
                                 }
@@ -774,7 +783,11 @@ fun SettingsScreen(
                 if (target.id == null) {
                     vm.addVehicle(vehicle)
                 } else {
-                    vm.saveVehicle(vehicle, prunePowertrainReminders = prunePowertrainReminders)
+                    vm.saveVehicle(
+                        vehicle,
+                        prunePowertrainReminders = prunePowertrainReminders,
+                        vehicleId = target.id,
+                    )
                 }
             },
             // B35：删除确认已在编辑弹窗内做过，这里直接删，不再弹第二次全局确认。
@@ -910,6 +923,8 @@ private fun VehicleCard(
     ledger: Ledger,
     selected: Boolean,
     onClick: () -> Unit,
+    /** 非当前车时显示的「设为当前」；当前车传 null。 */
+    onSelect: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val vehicle = ledger.vehicle
@@ -1010,6 +1025,17 @@ private fun VehicleCard(
                             text = tr("当前", "Current"),
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                } else if (onSelect != null) {
+                    TextButton(
+                        onClick = onSelect,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.heightIn(min = MileNoteDimens.TouchTarget),
+                    ) {
+                        Text(
+                            text = tr("设为当前", "Set as current"),
+                            style = MaterialTheme.typography.labelMedium,
                         )
                     }
                 }

@@ -310,6 +310,8 @@ fun FuelScreen(
                 stale = priceStale,
                 locationIssue = locationIssue,
                 onOpenLocationSettings = { openAppSettings(context) },
+                cityLabel = DataLabels.region(fuelLocation.displayName),
+                located = locationRemembered,
                 onRefresh = { refreshPrice(reLocate = false, force = true) },
                 onGetCurrentCityPrice = {
                     if (LocationResolver.hasPermission(context)) {
@@ -487,6 +489,10 @@ private fun FuelPriceCard(
     onGetCurrentCityPrice: () -> Unit,
     locationIssue: FuelLocationIssue? = null,
     onOpenLocationSettings: () -> Unit = {},
+    /** 当前显示的价格属于哪座城市（UX11，如「北京」）。 */
+    cityLabel: String = "",
+    /** 这座城市是定位得到的（true）还是默认城市参考价（false）。 */
+    located: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard(
@@ -646,6 +652,26 @@ private fun FuelPriceCard(
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.End,
                             maxLines = 2,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp),
+                        )
+                    }
+                    // UX11：说清价格来自哪座城市、是定位到的还是默认城市参考价 ——
+                    // 之前只有一个数字，用户不知道这是本市的还是「北京的参考价」。
+                    if (cityLabel.isNotBlank()) {
+                        Text(
+                            text = if (located) {
+                                tr("当前城市：%s（定位）", "Current city: %s (located)", cityLabel)
+                            } else {
+                                tr(
+                                    "当前城市：%s（默认城市参考价）",
+                                    "Current city: %s (default reference)",
+                                    cityLabel,
+                                )
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 2.dp),

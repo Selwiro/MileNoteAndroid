@@ -40,6 +40,14 @@ class WebDavPreconditionFailedException(
     cause: Throwable? = null,
 ) : WebDavException(message, cause)
 
+/**
+ * 远端密文解密失败（密码不对 / 文件损坏）。
+ *
+ * 单独成类型是为了让「同步失败分类」（UX6）能稳定地归到「加密密码」类，
+ * 而不是靠异常文案猜。
+ */
+class WebDavCryptoException(message: String, cause: Throwable? = null) : WebDavException(message, cause)
+
 /** 带 HTTP 状态码的异常（内部使用，便于对 409/412 等做差异化处理）。 */
 internal class WebDavHttpException(
     val status: Int,

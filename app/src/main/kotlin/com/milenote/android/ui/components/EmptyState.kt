@@ -68,6 +68,9 @@ fun EmptyState(
     onAction: (() -> Unit)? = null,
     secondaryLabel: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
+    /** 第三个文字入口（UX7：空总览里补「完善车辆信息」）；为 null 时不显示。 */
+    tertiaryLabel: String? = null,
+    onTertiaryAction: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -138,6 +141,15 @@ fun EmptyState(
                         modifier = Modifier.height(MileNoteDimens.ButtonMinHeight),
                     ) {
                         Text(secondaryLabel, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+                // 第三入口（UX7）：只有「有内容的空态」才需要，普通空态不传就不显示。
+                if (tertiaryLabel != null && onTertiaryAction != null) {
+                    TextButton(
+                        onClick = onTertiaryAction,
+                        modifier = Modifier.height(MileNoteDimens.ButtonMinHeight),
+                    ) {
+                        Text(tertiaryLabel, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }

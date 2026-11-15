@@ -1,6 +1,8 @@
 package com.milenote.android.data.garage
 
 import com.milenote.android.domain.backup.BackupPayload
+import com.milenote.android.domain.backup.GarageOps
+import com.milenote.android.domain.i18n.tr
 import com.milenote.android.domain.model.Garage
 
 /**
@@ -21,5 +23,26 @@ internal fun summarizeRestore(payload: BackupPayload, merged: Garage): RestoreSu
         cars = payload.garage.cars.size,
         records = payload.garage.cars.sumOf { it.records.size },
         reminders = payload.garage.cars.sumOf { it.reminders.size },
+    )
+}
+
+/**
+ * 恢复结果摘要文案（UX3）。
+ *
+ * 恢复后会自动把当前车切到第一辆有内容的车（[GarageOps.activeCarWithRecords]），
+ * 摘要要把这件事说出来：否则用户看到「已恢复」但不知道当前车已经换了。
+ * 纯函数，单测直接覆盖中英 / 有切换 / 无切换。
+ */
+internal fun restoreSummaryMessage(summary: RestoreSummary): String {
+    val base = tr(
+        "已恢复备份：%d 辆车 · %d 条记录 · %d 条提醒",
+        "Backup restored: %d vehicles · %d records · %d reminders",
+        summary.cars, summary.records, summary.reminders,
+    )
+    val switched = summary.switchedTo ?: return base
+    return tr(
+        "%s（已切换到「%s」）",
+        "%s (switched to \"%s\")",
+        base, switched,
     )
 }

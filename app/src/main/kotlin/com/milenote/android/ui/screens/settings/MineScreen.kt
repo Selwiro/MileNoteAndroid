@@ -45,6 +45,7 @@ import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteSemanticColors
+import com.milenote.android.ui.theme.MileNoteShapes
 import com.milenote.android.ui.theme.metricValue
 
 /**
@@ -95,9 +96,11 @@ fun MineScreen(
     // 超期只做页面内提醒（≥30 天）；未备份走「尚未备份」的既有警告色，不叠加。
     val overdueDays = remember(lastBackupAt) { backupOverdueDays(lastBackupAt) }
     // 同步异常（失败 / 冲突 / 缺加密密码）跨会话保留：状态行转警示色，完整原因在 WebDAV 同步页。
+    val webDavProblem = state.webDav.problem
     val syncStatus = mineSyncStatus(
         configured = state.webDav.configured,
-        problemKind = state.webDav.problem?.kind,
+        problemKind = webDavProblem?.kind,
+        failureCategory = webDavProblem?.category,
     )
     val backupText = when {
         backupMissing -> tr("尚未备份", "No backup yet")
@@ -150,6 +153,8 @@ fun MineScreen(
                         statusText = statusLine.text,
                         statusWarn = statusLine.warn,
                         showStatus = !state.demo,
+                        // UX6：状态行可点，直达 WebDAV 同步页看原因 / 处理。
+                        onStatusClick = { onOpenPage(SettingsPage.WEBDAV.key) },
                     )
                 }
             }
@@ -253,6 +258,8 @@ private fun MineDataCard(
     statusText: String,
     statusWarn: Boolean,
     showStatus: Boolean,
+    /** UX6：点状态行直达 WebDAV 同步页；null 时不可点。 */
+    onStatusClick: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val secondary = scheme.onPrimaryContainer.copy(alpha = 0.62f)
@@ -309,7 +316,18 @@ private fun MineDataCard(
             HorizontalDivider(color = scheme.onPrimaryContainer.copy(alpha = 0.12f))
             Spacer(modifier = Modifier.height(12.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (onStatusClick != null) {
+                            Modifier
+                                .clip(MileNoteShapes.medium)
+                                .clickable(onClick = onStatusClick)
+                                .padding(vertical = 4.dp)
+                        } else {
+                            Modifier
+                        },
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
