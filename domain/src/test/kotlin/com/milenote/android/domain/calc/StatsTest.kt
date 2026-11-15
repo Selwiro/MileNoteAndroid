@@ -82,7 +82,7 @@ class StatsTest {
     }
 
     @Test
-    fun `period distance is max in range minus latest before range`() {
+    fun `period distance is max in range minus max before range`() {
         val ledger = testLedger(
             records = listOf(
                 Record(id = "a", date = "2025-12-20", category = "停车费", amount = 1.0, odometer = 1000.0),
@@ -96,6 +96,49 @@ class StatsTest {
 
         val jan = stats(ledger, "2026-01-01", "2026-01-31")
         assertEquals(500.0, jan.distance, 1e-9)
+    }
+
+    @Test
+    fun `period baseline takes max odometer before range even with two readings a day`() {
+        // 区间开始前同一天两条读数（10,000 后 10,010）：旧实现按日期取最后一条，可能取到 10,000
+        // → 里程多算 10 km；新实现取「区间前最大读数」10,010 → 区间里程 490 km，与记录顺序无关。
+        val records = listOf(
+            Record(id = "a1", date = "2026-01-31", category = "停车费", amount = 1.0, odometer = 10_000.0),
+            Record(id = "a2", date = "2026-01-31", category = "停车费", amount = 1.0, odometer = 10_010.0),
+            Record(id = "b", date = "2026-02-10", category = "停车费", amount = 1.0, odometer = 10_500.0),
+        )
+        val feb = stats(testLedger(records = records), "2026-02-01", "2026-02-28")
+        assertEquals(490.0, feb.distance, 1e-9)
+        // 顺序反过来（读数大的在前）必须得到同一结果
+        val reversed = stats(testLedger(records = records.reversed()), "2026-02-01", "2026-02-28")
+        assertEquals(490.0, reversed.distance, 1e-9)
+    }
+
+    @Test
+    fun `period distance never goes negative when baseline is larger`() {
+        // 换表 / 录错 / 导入脏数据：区间前读数（12,000）反而大于区间内最大读数（11,000）
+        val ledger = testLedger(
+            records = listOf(
+                Record(id = "a", date = "2026-01-31", category = "停车费", amount = 1.0, odometer = 12_000.0),
+                Record(id = "b", date = "2026-02-10", category = "停车费", amount = 200.0, odometer = 11_000.0),
+            ),
+        )
+        val feb = stats(ledger, "2026-02-01", "2026-02-28")
+        assertEquals(0.0, feb.distance, 1e-9)
+        // 里程为 0 时不给「每公里成本」，避免用负数 / 零除出奇怪的值
+        assertNull(feb.perKm)
+    }
+
+    @Test
+    fun `period distance without earlier record uses the smallest odometer in range`() {
+        // 区间内前面没有记录：基线退回区间内最小读数（保持历史语义）
+        val ledger = testLedger(
+            records = listOf(
+                Record(id = "a", date = "2026-02-10", category = "停车费", amount = 1.0, odometer = 1000.0),
+                Record(id = "b", date = "2026-02-20", category = "停车费", amount = 1.0, odometer = 1500.0),
+            ),
+        )
+        assertEquals(500.0, stats(ledger, "2026-02-01", "2026-02-28").distance, 1e-9)
     }
 
     @Test

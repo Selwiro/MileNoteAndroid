@@ -31,9 +31,11 @@ import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.EnergyKind
 import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.calc.Period
+import com.milenote.android.domain.calc.costOf
 import com.milenote.android.domain.calc.energyRateByRecord
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.EnergyProfile
+import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.i18n.Units
@@ -126,22 +128,13 @@ fun EnergyDetailScreen(
         detailRecords.groupBy { monthKey(it.date) }.entries.toList()
     }
     // 明细汇总的能量量：燃油累计升数，纯电累计充电度数（含未充满记录）。
-    val detailEnergyAmount = remember(detailRecords, ev) {
-        detailRecords.sumOf { if (ev) it.kwh ?: 0.0 else it.liters ?: 0.0 }
+    // 金额一律走 costOf（与费用明细页同一口径）：排除「不计入成本」的油费，两页合计才对得上（B41）。
+    val detailTotals = remember(detailRecords, ledger, ev) {
+        energyDetailTotals(detailRecords, ledger, ev)
     }
-    val detailAmount = remember(detailRecords) { detailRecords.sumOf { it.amount } }
-    // 插混明细汇总两行：加油量+油费、充电量+电费。按记录字段分流，与当前档位无关。
-    val detailFuelAmount = remember(detailRecords) {
-        detailRecords.filter { it.kwh == null }.sumOf { it.liters ?: 0.0 }
-    }
-    val detailFuelCost = remember(detailRecords) {
-        detailRecords.filter { it.kwh == null }.sumOf { it.amount }
-    }
-    val detailChargeAmount = remember(detailRecords) {
-        detailRecords.filter { it.kwh != null }.sumOf { it.kwh ?: 0.0 }
-    }
-    val detailChargeCost = remember(detailRecords) {
-        detailRecords.filter { it.kwh != null }.sumOf { it.amount }
+    // 实付与成本口径的差额（被排除的油费），用于在合计行后给出解释，避免看着像丢钱。
+    val detailExcludedCost = remember(detailRecords, detailTotals) {
+        detailRecords.sumOf { it.amount } - detailTotals.total
     }
     // 每条记录对应的满箱/满电区间能耗（domain 纯函数；未加满 / 基准记录无值 → 显示「—」）。
     // 插混两条流各查各的：加油记录看满箱法、充电记录看满电法。手填能耗历史上是 L/100km，
@@ -246,10 +239,10 @@ fun EnergyDetailScreen(
                                 text = tr(
                                     "加油 %s %s · %s %s",
                                     "Fuel %s %s · %s %s",
-                                    Format.fmt(detailFuelAmount),
+                                    Format.fmt(detailTotals.fuelAmount),
                                     Units.volumeUnit,
                                     Units.currencySymbol,
-                                    Format.money(detailFuelCost),
+                                    Format.money(detailTotals.fuelCost),
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -258,10 +251,10 @@ fun EnergyDetailScreen(
                                 text = tr(
                                     "充电 %s %s · %s %s",
                                     "Charge %s %s · %s %s",
-                                    Format.fmt(detailChargeAmount),
+                                    Format.fmt(detailTotals.chargeAmount),
                                     Units.energyUnit,
                                     Units.currencySymbol,
-                                    Format.money(detailChargeCost),
+                                    Format.money(detailTotals.chargeCost),
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -272,15 +265,28 @@ fun EnergyDetailScreen(
                             text = tr(
                                 "筛选合计 %s %s · %s %s",
                                 "Filtered total %s %s · %s %s",
-                                Format.fmt(detailEnergyAmount),
+                                Format.fmt(detailTotals.energyAmount),
                                 if (ev) Units.energyUnit else Units.volumeUnit,
                                 Units.currencySymbol,
-                                Format.money(detailAmount),
+                                Format.money(detailTotals.total),
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+                if (detailExcludedCost > 0.005) {
+                    // 有「不计入成本」的油费时说明一句，口径与费用明细一致（不是丢钱）。
+                    Text(
+                        text = tr(
+                            "其中 %s %s 油费未计入成本（口径同费用明细）",
+                            "%s %s of fuel not counted as cost (same basis as Expenses)",
+                            Units.currencySymbol,
+                            Format.money(detailExcludedCost),
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -426,8 +432,49 @@ fun EnergyDetailScreen(
     }
 }
 
-/** 能耗明细过滤：时间 + 关键词 +（插混）加油/充电类型。 */
-private fun filterEnergyRecords(
+/**
+ * 明细页汇总（纯函数，单测用）。
+ *
+ * @property energyAmount 能量累计：燃油升数（纯电账本为充电度数），含未充满/未加满记录
+ * @property total 金额合计，走 [costOf]（排除「不计入成本」的油费，与费用明细页同一口径）
+ * @property fuelAmount / [fuelCost] 加油行：升数与油费（`kwh == null` 的记录）
+ * @property chargeAmount / [chargeCost] 充电行：度数与电费（`kwh != null` 的记录）
+ */
+internal data class EnergyDetailTotals(
+    val energyAmount: Double,
+    val total: Double,
+    val fuelAmount: Double,
+    val fuelCost: Double,
+    val chargeAmount: Double,
+    val chargeCost: Double,
+)
+
+/**
+ * 按记录算明细页的三组汇总。
+ *
+ * 金额不用 `record.amount` 直接相加：油费可能因「成本口径」（小熊 / 钱迹 / 不计入成本）
+ * 而整条不进成本，这时两页合计必须都排除它，否则同一批记录会给出两个数（B41）。
+ *
+ * @param electricOnly 纯电账本：能量累计读 `kwh`，否则读 `liters`
+ */
+internal fun energyDetailTotals(
+    records: List<Record>,
+    ledger: Ledger,
+    electricOnly: Boolean,
+): EnergyDetailTotals {
+    val fuel = records.filter { it.kwh == null }
+    val charge = records.filter { it.kwh != null }
+    return EnergyDetailTotals(
+        energyAmount = records.sumOf { if (electricOnly) it.kwh ?: 0.0 else it.liters ?: 0.0 },
+        total = records.sumOf { costOf(it, ledger) },
+        fuelAmount = fuel.sumOf { it.liters ?: 0.0 },
+        fuelCost = fuel.sumOf { costOf(it, ledger) },
+        chargeAmount = charge.sumOf { it.kwh ?: 0.0 },
+        chargeCost = charge.sumOf { costOf(it, ledger) },
+    )
+}
+
+/** 能耗明细过滤：时间 + 关键词 +（插混）加油/充电类型。 */private fun filterEnergyRecords(
     records: List<Record>,
     filter: ListFilterState,
     today: LocalDate,

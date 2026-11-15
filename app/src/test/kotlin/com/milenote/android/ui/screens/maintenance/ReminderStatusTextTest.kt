@@ -100,6 +100,27 @@ class ReminderStatusTextTest {
         assertEquals("Overdue · over by 2,000 km", statusLine(r))
     }
 
+    @Test
+    fun `due today is worded once without zero days left`() {
+        // B29：日期正好今天到期 → 只写「今天到期」，不再拼「还有 0 天」（等级仍是已到期）。
+        val r = reminder(title = "洗车", dueDate = "2026-11-09", intervalMonths = 12)
+        assertEquals("今天到期", statusLine(r))
+    }
+
+    @Test
+    fun `due today english wording`() {
+        I18n.applyEnglish(true)
+        val r = reminder(title = "洗车", dueDate = "2026-11-09", intervalMonths = 12)
+        assertEquals("Due today", statusLine(r))
+    }
+
+    @Test
+    fun `due today keeps the mileage overrun when that track is over`() {
+        // 里程轨确实超出时仍展示更具体的「超出 X 公里」，不被日期归零覆盖。
+        val r = reminder(dueDate = "2026-11-09", dueKm = 40_000.0, intervalKm = 10_000.0, intervalMonths = 12)
+        assertEquals("已到期 · 超出 2,000 公里", statusLine(r))
+    }
+
     // ---- 纯电保养方案（12 项 → 6 项，燃油专属项目不出现） ----
 
     @Test

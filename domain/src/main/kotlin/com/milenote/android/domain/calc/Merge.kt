@@ -244,12 +244,25 @@ fun mergeWithFuelChoices(
         }
         val r = item.record
         if (isFuelSourceRecord(r)) {
-            val old = duplicateOf(result.filter { it.source == r.source }, r)
-            if (old != null) {
-                skipped++
+            // 油费也要认「记录编号」：先按 id 在整份结果里找同一条，命中就走 mergeImported 的
+            // 原位更新（保留账本级 id / fuelCounted / 合并键），否则才是新记录。B26 之前这里只按
+            // 「来源 + 日期 + 金额」判重，同一条记录改过金额再导回会被当成「已存在」静默跳过，
+            // 金额永远改不回去。
+            val sameId = if (r.id.isNotEmpty()) result.firstOrNull { it.id == r.id } else null
+            if (sameId != null) {
+                val next = mergeImported(result.toList(), listOf(item))
+                result = next.records.toMutableList()
+                added += next.added
+                merged += next.merged
+                skipped += next.skipped
             } else {
-                result.add(r.copy(fuelCounted = true))
-                added++
+                val old = duplicateOf(result.filter { it.source == r.source }, r)
+                if (old != null) {
+                    skipped++
+                } else {
+                    result.add(r.copy(fuelCounted = true))
+                    added++
+                }
             }
         } else {
             val next = mergeImported(result.toList(), listOf(item))

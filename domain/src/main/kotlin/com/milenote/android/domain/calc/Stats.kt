@@ -34,7 +34,8 @@ data class EnergyRate(
  * @property records 区间内记录
  * @property total 区间内用车支出
  * @property categories 全量分类聚合（9 类 + 自定义，无记录为 0）
- * @property distance 记录行驶里程（全部 = 当前里程 − 起始里程；区间 = 区间里程差）
+ * @property distance 记录行驶里程（全部 = 当前里程 − 起始里程；区间 = 区间末读数 − 区间前最大读数），
+ *   脏数据导致为负时钳到 0
  * @property perKm 平均用车成本（元/km），`distance <= 0` 时为 null
  * @property energyRate 主口径能耗（燃油/HEV/PHEV=油耗，纯电=电耗），无有效区间时为 null
  * @property estimatedEnergyRate 主口径的累计估算（纯电无满充区间 / 混动无满箱区间），否则 null
@@ -117,17 +118,18 @@ fun stats(ledger: Ledger, from: String = "", to: String = "9999-12-31"): StatsRe
         val ck = currentKm(ledger)
         val odometers = ledger.records.mapNotNull { it.odometer }
         val start = ledger.vehicle.startKm ?: minOf(ck, *(odometers.toDoubleArray()))
-        ck - start
+        (ck - start).coerceAtLeast(0.0)
     } else {
+        // 区间基线取「区间开始前所有记录里的最大读数」：同一天有两条读数、或更早那条读数反而
+        // 更大（录错 / 换表 / 导入脏数据）时，按日期取最后一条会少算甚至算出负数。
         val before = ledger.records
             .filter { it.odometer != null && it.date < from }
-            .sortedByDescending { it.date }
-            .firstOrNull()
+            .maxOfOrNull { it.odometer!! }
         val kms = records.mapNotNull { it.odometer }
         if (kms.isEmpty()) {
             0.0
         } else {
-            kms.max() - (before?.odometer ?: kms.min())
+            (kms.max() - (before ?: kms.min())).coerceAtLeast(0.0)
         }
     }
 

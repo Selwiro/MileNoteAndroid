@@ -17,9 +17,20 @@ object Ids {
  * 让 Excel 单元格（Double/Boolean/String）与导入 CSV 走同一条路径。
  */
 object Numbers {
-    private val STRIP = Regex("[,，¥￥\\s]")
+    /** 货币符号与空白：无条件剔除（不进数字语义）。 */
+    private val STRIP = Regex("[¥￥\\s]")
 
-    /** 解析金额类数值；空 / 非法返回 null（Web `number`）。 */
+    /** 千分位逗号（半角 / 全角）；只有满足 [isThousandsSeparator] 时才剔除。 */
+    private const val COMMA = ','
+    private const val FULLWIDTH_COMMA = '，'
+
+    /**
+     * 解析金额类数值；空 / 非法返回 null（Web `number`）。
+     *
+     * 逗号只在「确实是千分位」时剔除：逗号后正好 3 位数字，且这组数字后面是结尾、小数点
+     * 或下一组千分位。所以 `1,234.56` → 1234.56、`¥1,234` → 1234，而欧洲写法 `12,50`
+     * （12 块 5 毛）保持原样 → 解析失败走「金额无法识别」的错误行，不会被读成 1250 元。
+     */
     fun parse(value: Any?): Double? {
         if (value == null) return null
         val text = when (value) {
@@ -32,8 +43,38 @@ object Numbers {
             else -> value.toString()
         }
         if (text.trim().isEmpty()) return null
-        val cleaned = text.replace(STRIP, "")
-        return cleaned.toDoubleOrNull()?.takeIf { it.isFinite() }
+        return stripThousands(text.replace(STRIP, "")).toDoubleOrNull()?.takeIf { it.isFinite() }
+    }
+
+    /**
+     * 去掉数字串里的千分位逗号：仅当逗号后正好 3 位数字且这 3 位后面不是数字。
+     *
+     * 其余逗号（`12,50` 的小数逗号、`1,2345` 的异常分组）原样保留，让 `toDouble()` 失败，
+     * 由调用方按「无法识别的数字」处理，而不是静默改值。
+     */
+    internal fun stripThousands(text: String): String {
+        if (text.indexOf(COMMA) < 0 && text.indexOf(FULLWIDTH_COMMA) < 0) return text
+        val out = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if ((c == COMMA || c == FULLWIDTH_COMMA) && isThousandsSeparator(text, i)) {
+                i++
+                continue
+            }
+            out.append(c)
+            i++
+        }
+        return out.toString()
+    }
+
+    /** `text[index]` 是逗号：判断它是否处在「,ddd」千分位位置上。 */
+    private fun isThousandsSeparator(text: String, index: Int): Boolean {
+        var end = index + 1
+        while (end < text.length && text[end] in '0'..'9') end++
+        if (end - (index + 1) != 3) return false
+        if (end == text.length) return true
+        return text[end] == COMMA || text[end] == FULLWIDTH_COMMA || text[end] == '.'
     }
 
     /**

@@ -171,6 +171,29 @@ class MergeImportTest {
     }
 
     @Test
+    fun `fuel import rewrites the same record id in place instead of skipping`() {
+        // 导出 CSV → 改金额 → 再导回：油费分支必须认「记录编号」原位更新，
+        // 不能静默跳过（金额改不回去），也不能写出同 id 的第二条。
+        val existing = fuelRecord(
+            "2026-10-01", 12_000.0, 40.0,
+            amount = 255.0, id = "f1", source = "小熊油耗", sourceId = "b1", fuelCounted = true,
+        )
+        // 用户只改了金额；CSV 不含 fuelCounted（导出时不写），导回后必须保留原值。
+        val edited = existing.copy(amount = 310.0, fuelCounted = null)
+
+        val result = mergeWithFuelChoices(listOf(existing), listOf(importedItem(edited)))
+
+        assertEquals(1, result.records.size)
+        val updated = result.records.single()
+        assertEquals("f1", updated.id)
+        assertEquals(310.0, updated.amount, 1e-9)
+        assertEquals(true, updated.fuelCounted)
+        assertEquals(0, result.added)
+        assertEquals(1, result.merged)
+        assertEquals(0, result.skipped)
+    }
+
+    @Test
     fun `merge imported counts errors and skips`() {
         val result = mergeImported(
             emptyList(),

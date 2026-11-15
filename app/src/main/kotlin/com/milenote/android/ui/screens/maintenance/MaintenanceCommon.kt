@@ -85,6 +85,10 @@ internal fun reminderNote(reminder: Reminder): String? =
  * 例：`已到期 · 超出 2,000 公里` / `即将到期 · 还有 22 天` / `计划中 · 还剩 1,000 公里`。
  * 剩余量取 [serviceProgress] 判定的那条轨（日期 / 里程先到），没有进度数据时按
  * [ReminderState] 里的天数或里程兜底。
+ *
+ * 正好**今天到期**（天数恰为 0，且展示的是日期轨）时整行只写「今天到期 / Due today」：
+ * 等级仍是 [ReminderLevel.OVERDUE]（徽章照旧「已到期」），但不再拼「还有 0 天」——
+ * 那会和状态词自相矛盾（B29）。里程轨确实超出时仍展示更具体的「超出 X 公里」。
  */
 internal fun reminderStatusLine(
     reminder: Reminder,
@@ -92,6 +96,14 @@ internal fun reminderStatusLine(
     progress: ServiceProgress?,
     distanceUnit: String = Units.distanceUnit,
 ): String {
+    val daysTrack = when (progress?.kind) {
+        "days" -> true
+        "km" -> false
+        else -> progress == null && state.days != null
+    }
+    if (daysTrack && state.level == ReminderLevel.OVERDUE && state.days == 0L) {
+        return tr("今天到期", "Due today")
+    }
     val label = reminderLevelLabel(state.level)
     val remaining = when (progress?.kind) {
         "km" -> remainingKmText(state.left, distanceUnit)
