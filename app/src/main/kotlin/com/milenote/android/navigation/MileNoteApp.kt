@@ -76,6 +76,8 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
 import com.milenote.android.ui.MileNoteViewModel
+import com.milenote.android.ui.components.MessageBar
+import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
 import com.milenote.android.ui.screens.dashboard.DashboardScreen
@@ -234,6 +236,8 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 tabs = bottomTabs,
                 profile = profile,
                 vehicle = state.vehicle,
+                saveError = state.saveError,
+                persistenceBlocked = state.persistenceBlocked,
                 snackbarHostState = snackbarHostState,
                 onNavigate = { route ->
                     val tabIndex = bottomTabs.indexOfFirst { it.route == route }
@@ -474,6 +478,8 @@ private fun TabsScaffold(
     tabs: List<BottomTab>,
     profile: EnergyProfile,
     vehicle: Vehicle?,
+    saveError: String?,
+    persistenceBlocked: Boolean,
     snackbarHostState: SnackbarHostState,
     onNavigate: (String) -> Unit,
 ) {
@@ -489,48 +495,69 @@ private fun TabsScaffold(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
-                    .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (copy != null) {
-                    Text(
-                        text = copy.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                if (vehicle != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    AssistChip(
-                        onClick = { vm.showVehicleSwitcher(true) },
-                        label = {
-                            Text(
-                                text = DataLabels.vehicleName(vehicle.name),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(vehicleTypeIcon(profile), contentDescription = null)
-                        },
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                if (tabAction != null) {
-                    IconButton(onClick = { onNavigate(tabAction.route) }) {
-                        Icon(
-                            imageVector = tabAction.icon,
-                            contentDescription = tr(tabAction.labelZh, tabAction.labelEn),
+            Column(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .statusBarsPadding()
+                        .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (copy != null) {
+                        Text(
+                            text = copy.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
                     }
+                    if (vehicle != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        AssistChip(
+                            onClick = { vm.showVehicleSwitcher(true) },
+                            label = {
+                                Text(
+                                    text = DataLabels.vehicleName(vehicle.name),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(vehicleTypeIcon(profile), contentDescription = null)
+                            },
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (tabAction != null) {
+                        IconButton(onClick = { onNavigate(tabAction.route) }) {
+                            Icon(
+                                imageVector = tabAction.icon,
+                                contentDescription = tr(tabAction.labelZh, tabAction.labelEn),
+                            )
+                        }
+                    }
+                }
+                // 写盘失败 / 暂停保存是跨页面的事实：只在某个页面的 Snackbar 里说一次不够。
+                val saveNotice = when {
+                    saveError != null -> saveError
+                    // 总览页自己有一条带「重新读取」的详细提示；其余 tab 用这条保证不会看不到。
+                    persistenceBlocked && currentPage != 0 -> tr(
+                        "本机写入已暂停：本次会话的修改不会保存，请先重新读取数据",
+                        "Saving is paused: changes in this session are not saved — re-read the local data first",
+                    )
+                    else -> null
+                }
+                saveNotice?.let {
+                    MessageBar(
+                        message = it,
+                        kind = MessageKind.ERROR,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+                    )
                 }
             }
         },

@@ -14,7 +14,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.milenote.android.data.share.SharedImport
@@ -89,9 +91,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // WebDAV 自动同步仅在前台运行：打开应用时同步一次，退出后不保留后台任务。
+            // WebDAV 自动同步仅在前台运行：每次进入前台（冷启动 + 从后台回来）同步一次，退出后不保留后台任务。
+            // 修复前只有 composition 首次创建时跑一次，切回前台不会拉远端更新，失败退避也不清零。
             LaunchedEffect(Unit) {
-                vm.maybeAutoSyncOnOpen()
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    vm.maybeAutoSyncOnOpen()
+                }
             }
             val appTheme = remember(garage?.theme) { AppTheme.fromId(garage?.theme) }
             val dark = when (settings.darkMode) {

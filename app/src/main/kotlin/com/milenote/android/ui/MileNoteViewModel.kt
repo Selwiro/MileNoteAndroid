@@ -192,6 +192,7 @@ private data class LoadSnapshot(
     val demo: Boolean,
     val loadError: String?,
     val blocked: Boolean,
+    val writeError: String?,
 )
 
 /** 一次导入实际写入的结果（供导入向导展示真实数字）。 */
@@ -210,6 +211,13 @@ data class UiState(
     val loadError: String? = null,
     /** 读取失败且原始文件无法隔离：本次会话停止落盘（总览显示「已暂停保存」）。 */
     val persistenceBlocked: Boolean = false,
+    /**
+     * 最近一次写盘失败的原因；非空表示内存里的修改没有落盘。
+     *
+     * 与 [persistenceBlocked] 的区别：这里是「尝试写了但失败」（磁盘满 / 只读），
+     * 前者是「主动不写」；两者都必须让用户看见，不能提示「已保存」。
+     */
+    val saveError: String? = null,
     val editor: EditorTarget? = null,
     val vehicleSwitcher: Boolean = false,
     val confirm: PendingConfirm? = null,
@@ -254,6 +262,9 @@ class MileNoteViewModel(
 
     private var autoSyncDebounceJob: Job? = null
 
+    /** 上次「回前台」同步的时间，用于 15 秒节流（选图 / 分享面板返回不算一次新的打开）。 */
+    private var lastForegroundSyncAt = 0L
+
     init {
         viewModelScope.launch {
             repository.load()
@@ -264,8 +275,9 @@ class MileNoteViewModel(
                 repository.demoMode,
                 repository.loadError,
                 repository.persistenceBlocked,
-            ) { garage, demo, loadError, blocked ->
-                LoadSnapshot(garage, demo, loadError, blocked)
+                repository.writeError,
+            ) { garage, demo, loadError, blocked, writeError ->
+                LoadSnapshot(garage, demo, loadError, blocked, writeError)
             }.collect { snapshot ->
                 // 覆盖 / 还原 / 导入也可能换掉当前车：列表筛选不跟车走，统一在车变时清空。
                 val activeBefore = _state.value.activeCar?.id
@@ -276,6 +288,7 @@ class MileNoteViewModel(
                     demo = snapshot.demo,
                     loadError = snapshot.loadError,
                     persistenceBlocked = snapshot.blocked,
+                    saveError = snapshot.writeError,
                 )
             }
         }
@@ -335,6 +348,24 @@ class MileNoteViewModel(
         }
     }
 
+    /**
+     * 「已保存」类提示的真实版本。
+     *
+     * 演示模式 / 本机写入暂停 / 写盘失败时，不能继续提示「已保存」：那会让用户以为
+     * 数据已经落盘。这里统一换成「在内存里 / 未写入本机」的说明。
+     */
+    private fun savedMessage(ok: String): String = when {
+        repository.demoMode.value ->
+            tr("已保存到演示数据（退出演示后不保留）", "Saved to demo data (not kept after you exit the demo)")
+        repository.persistenceBlocked.value ->
+            tr(
+                "已保存在临时内存：本机写入已暂停，重启后会丢失",
+                "Kept in memory only — saving is paused, so this will be lost after a restart",
+            )
+        repository.writeError.value != null -> repository.writeError.value!!
+        else -> ok
+    }
+
     fun selectVehicle(id: String) {
         // 切车重置列表筛选：不把 A 车的分类 / 关键词带到 B 车。
         if (id != _state.value.activeCar?.id) clearListFilters()
@@ -349,6 +380,12 @@ class MileNoteViewModel(
 
     /** 系统分享进来的导入内容。 */
     fun setSharedImport(value: SharedImport?) {
+        if (value != null && _state.value.demo) {
+            _state.value = _state.value.copy(
+                message = tr("演示模式下不能导入账单，请先退出演示", "Exit the demo before importing expenses"),
+            )
+            return
+        }
         _state.value = _state.value.copy(sharedImport = value)
     }
 
@@ -426,7 +463,7 @@ class MileNoteViewModel(
         val categoryLabel = active?.let { DataLabels.categoryFor(it, record.category, profile) }
             ?: DataLabels.category(record.category, profile)
         viewModelScope.launch {
-            repository.update(syncHistory = true) { garage ->
+            val result = repository.update(syncHistory = true) { garage ->
                 updateActive(garage) { ledger ->
                     val exists = ledger.records.any { it.id == record.id }
                     val records = if (exists) {
@@ -437,12 +474,17 @@ class MileNoteViewModel(
                     ledger.copy(records = records)
                 }
             }
+            val saved = if (profile != EnergyProfile.FUEL_ONLY) {
+                tr("已保存 · %s", "Saved · %s", categoryLabel)
+            } else {
+                tr("已保存", "Saved")
+            }
             _state.value = _state.value.copy(
                 editor = null,
-                message = if (profile != EnergyProfile.FUEL_ONLY) {
-                    tr("已保存 · %s", "Saved · %s", categoryLabel)
+                message = if (result == null) {
+                    tr("保存失败：本机数据尚未加载完成", "Could not save: the local data has not loaded yet")
                 } else {
-                    tr("已保存", "Saved")
+                    savedMessage(saved)
                 },
             )
         }
@@ -535,7 +577,7 @@ class MileNoteViewModel(
                 recordDelete = null,
                 editor = _state.value.editor?.takeIf { it.record?.id !in ids },
                 deleteUndo = carId?.let { DeleteUndo(message = message, carId = it, deleted = deleted) },
-                message = message,
+                message = savedMessage(message),
             )
         }
     }
@@ -557,11 +599,13 @@ class MileNoteViewModel(
             }
             _state.value = _state.value.copy(
                 deleteUndo = null,
-                message = if (count == 1) {
-                    tr("已恢复 1 条记录", "Restored 1 record")
-                } else {
-                    tr("已恢复 %d 条记录", "Restored %d records", count)
-                },
+                message = savedMessage(
+                    if (count == 1) {
+                        tr("已恢复 1 条记录", "Restored 1 record")
+                    } else {
+                        tr("已恢复 %d 条记录", "Restored %d records", count)
+                    },
+                ),
             )
         }
     }
@@ -585,11 +629,13 @@ class MileNoteViewModel(
                 updateActive(garage) { applyCategoryToRecords(it, ids, target) }
             }
             _state.value = _state.value.copy(
-                message = if (ids.size == 1) {
-                    tr("已改为「%s」", "Changed to %s", label)
-                } else {
-                    tr("已将 %d 条记录改为「%s」", "Changed %d records to %s", ids.size, label)
-                },
+                message = savedMessage(
+                    if (ids.size == 1) {
+                        tr("已改为「%s」", "Changed to %s", label)
+                    } else {
+                        tr("已将 %d 条记录改为「%s」", "Changed %d records to %s", ids.size, label)
+                    },
+                ),
             )
         }
     }
@@ -633,7 +679,7 @@ class MileNoteViewModel(
             vehicle
         }
         viewModelScope.launch {
-            repository.update(syncHistory = false) { garage ->
+            val result = repository.update(syncHistory = false) { garage ->
                 updateActive(garage) { ledger ->
                     var next = ledger.copy(vehicle = nextVehicle)
                     if (ledger.vehicle.powertrainKey != nextVehicle.powertrainKey) {
@@ -647,7 +693,11 @@ class MileNoteViewModel(
                     next
                 }
             }
-            _state.value = _state.value.copy(showVehicleEditor = false, message = tr("车辆信息已保存", "Vehicle saved"))
+            val failed = result == null || repository.writeError.value != null
+            _state.value = _state.value.copy(
+                showVehicleEditor = failed,
+                message = savedMessage(tr("车辆信息已保存", "Vehicle saved")),
+            )
         }
     }
 
@@ -659,16 +709,27 @@ class MileNoteViewModel(
             else -> vehicle
         }
         viewModelScope.launch {
-            repository.update(syncHistory = false) { garage ->
+            val result = repository.update(syncHistory = false) { garage ->
                 val ledger = blankLedger(powertrain = nextVehicle.powertrain)
                     .copy(id = Ids.newId(), vehicle = nextVehicle)
                 garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
             }
-            _state.value = _state.value.copy(showVehicleEditor = false, vehicleSwitcher = false, message = tr("已添加车辆", "Vehicle added"))
+            val failed = result == null || repository.writeError.value != null
+            _state.value = _state.value.copy(
+                showVehicleEditor = failed,
+                vehicleSwitcher = false,
+                message = savedMessage(tr("已添加车辆", "Vehicle added")),
+            )
         }
     }
 
     fun deleteVehicle(id: String) {
+        if (_state.value.demo) {
+            _state.value = _state.value.copy(
+                message = tr("演示模式下不能删除车辆，请先退出演示", "Exit the demo before deleting a vehicle"),
+            )
+            return
+        }
         val rawName = _state.value.garage?.cars?.firstOrNull { it.id == id }?.vehicle?.name
         val name = if (rawName.isNullOrBlank()) tr("这辆车", "this car") else DataLabels.vehicleName(rawName)
         confirm(
@@ -679,30 +740,73 @@ class MileNoteViewModel(
                 destructive = true,
             ) {
                 viewModelScope.launch {
-                    repository.deleteData("one", id)
-                    _state.value = _state.value.copy(message = tr("已删除车辆", "Vehicle deleted"))
+                    runCatching { repository.deleteData("one", id) }
+                        .onSuccess {
+                            _state.value = _state.value.copy(
+                                message = savedMessage(tr("已删除车辆", "Vehicle deleted")),
+                            )
+                        }
+                        .onFailure { e ->
+                            _state.value = _state.value.copy(
+                                message = e.message ?: tr("删除失败，数据未改变", "Delete failed — nothing was changed"),
+                            )
+                        }
                 }
             },
         )
     }
 
     fun deleteAllData() {
+        if (_state.value.demo) {
+            _state.value = _state.value.copy(
+                message = tr("演示模式下不能删除数据，请先退出演示", "Exit the demo before deleting data"),
+            )
+            return
+        }
         val confirmWord = tr("删除", "DELETE")
+        val remoteConfigured = _state.value.webDav.configured
+        val warning = if (remoteConfigured) {
+            tr(
+                "已配置 WebDAV：远端同步文件也会在下次同步时被清空，建议先导出完整备份。",
+                "WebDAV is configured: the remote sync file will be cleared on the next sync — export a full backup first.",
+            )
+        } else {
+            ""
+        }
+        val message = if (remoteConfigured) {
+            tr(
+                "将删除所有车辆、费用、提醒与保养记录，且不可恢复。%s请输入「%s」确认。",
+                "This deletes all vehicles, expenses, reminders and service records. It cannot be undone. %sType \"%s\" to confirm.",
+                warning,
+                confirmWord,
+            )
+        } else {
+            tr(
+                "将删除所有车辆、费用、提醒与保养记录，且不可恢复。请输入「%s」确认。",
+                "This deletes all vehicles, expenses, reminders and service records. It cannot be undone. Type \"%s\" to confirm.",
+                confirmWord,
+            )
+        }
         confirm(
             PendingConfirm(
                 title = tr("删除全部数据", "Delete all data"),
-                message = tr(
-                    "将删除所有车辆、费用、提醒与保养记录，且不可恢复。请输入「%s」确认。",
-                    "This deletes all vehicles, expenses, reminders and service records. It cannot be undone. Type \"%s\" to confirm.",
-                    confirmWord,
-                ),
+                message = message,
                 confirmLabel = tr("永久删除", "Delete permanently"),
                 destructive = true,
                 requireText = confirmWord,
             ) {
                 viewModelScope.launch {
-                    repository.deleteData("all")
-                    _state.value = _state.value.copy(message = tr("已清空数据", "All data cleared"))
+                    runCatching { repository.deleteData("all") }
+                        .onSuccess {
+                            _state.value = _state.value.copy(
+                                message = savedMessage(tr("已清空数据", "All data cleared")),
+                            )
+                        }
+                        .onFailure { e ->
+                            _state.value = _state.value.copy(
+                                message = e.message ?: tr("删除失败，数据未改变", "Delete failed — nothing was changed"),
+                            )
+                        }
                 }
             },
         )
@@ -991,7 +1095,11 @@ class MileNoteViewModel(
                         applyServicePlan(ledger, entries, baseDate, baseKm, includeFirst)
                     }
                 }
-                _state.value = _state.value.copy(showServicePlanEditor = false, message = tr("保养方案已保存", "Service plan saved"))
+                val failed = repository.writeError.value != null
+                _state.value = _state.value.copy(
+                    showServicePlanEditor = failed,
+                    message = savedMessage(tr("保养方案已保存", "Service plan saved")),
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(message = e.message ?: tr("保存失败", "Save failed"))
             }
@@ -1015,7 +1123,11 @@ class MileNoteViewModel(
                         ledger.copy(reminders = existing + reminders, servicePlanConfigured = true)
                     }
                 }
-                _state.value = _state.value.copy(showServicePlanEditor = false, message = tr("已启用默认保养方案", "Default service plan enabled"))
+                val failed = repository.writeError.value != null
+                _state.value = _state.value.copy(
+                    showServicePlanEditor = failed,
+                    message = savedMessage(tr("已启用默认保养方案", "Default service plan enabled")),
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(message = e.message ?: tr("启用失败", "Enable failed"))
             }
@@ -1030,7 +1142,7 @@ class MileNoteViewModel(
                     ledger.copy(reminders = reminders, records = ledger.records + record)
                 }
             }
-            _state.value = _state.value.copy(message = tr("已完成并记账", "Completed and logged"))
+            _state.value = _state.value.copy(message = savedMessage(tr("已完成并记账", "Completed and logged")))
         }
     }
 
@@ -1047,7 +1159,7 @@ class MileNoteViewModel(
                     ledger.copy(reminders = reminders)
                 }
             }
-            _state.value = _state.value.copy(message = tr("提醒已保存", "Reminder saved"))
+            _state.value = _state.value.copy(message = savedMessage(tr("提醒已保存", "Reminder saved")))
         }
     }
 
@@ -1122,6 +1234,16 @@ class MileNoteViewModel(
         fuelBasis: String?,
         overwriteDuplicates: Boolean,
     ): ImportWriteResult {
+        if (_state.value.demo) {
+            throw IllegalStateException(
+                tr("演示模式下不能导入账单，请先退出演示", "Exit the demo before importing expenses"),
+            )
+        }
+        if (repository.persistenceBlocked.value) {
+            throw IllegalStateException(
+                tr("本机写入已暂停，请先重新读取数据再导入", "Saving is paused — re-read the local data before importing"),
+            )
+        }
         var added = 0
         var merged = 0
         var skipped = 0
@@ -1165,6 +1287,8 @@ class MileNoteViewModel(
                         )
                     }
                 }
+        // update() 不再抛写盘异常（避免崩溃），但导入必须把失败传给向导，不能显示「导入完成」。
+        repository.writeError.value?.let { throw IllegalStateException(it) }
         return ImportWriteResult(
             added = added,
             merged = merged,
@@ -1235,6 +1359,12 @@ class MileNoteViewModel(
 
     /** 回滚到最近一次整体覆盖（WebDAV 下载 / 还原）前的本地快照，带二次确认。 */
     fun rollbackToReplaceSnapshot() {
+        if (_state.value.demo) {
+            _state.value = _state.value.copy(
+                message = tr("演示模式下不能回滚，请先退出演示", "Exit the demo before rolling back"),
+            )
+            return
+        }
         confirm(
             PendingConfirm(
                 title = tr("回滚到上次覆盖前的数据？", "Roll back to the data before the last overwrite?"),
@@ -1646,13 +1776,21 @@ class MileNoteViewModel(
         }
     }
 
-    /** 应用打开时调用：开启自动同步且已配置时，静默同步一次。 */
+    /**
+     * 每次进入前台调用一次（冷启动 + 从后台回来）。
+     *
+     * 回前台是一道「可恢复」信号：上次网络/服务器失败留下的退避在这里清零；
+     * 15 秒内重复回前台（例如选图 / 分享面板返回）不重复拉取，避免无意义的网络请求。
+     */
     fun maybeAutoSyncOnOpen() {
         viewModelScope.launch {
-            // 回前台是一道「可恢复」信号：上次网络/服务器失败留下的退避在这里清零。
             webDavAutoSyncEngine.resetBackoff()
             val enabled = settingsRepository.settings.first().webDavAutoSync
-            if (enabled && !_state.value.demo && webDavRepository.canSync()) autoSync()
+            if (!enabled || _state.value.demo || !webDavRepository.canSync()) return@launch
+            val now = System.currentTimeMillis()
+            if (now - lastForegroundSyncAt < FOREGROUND_SYNC_MIN_INTERVAL_MS) return@launch
+            lastForegroundSyncAt = now
+            autoSync()
         }
     }
 
@@ -1782,6 +1920,9 @@ class MileNoteViewModel(
     }
 
     companion object {
+        /** 回前台同步的最小间隔：避免 OCR 选图、分享面板等短时离开后台就重新拉一次远端。 */
+        private const val FOREGROUND_SYNC_MIN_INTERVAL_MS = 15_000L
+
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 MileNoteViewModel(

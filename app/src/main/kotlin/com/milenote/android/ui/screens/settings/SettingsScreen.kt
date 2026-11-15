@@ -683,6 +683,7 @@ fun SettingsScreen(
                     SettingsPage.IMPORT -> ExternalImportPage(
                         // 纯电当前车隐藏「小熊油耗」（只认加油 XLS），其它导入入口保留。
                         ev = activeCar?.isEv == true,
+                        demo = state.demo,
                         onOpenImporter = { source -> onOpenImporter(source) },
                     )
 
@@ -1314,8 +1315,10 @@ private fun CategoryTabsPage(
 @Composable
 private fun ExternalImportPage(
     ev: Boolean,
+    demo: Boolean,
     onOpenImporter: (String) -> Unit,
 ) {
+    val unavailable = tr("演示模式下不可用", "Unavailable in demo mode")
     SettingsPageList {
         item("sources") {
             SectionCard(
@@ -1325,11 +1328,15 @@ private fun ExternalImportPage(
                 SettingsMenuRow(
                     icon = MileNoteIcons.Records,
                     title = tr("里程志 CSV（回灌）", "MileNote CSV (write-back)"),
-                    subtitle = tr(
-                        "导出 → 修改 → 再导入，同编号记录原位更新",
-                        "Export → edit → import; same-ID records update in place",
-                    ),
-                    onClick = { onOpenImporter("milenote") },
+                    subtitle = if (demo) {
+                        unavailable
+                    } else {
+                        tr(
+                            "导出 → 修改 → 再导入，同编号记录原位更新",
+                            "Export → edit → import; same-ID records update in place",
+                        )
+                    },
+                    onClick = if (demo) null else ({ onOpenImporter("milenote") }),
                 )
                 SectionDivider()
                 // 小熊油耗只有加油记录（XLS），纯电车辆不适用；钱迹等入口保持不变。
@@ -1337,16 +1344,16 @@ private fun ExternalImportPage(
                     SettingsMenuRow(
                         icon = MileNoteIcons.CategoryFuel,
                         title = tr("小熊油耗", "Bear"),
-                        subtitle = tr("XLS · 导入加油记录", "XLS · Import fuel records"),
-                        onClick = { onOpenImporter("bear") },
+                        subtitle = if (demo) unavailable else tr("XLS · 导入加油记录", "XLS · Import fuel records"),
+                        onClick = if (demo) null else ({ onOpenImporter("bear") }),
                     )
                     SectionDivider()
                 }
                 SettingsMenuRow(
                     icon = MileNoteIcons.Wallet,
                     title = tr("钱迹记账", "Qianji"),
-                    subtitle = tr("XLSX / JSON · 导入支出记录", "XLSX / JSON · Import expense records"),
-                    onClick = { onOpenImporter("qianji") },
+                    subtitle = if (demo) unavailable else tr("XLSX / JSON · 导入支出记录", "XLSX / JSON · Import expense records"),
+                    onClick = if (demo) null else ({ onOpenImporter("qianji") }),
                 )
 
             }
@@ -1417,6 +1424,17 @@ private fun BackupRestorePage(
                 )
             }
         }
+        if (demo) {
+            item("demo-note") {
+                MessageBar(
+                    message = tr(
+                        "演示模式下不能导出完整备份、还原或删除数据；请先退出演示。",
+                        "Full backup export, restore and delete are disabled in demo mode — exit the demo first.",
+                    ),
+                    kind = MessageKind.INFO,
+                )
+            }
+        }
 
         item("status") {
             SectionCard(title = tr("数据概览", "Data overview")) {
@@ -1461,8 +1479,12 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.Export,
                     title = tr("导出完整备份（JSON）", "Export full backup (JSON)"),
-                    subtitle = tr("全部车辆与记录，可跨设备还原", "Everything, restorable on another device"),
-                    enabled = !busy,
+                    subtitle = if (demo) {
+                        tr("演示模式下不可用", "Unavailable in demo mode")
+                    } else {
+                        tr("全部车辆与记录，可跨设备还原", "Everything, restorable on another device")
+                    },
+                    enabled = !busy && !demo,
                     onClick = onExportBackup,
                     trailing = {
                         if (busy) {
@@ -1513,8 +1535,12 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.Import,
                     title = tr("从 JSON 备份还原", "Restore from JSON backup"),
-                    subtitle = tr("只合并新增，不覆盖现有数据", "Merges new records only; never overwrites"),
-                    enabled = !busy,
+                    subtitle = if (demo) {
+                        tr("演示模式下不可用", "Unavailable in demo mode")
+                    } else {
+                        tr("只合并新增，不覆盖现有数据", "Merges new records only; never overwrites")
+                    },
+                    enabled = !busy && !demo,
                     onClick = onImportBackup,
                 )
                 if (replaceSnapshot != null) {
@@ -1527,7 +1553,7 @@ private fun BackupRestorePage(
                             "Snapshot: %s (local data before a WebDAV download or restore)",
                             formatBackupAt(replaceSnapshot.savedAtMillis),
                         ),
-                        enabled = !busy,
+                        enabled = !busy && !demo,
                         onClick = onRollbackReplaceSnapshot,
                     )
                 }
@@ -1542,8 +1568,13 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.Delete,
                     title = tr("删除全部数据", "Delete all data"),
-                    subtitle = tr("清空全部数据，需输入「删除」确认", "Wipes all data; type “删除” to confirm"),
+                    subtitle = if (demo) {
+                        tr("演示模式下不可用", "Unavailable in demo mode")
+                    } else {
+                        tr("清空全部数据，需输入「删除」确认", "Wipes all data; type “删除” to confirm")
+                    },
                     danger = true,
+                    enabled = !busy && !demo,
                     onClick = onDeleteAll,
                 )
             }
