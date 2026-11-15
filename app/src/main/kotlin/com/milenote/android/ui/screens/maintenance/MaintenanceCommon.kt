@@ -95,6 +95,10 @@ internal fun reminderStatusLine(
     state: ReminderState,
     progress: ServiceProgress?,
     distanceUnit: String = Units.distanceUnit,
+    /** 按近 90 天日均里程估算的剩余天数；null = 数据不足，不显示（F5）。 */
+    predictionDays: Long? = null,
+    /** 估算用的日均里程（km/天），用于文案里的依据。 */
+    dailyKm: Double? = null,
 ): String {
     val daysTrack = when (progress?.kind) {
         "days" -> true
@@ -114,7 +118,27 @@ internal fun reminderStatusLine(
             else -> null
         }
     }
-    return if (remaining == null) label else "$label · $remaining"
+    val base = if (remaining == null) label else "$label · $remaining"
+    // 只有里程轨是「先到」的维度时才补预测；日期轨先到时不叠加，避免两套日期打架。
+    if (!daysTrack && predictionDays != null && dailyKm != null && dailyKm > 0) {
+        val prediction = if (predictionDays > 365) {
+            tr(
+                "约 %d 个月后（日均 %s 公里）",
+                "~%d months (avg %s km/day)",
+                (predictionDays / 30).coerceAtLeast(1),
+                Format.fmt(dailyKm),
+            )
+        } else {
+            tr(
+                "约 %d 天后（日均 %s 公里）",
+                "~%d days (avg %s km/day)",
+                predictionDays,
+                Format.fmt(dailyKm),
+            )
+        }
+        return "$base · $prediction"
+    }
+    return base
 }
 
 /** 剩余里程文案：`还剩 1,000 公里` / `里程已用完` / `超出 2,000 公里`。 */

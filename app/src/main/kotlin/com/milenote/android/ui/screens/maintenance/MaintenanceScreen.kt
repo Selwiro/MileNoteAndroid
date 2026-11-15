@@ -46,6 +46,8 @@ import com.milenote.android.domain.calc.PlanRow
 import com.milenote.android.domain.calc.ReminderLevel
 import com.milenote.android.domain.calc.ServiceProgress
 import com.milenote.android.domain.calc.currentKm
+import com.milenote.android.domain.calc.averageDailyKm
+import com.milenote.android.domain.calc.predictDueDays
 import com.milenote.android.domain.calc.defaultServicePlan
 import com.milenote.android.domain.calc.reminderState
 import com.milenote.android.domain.calc.servicePlanRows
@@ -374,6 +376,9 @@ private fun ReminderCard(
     val semantic = LocalMileNoteSemanticColors.current
     val state = reminderState(reminder, km, today)
     val progress = serviceProgress(reminder, km, today)
+    // F5：按近 90 天日均里程估算「还有几天到里程」；数据不足时 dailyKm 为 null，不显示。
+    val dailyKm = remember(ledger, today) { averageDailyKm(ledger, today) }
+    val predictionDays = dailyKm?.let { predictDueDays(reminder, km, it) }
     val statusColor = when (state.level) {
         ReminderLevel.OVERDUE -> semantic.danger.content
         ReminderLevel.SOON -> semantic.warning.content
@@ -439,10 +444,16 @@ private fun ReminderCard(
                         .background(dotColor, CircleShape),
                 )
                 Text(
-                    text = reminderStatusLine(reminder, state, progress),
+                    text = reminderStatusLine(
+                        reminder = reminder,
+                        state = state,
+                        progress = progress,
+                        predictionDays = predictionDays,
+                        dailyKm = dailyKm,
+                    ),
                     style = MaterialTheme.typography.bodySmallEmphasized,
                     color = statusColor,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
