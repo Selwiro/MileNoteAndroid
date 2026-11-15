@@ -2,6 +2,7 @@ package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.model.Record
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -85,6 +86,32 @@ class ValidateTest {
         val old = evRecord().copy(date = "1899-12-31")
         assertEquals("", validateRecord(old))
         assertTrue(validateRecord(old, requirePlausibleDate = true).contains("1970"))
+    }
+
+    @Test
+    fun `issue points at the field the user has to fix`() {
+        // 金额 → 金额框；日期 → 日期框（不能挂到金额下面）
+        assertEquals(RecordField.AMOUNT, recordIssue(evRecord(amount = 0.0))?.field)
+        assertEquals(
+            RecordField.DATE,
+            recordIssue(evRecord().copy(date = "1899-12-31"), requirePlausibleDate = true)?.field,
+        )
+        assertEquals(RecordField.ENERGY, recordIssue(evRecord(kwh = -1.0))?.field)
+        assertEquals(RecordField.ENERGY, recordIssue(evRecord().copy(liters = 40.0))?.field)
+        assertEquals(
+            RecordField.ECONOMY,
+            recordIssue(evRecord(amount = 0.0, kind = "manual", distance = 100.0))?.field,
+        )
+        val service = Record(
+            id = "s2",
+            date = "2026-11-01",
+            category = "保养",
+            amount = 300.0,
+            odometer = null,
+            projects = "机油机滤",
+        )
+        assertEquals(RecordField.ODOMETER, recordIssue(service, requireServiceOdometer = true)?.field)
+        assertNull(recordIssue(service.copy(odometer = 42_000.0), requireServiceOdometer = true))
     }
 
     @Test

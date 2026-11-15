@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -41,7 +43,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
@@ -103,6 +110,7 @@ fun RecordEditorScreen(
     var showOcr by remember { mutableStateOf(false) }
     var ocrPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     // 有未保存改动时先确认再关闭；没有改动直接关（保持原来的轻快手感）。
     fun requestDismiss() {
@@ -139,6 +147,8 @@ fun RecordEditorScreen(
 
     RecordEditorBody(
         form = form,
+        saving = uiState.savingRecord,
+        submitError = uiState.editorError,
         onDismiss = { requestDismiss() },
         onSave = {
             val record = form.attemptSave()
@@ -148,12 +158,38 @@ fun RecordEditorScreen(
                 vm.saveRecord(record)
             }
         },
-        onDelete = {
-            form.original?.let(vm::deleteRecord)
-            onDismiss()
-        },
+        onRequestDelete = { confirmDelete = true },
         onOcrClick = { openReceiptPicker() },
     )
+
+    // 删除从底部操作栏挪到顶栏（UX1）：底部是拇指区，误触成本太高；
+    // 点删除先确认一次，删完仍保留底部 10 秒撤销。
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(tr("删除这条记录？", "Delete this record?")) },
+            text = { Text(tr("删除后可在底部提示里撤销。", "You can undo this from the message below.")) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        form.original?.let(vm::deleteRecord)
+                        onDismiss()
+                    },
+                ) {
+                    Text(
+                        text = tr("删除", "Delete"),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text(tr("继续编辑", "Keep editing"))
+                }
+            },
+        )
+    }
 
     if (confirmDiscard) {
         AlertDialog(
@@ -245,9 +281,11 @@ fun RecordEditorSheet(
 @Composable
 private fun RecordEditorBody(
     form: RecordEditorState,
+    saving: Boolean,
+    submitError: String?,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
-    onDelete: () -> Unit,
+    onRequestDelete: () -> Unit,
     onOcrClick: () -> Unit,
 ) {
     Surface(
@@ -255,14 +293,30 @@ private fun RecordEditorBody(
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        val error = form.currentError()
+        val issue = form.visibleIssue()
+        val haptic = LocalHapticFeedback.current
+        // 每个可标红字段一个 requester：点保存失败时滚到第一个出错项（UX1）。
+        val requesters = remember {
+            EditorField.entries.associateWith { BringIntoViewRequester() }
+        }
+        LaunchedEffect(form.saveAttempt) {
+            if (form.saveAttempt == 0) return@LaunchedEffect
+            val field = form.currentIssue()?.field ?: return@LaunchedEffect
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            // 字段被条件隐藏时可能尚未 attach：此时只保留红字提示，不让滚动失败打断保存。
+            runCatching { requesters[field]?.bringIntoView() }
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .imePadding(),
         ) {
-            EditorHeader(title = form.title, onBack = onDismiss)
+            EditorHeader(
+                title = form.title,
+                onBack = onDismiss,
+                onDelete = if (form.original != null) onRequestDelete else null,
+            )
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -271,25 +325,46 @@ private fun RecordEditorBody(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (!form.isManual) {
-                    CategoryField(form = form)
+                    CategoryField(
+                        form = form,
+                        modifier = Modifier.bringIntoViewRequester(requesters.getValue(EditorField.CATEGORY)),
+                    )
                 }
                 AmountField(
                     form = form,
+                    error = issue?.takeIf { it.field == EditorField.AMOUNT }?.message,
+                    modifier = Modifier.bringIntoViewRequester(requesters.getValue(EditorField.AMOUNT)),
                     onOcrClick = onOcrClick,
                 )
-                DateField(form = form)
-                OdometerField(form = form)
+                DateField(
+                    form = form,
+                    error = issue?.takeIf { it.field == EditorField.DATE }?.message,
+                    modifier = Modifier.bringIntoViewRequester(requesters.getValue(EditorField.DATE)),
+                )
+                OdometerField(
+                    form = form,
+                    error = issue?.takeIf { it.field == EditorField.ODOMETER }?.message,
+                    modifier = Modifier.bringIntoViewRequester(requesters.getValue(EditorField.ODOMETER)),
+                )
                 if (form.isFuel) {
                     FuelFields(form = form)
                 }
                 if (form.isManual) {
-                    ManualFuelFields(form = form)
+                    ManualFuelFields(
+                        form = form,
+                        error = issue?.takeIf { it.field == EditorField.ECONOMY }?.message,
+                        modifier = Modifier.bringIntoViewRequester(requesters.getValue(EditorField.ECONOMY)),
+                    )
                 }
                 if (form.isInsurance) {
                     InsuranceFields(form = form)
                 }
                 if (form.isService) {
-                    ServiceFields(form = form)
+                    ServiceFields(
+                        form = form,
+                        error = issue?.takeIf { it.field == EditorField.PROJECTS }?.message,
+                        modifier = Modifier.bringIntoViewRequester(requesters.getValue(EditorField.PROJECTS)),
+                    )
                 }
                 NoteField(form = form)
                 form.ocrNotice?.let { notice ->
@@ -313,8 +388,8 @@ private fun RecordEditorBody(
             }
             EditorActionBar(
                 isEditing = form.original != null,
-                error = error,
-                onDelete = onDelete,
+                error = issue?.message ?: submitError,
+                saving = saving,
                 onCancel = onDismiss,
                 onSave = onSave,
             )
@@ -322,9 +397,13 @@ private fun RecordEditorBody(
     }
 }
 
-/** 顶部栏：返回箭头 + 标题（56dp 高，底部 1dp 分隔线）。 */
+/** 顶部栏：返回箭头 + 标题 +（编辑态）删除入口；56dp 高，底部 1dp 分隔线。 */
 @Composable
-private fun EditorHeader(title: String, onBack: () -> Unit) {
+private fun EditorHeader(
+    title: String,
+    onBack: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -345,8 +424,19 @@ private fun EditorHeader(title: String, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
-            // 右侧占位，保证标题左对齐时与返回按钮视觉平衡。
-            Spacer(modifier = Modifier.size(48.dp))
+            if (onDelete != null) {
+                // 删除只放在这里：底部操作栏是拇指区，删除和保存并排的误触成本太高（UX1）。
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = MileNoteIcons.Delete,
+                        contentDescription = tr("删除记录", "Delete record"),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            } else {
+                // 右侧占位，保证标题左对齐时与返回按钮视觉平衡。
+                Spacer(modifier = Modifier.size(48.dp))
+            }
         }
         HorizontalDivider(
             thickness = 1.dp,
@@ -355,26 +445,39 @@ private fun EditorHeader(title: String, onBack: () -> Unit) {
     }
 }
 
-/** 底部固定操作栏：删除（编辑态）+ 取消 + 保存；含手势条 inset。 */
+/** 底部固定操作栏：取消 + 保存（删除已挪到顶栏）；含手势条 inset。 */
 @Composable
 private fun EditorActionBar(
     isEditing: Boolean,
     error: String?,
-    onDelete: () -> Unit,
+    saving: Boolean,
     onCancel: () -> Unit,
     onSave: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 错误摘要固定在按钮上方：无论滚到哪里，点保存都能立刻看到为什么没保存（B20）。
+        // 错误摘要固定在按钮上方：无论滚到哪里，点保存都能立刻看到为什么没保存（B20）；
+        // liveRegion 让读屏在失败时主动播报，而不是只在视觉上标红。
         if (error != null) {
-            Text(
-                text = error,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            )
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                    .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = MileNoteIcons.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
         HorizontalDivider(
             thickness = 1.dp,
@@ -388,25 +491,28 @@ private fun EditorActionBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (isEditing) {
-                TextButton(onClick = onDelete) {
-                    Text(
-                        text = tr("删除", "Delete"),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = onCancel) {
+            TextButton(
+                onClick = onCancel,
+                enabled = !saving,
+                modifier = Modifier.height(48.dp),
+            ) {
                 Text(tr("取消", "Cancel"), style = MaterialTheme.typography.labelLarge)
             }
             Button(
                 onClick = onSave,
+                enabled = !saving,
                 shape = MileNoteShapeTokens.full,
                 modifier = Modifier.height(48.dp),
             ) {
-                Text(tr("保存记录", "Save record"), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = when {
+                        saving -> tr("保存中…", "Saving…")
+                        isEditing -> tr("保存修改", "Save changes")
+                        else -> tr("保存记录", "Save record")
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
     }

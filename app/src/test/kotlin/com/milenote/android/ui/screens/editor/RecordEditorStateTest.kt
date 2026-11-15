@@ -7,6 +7,7 @@ import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.ui.EditorTarget
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -51,6 +52,40 @@ class RecordEditorStateTest {
 
         form.odometer = "42000"
         assertNull(form.validate())
+    }
+
+    @Test
+    fun `validation issue points at the field to fix`() {
+        val form = RecordEditorState(ledger(), EditorTarget(category = "保养"))
+        form.amount = "300"
+        // 服务项目为空 → 项目区；补项目后缺里程 → 里程框；都补上 → 通过
+        assertEquals(EditorField.PROJECTS, form.currentIssue()?.field)
+        form.projects = listOf("机油机滤")
+        assertEquals(EditorField.ODOMETER, form.currentIssue()?.field)
+        form.odometer = "42000"
+        assertNull(form.currentIssue())
+    }
+
+    @Test
+    fun `field errors stay on their own field and appear only after save`() {
+        val form = RecordEditorState(ledger(), EditorTarget())
+        form.amount = "100"
+        form.date = "1899-12-31"
+
+        // 还没点保存：不标红
+        assertNull(form.fieldError(EditorField.DATE))
+        form.attemptSave()
+        assertEquals(1, form.saveAttempt)
+
+        // 日期错误只标在日期框，不能挂到金额框下面（旧的字符串匹配问题）
+        assertNotNull(form.fieldError(EditorField.DATE))
+        assertNull(form.fieldError(EditorField.AMOUNT))
+
+        // 修好后红字立即消失，再点保存再触发一次滚动定位
+        form.date = "2026-11-01"
+        assertNull(form.fieldError(EditorField.DATE))
+        form.attemptSave()
+        assertEquals(2, form.saveAttempt)
     }
 
     @Test

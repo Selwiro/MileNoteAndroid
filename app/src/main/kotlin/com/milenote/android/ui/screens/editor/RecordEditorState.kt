@@ -14,7 +14,8 @@ import com.milenote.android.domain.calc.ODOMETER_REQUIRED_CATEGORIES
 import com.milenote.android.domain.calc.SERVICE_CATEGORIES
 import com.milenote.android.domain.calc.serviceProjectOptions
 import com.milenote.android.domain.calc.splitProjects
-import com.milenote.android.domain.calc.validateRecord
+import com.milenote.android.domain.calc.RecordField
+import com.milenote.android.domain.calc.recordIssue
 import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.energyProfile
@@ -31,6 +32,34 @@ import com.milenote.android.ui.EditorTarget
 
 /** 燃油标号选项（车辆设置与油费记录共用同一口径）。 */
 internal val FuelGradeOptions: List<String> = listOf("92#", "95#", "98#", "0#")
+
+/**
+ * 编辑器里会标红 / 需要滚进视野的字段。
+ *
+ * 在 domain [RecordField] 之外多了 [PROJECTS]：保养项目是否必选属于编辑器规则
+ * （domain 只校验记录本身），所以在 UI 侧单独有一个位置。
+ */
+internal enum class EditorField {
+    AMOUNT,
+    DATE,
+    CATEGORY,
+    ODOMETER,
+    ENERGY,
+    ECONOMY,
+    PROJECTS,
+}
+
+/** 编辑器校验结果：出错字段 + 可直接展示的文案。 */
+internal data class EditorIssue(val field: EditorField, val message: String)
+
+private fun RecordField.toEditorField(): EditorField = when (this) {
+    RecordField.DATE -> EditorField.DATE
+    RecordField.CATEGORY -> EditorField.CATEGORY
+    RecordField.AMOUNT -> EditorField.AMOUNT
+    RecordField.ODOMETER -> EditorField.ODOMETER
+    RecordField.ENERGY -> EditorField.ENERGY
+    RecordField.ECONOMY -> EditorField.ECONOMY
+}
 
 /**
  * 「记一笔 / 记录加油 / 编辑记录」弹层的表单状态。
@@ -175,7 +204,8 @@ internal class RecordEditorState(
 
     // ---- 弹层 / 校验状态 ----
     var showErrors by mutableStateOf(false)
-    var validationError by mutableStateOf<String?>(null)
+    /** 第几次点保存：UI 用它触发「滚到第一个出错字段」与触觉反馈。 */
+    var saveAttempt by mutableStateOf(0)
     var showDatePicker by mutableStateOf(false)
     var showCategoryDialog by mutableStateOf(false)
 
@@ -442,59 +472,68 @@ internal class RecordEditorState(
     }
 
     /**
-     * 按 Web 记账顺序做业务校验，返回可直接展示的中文错误；通过返回 null。
+     * 在当前表单上跑一遍业务校验，返回「出错字段 + 文案」；通过返回 null。
      *
-     * **注意**: domain `validateRecord` 的约定是「空串 = 通过」，返回类型是 `String` 而非
-     * `String?`；这里必须用 `ifBlank { null }` 归一化，否则空串会被当成「有错误」，
-     * 导致保存按钮永远被拦下、顶部出现空内容错误条。
+     * 先判编辑器独有的规则（首保项目、服务项目必选、按里程循环的提醒），再交给 domain
+     * [recordIssue]。字段位置用于就地标红 + 把该字段滚进视野（UX1）。
      */
-    fun validate(): String? {
+    fun currentIssue(): EditorIssue? {
         val reminder = serviceReminder
         if (reminder?.firstOnly == true) {
             // 首保完成判定项目由方案决定：燃油=机油机滤，纯电=三电诊断（不再硬编码）。
             val required = splitProjects(reminder.projects)
             val missing = required.filterNot { projects.contains(it) }
             if (missing.isNotEmpty()) {
-                return tr(
-                    "首保项目需包含：%s",
-                    "The first service must include: %s",
-                    missing.joinToString("、") { DataLabels.projectFor(ledger, it) },
+                return EditorIssue(
+                    EditorField.PROJECTS,
+                    tr(
+                        "首保项目需包含：%s",
+                        "The first service must include: %s",
+                        missing.joinToString("、") { DataLabels.projectFor(ledger, it) },
+                    ),
                 )
             }
         }
-        if (isService && projects.isEmpty()) return tr("请填写维修保养项目", "Add at least one service item")
+        if (isService && projects.isEmpty()) {
+            return EditorIssue(EditorField.PROJECTS, tr("请填写维修保养项目", "Add at least one service item"))
+        }
         if (reminder != null && (reminder.intervalKm ?: 0.0) > 0.0 && Numbers.parse(odometer) == null) {
-            return tr(
-                "该提醒按%s数循环，请填写总里程",
-                "This reminder repeats by mileage (%s) — enter the odometer",
-                Units.distanceUnit,
+            return EditorIssue(
+                EditorField.ODOMETER,
+                tr(
+                    "该提醒按%s数循环，请填写总里程",
+                    "This reminder repeats by mileage (%s) — enter the odometer",
+                    Units.distanceUnit,
+                ),
             )
         }
-        return validateRecord(buildRecord(), customCategories, requireServiceOdometer = true, requirePlausibleDate = true).ifBlank { null }
+        return recordIssue(
+            record = buildRecord(),
+            customCategories = customCategories,
+            requireServiceOdometer = true,
+            requirePlausibleDate = true,
+        )?.let { EditorIssue(it.field.toEditorField(), it.message) }
     }
+
+    /** 兼容旧调用与单测：校验错误文案（通过为 null）。 */
+    fun validate(): String? = currentIssue()?.message
 
     /** 点「保存」时调用：打开错误提示并尝试构造记录；失败返回 null。 */
     fun attemptSave(): Record? {
         showErrors = true
-        val error = validate() // 已归一化：通过时为 null，不会是空串
-        validationError = error
-        return if (error.isNullOrEmpty()) buildRecord() else null
+        saveAttempt += 1
+        return if (currentIssue() == null) buildRecord() else null
     }
 
-    /**
-     * 当前应展示的校验错误（首次点保存后才计算）。
-     *
-     * 实时重算而不是缓存首次错误，用户修正字段后提示会立即消失。
-     */
-    fun currentError(): String? = if (showErrors) validate() else null
+    /** 首次点保存之后才展示的错误（实时重算，用户修正字段后提示立即消失）。 */
+    fun visibleIssue(): EditorIssue? = if (showErrors) currentIssue() else null
 
-    /** 金额字段的局部错误（就地显示在金额下方）。 */
-    fun amountError(): String? = currentError()
-        ?.takeIf {
-            val lower = it.lowercase()
-            it.contains("金额") || it.contains("日期") ||
-                lower.contains("amount") || lower.contains("date")
-        }
+    /** 当前应展示的校验总述（首次点保存后才计算）。 */
+    fun currentError(): String? = visibleIssue()?.message
+
+    /** 某个字段的局部错误（就地标红 / 滚动定位用）。 */
+    fun fieldError(field: EditorField): String? =
+        visibleIssue()?.takeIf { it.field == field }?.message
 }
 
 /** 数值字段回填：整数不带 `.0`，小数去掉尾随 0（与 Web `String(number)` 一致）。 */

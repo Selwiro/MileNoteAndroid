@@ -223,6 +223,10 @@ data class UiState(
      */
     val saveError: String? = null,
     val editor: EditorTarget? = null,
+    /** 正在写入当前这条记录：保存按钮显示「保存中」并暂时禁用，防连点重复写库。 */
+    val savingRecord: Boolean = false,
+    /** 编辑器内的保存失败原因（如本地数据尚未加载）；成功或关闭时清空。 */
+    val editorError: String? = null,
     val vehicleSwitcher: Boolean = false,
     val confirm: PendingConfirm? = null,
     val recordDelete: PendingRecordDelete? = null,
@@ -420,6 +424,8 @@ class MileNoteViewModel(
                 serviceReminderId = serviceReminderId,
                 startOcr = startOcr && !ocrUnsupported,
             ),
+            savingRecord = false,
+            editorError = null,
             message = if (ocrUnsupported) {
                 tr("纯电车辆不支持加油票识别，已打开记一笔", "Fuel receipt scanning isn't available for EVs — opened a new entry instead.")
             } else {
@@ -429,7 +435,11 @@ class MileNoteViewModel(
     }
 
     fun closeEditor() {
-        _state.value = _state.value.copy(editor = null)
+        _state.value = _state.value.copy(
+            editor = null,
+            savingRecord = false,
+            editorError = null,
+        )
     }
 
     fun saveRecord(record: Record) {
@@ -440,15 +450,30 @@ class MileNoteViewModel(
         if (duplicate != null) {
             val profile = active.vehicle.energyProfile
             val label = DataLabels.categoryFor(active, duplicate.category, profile)
+            // 只给「日期 · 分类 · 金额」时用户没法判断是同一天两笔正常支出还是真重复；
+            // 带上地点 / 里程 / 备注，让这次确认有信息量。
+            val details = listOfNotNull(
+                duplicate.location?.takeIf { it.isNotBlank() }
+                    ?.let { tr("地点：%s", "Location: %s", it) },
+                duplicate.odometer?.let { tr("里程：%s", "Odometer: %s", Format.km(it)) },
+                duplicate.note?.takeIf { it.isNotBlank() }
+                    ?.let { tr("备注：%s", "Note: %s", it.take(60)) },
+            ).joinToString("\n")
+            val tail = if (details.isEmpty()) {
+                tr("仍要保存吗？", "Save anyway?")
+            } else {
+                tr("已有那条记录：\n%s\n仍要保存吗？", "Existing entry:\n%s\nSave anyway?", details)
+            }
             confirm(
                 PendingConfirm(
                     title = tr("可能重复的记录", "Possible duplicate entry"),
                     message = tr(
-                        "同一天已经有一条相同分类和金额的记录：%s · %s · %s。仍要保存吗？",
-                        "There is already an entry with the same date, category and amount: %s · %s · %s. Save anyway?",
+                        "同一天已经有一条相同分类和金额的记录：%s · %s · %s。%s",
+                        "There is already an entry with the same date, category and amount: %s · %s · %s. %s",
                         Dates.displayDots(duplicate.date),
                         label,
                         "${Units.currencySymbol}${Format.money(duplicate.amount)}",
+                        tail,
                     ),
                     confirmLabel = tr("仍要保存", "Save anyway"),
                     action = { persistRecord(record) },
@@ -456,6 +481,7 @@ class MileNoteViewModel(
             )
             return
         }
+        _state.value = _state.value.copy(editorError = null)
         persistRecord(record)
     }
 
@@ -466,6 +492,8 @@ class MileNoteViewModel(
         // 分类显示名优先用本车改名（只影响显示，账本存储值不变）。
         val categoryLabel = active?.let { DataLabels.categoryFor(it, record.category, profile) }
             ?: DataLabels.category(record.category, profile)
+        val editing = active?.records?.any { it.id == record.id } == true
+        _state.value = _state.value.copy(savingRecord = true, editorError = null)
         viewModelScope.launch {
             val result = repository.update(syncHistory = true) { garage ->
                 updateActive(garage) { ledger ->
@@ -478,18 +506,27 @@ class MileNoteViewModel(
                     ledger.copy(records = records)
                 }
             }
-            val saved = if (profile != EnergyProfile.FUEL_ONLY) {
-                tr("已保存 · %s", "Saved · %s", categoryLabel)
-            } else {
-                tr("已保存", "Saved")
+            val saved = when {
+                editing && profile != EnergyProfile.FUEL_ONLY -> tr("已更新 · %s", "Updated · %s", categoryLabel)
+                editing -> tr("已更新", "Updated")
+                profile != EnergyProfile.FUEL_ONLY -> tr("已保存 · %s", "Saved · %s", categoryLabel)
+                else -> tr("已保存", "Saved")
             }
-            _state.value = _state.value.copy(
-                editor = null,
-                message = if (result == null) {
-                    tr("保存失败：本机数据尚未加载完成", "Could not save: the local data has not loaded yet")
-                } else {
-                    savedMessage(saved)
-                },
+            val failure = if (result == null) {
+                tr(
+                    "保存失败：本机数据尚未加载完成，请稍后重试",
+                    "Could not save: the local data has not loaded yet. Try again in a moment.",
+                )
+            } else {
+                null
+            }
+            val current = _state.value
+            _state.value = current.copy(
+                // 失败时不关页面：刚填的内容与焦点都还在，可以直接重试 / 继续改（UX1）。
+                editor = if (failure != null) current.editor else null,
+                savingRecord = false,
+                editorError = failure,
+                message = failure ?: savedMessage(saved),
             )
         }
     }

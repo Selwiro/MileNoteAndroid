@@ -73,10 +73,10 @@ import com.milenote.android.ui.theme.moneyLarge
 @Composable
 internal fun AmountField(
     form: RecordEditorState,
+    error: String?,
     modifier: Modifier = Modifier,
     onOcrClick: (() -> Unit)? = null,
 ) {
-    val error = form.amountError()
     OutlinedTextField(
         value = form.amount,
         onValueChange = {
@@ -125,6 +125,7 @@ internal fun AmountField(
 @Composable
 internal fun DateField(
     form: RecordEditorState,
+    error: String?,
     modifier: Modifier = Modifier,
 ) {
     androidx.compose.foundation.layout.Box(modifier = modifier.fillMaxWidth()) {
@@ -132,6 +133,8 @@ internal fun DateField(
             value = form.date,
             onValueChange = {},
             label = tr("日期", "Date"),
+            isError = error != null,
+            supportingText = error,
             readOnly = true,
             trailing = {
                 Icon(
@@ -256,11 +259,14 @@ private fun androidx.compose.foundation.layout.RowScope.CategoryCell(
 @Composable
 internal fun OdometerField(
     form: RecordEditorState,
+    error: String?,
     modifier: Modifier = Modifier,
 ) {
     FormField(
         value = form.odometer,
         onValueChange = { form.odometer = it },
+        isError = error != null,
+        supportingText = error,
         label = if (form.requiresOdometer) {
             tr("总里程（必填）", "Odometer (required)")
         } else {
@@ -464,6 +470,7 @@ private fun CompactFuelGradeDropdown(
 @Composable
 internal fun ManualFuelFields(
     form: RecordEditorState,
+    error: String?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -474,6 +481,8 @@ internal fun ManualFuelFields(
             value = form.rate,
             onValueChange = { form.rate = it },
             label = tr("油耗 *", "Fuel economy *"),
+            isError = error != null,
+            supportingText = error,
             suffix = Units.consumption,
             keyboardType = KeyboardType.Decimal,
             leadingIcon = MileNoteIcons.Fuel,
@@ -503,6 +512,7 @@ internal fun ManualFuelFields(
 internal fun ProjectPickerSection(
     form: RecordEditorState,
     title: String,
+    error: String?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -535,6 +545,13 @@ internal fun ProjectPickerSection(
                     },
                 )
             }
+        }
+        error?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -573,6 +590,7 @@ internal fun ProjectPickerSection(
 @Composable
 internal fun ServiceFields(
     form: RecordEditorState,
+    error: String?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -588,6 +606,7 @@ internal fun ServiceFields(
         )
         ProjectPickerSection(
             form = form,
+            error = error,
             title = tr(
                 "%s项目 *（可多选）",
                 "%s items * (multi-select)",
@@ -605,6 +624,7 @@ internal fun InsuranceFields(
 ) {
     ProjectPickerSection(
         form = form,
+        error = null,
         title = tr("保险项目（可多选）", "Insurance items (multi-select)"),
         modifier = modifier,
     )
