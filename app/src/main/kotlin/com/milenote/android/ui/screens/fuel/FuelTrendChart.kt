@@ -2,9 +2,12 @@ package com.milenote.android.ui.screens.fuel
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -25,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
@@ -32,6 +36,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.milenote.android.domain.calc.Dates
@@ -41,7 +46,23 @@ import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.MileNoteThemeTokens
 import java.time.LocalDate
+import kotlin.math.roundToInt
 import kotlin.math.abs
+
+/**
+ * 一个数据点的读屏文案（B39，做法 1：逐点可聚焦朗读）。
+ *
+ * 整张图原来只有一句总述，读屏用户不知道「哪一天是多少」。每个点给一句：
+ * `2026.11.14：8.90 升/百公里`（英文界面同样是数字 + 单位，不翻单位缩写）。
+ *
+ * @param dateIso 数据点日期（ISO `YYYY-MM-DD`）；解析失败时原样显示。
+ * @param rate 能耗值。
+ * @param unit 单位文案（[Units.consumption] / [Units.energyConsumption]）。
+ */
+internal fun fuelPointAccessibilityLabel(dateIso: String, rate: Double, unit: String): String {
+    val dateText = Dates.displayDots(dateIso).ifBlank { dateIso }
+    return tr("%s：%s %s", "%s: %s %s", dateText, Format.fmt(rate), unit)
+}
 
 /**
  * 能耗走势图（Canvas 自绘，对应 Web `fuelPage` 的 `.fuel-chart` 折线）。
@@ -158,6 +179,25 @@ fun FuelTrendChart(
         fun yOf(rate: Double): Float =
             FuelTrendGeometry.yOf(rate, maxRate, topPad, plotHeight)
 
+        // B39：Canvas 是单节点，逐点朗读靠覆盖层的透明语义节点（不参与绘制、不拦截触摸）。
+        // 节点固定在数据点位置、给 24dp 的聚焦区，读屏可以一个个点过去听「日期 + 数值」。
+        val pointHitSize = 24.dp
+        val pointHitHalfPx = with(density) { (pointHitSize / 2).toPx() }
+        points.forEachIndexed { index, point ->
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (xOf(index) - pointHitHalfPx).roundToInt(),
+                            (yOf(point.rate) - pointHitHalfPx).roundToInt(),
+                        )
+                    }
+                    .size(pointHitSize)
+                    .clearAndSetSemantics {
+                        contentDescription = fuelPointAccessibilityLabel(point.date, point.rate, unit)
+                    },
+            )
+        }
         Canvas(
             modifier = Modifier
                 .fillMaxSize()

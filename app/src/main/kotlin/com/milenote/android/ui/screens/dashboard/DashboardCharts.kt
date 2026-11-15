@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
@@ -70,6 +71,7 @@ import com.milenote.android.domain.calc.stats
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.theme.LocalMileNoteCategoryColors
@@ -368,12 +370,50 @@ internal fun MileageTrendChart(
         )
     }
 
-    Canvas(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .height(TrendChartBlockHeight)
             .semantics { contentDescription = description },
     ) {
+        // B39：每个月的点一个可聚焦节点，朗读「月份 + 里程」；几何与下面 Canvas 同源
+        // （都按 [mileageNodeOffsets] 的公式），节点透明、不拦截触摸。
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+        val pointNodes = mileageNodeOffsets(
+            values = bars.map { it.km },
+            maxValue = maxKm,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            leftPadPx = with(density) { 14.dp.toPx() },
+            rightPadPx = with(density) { 14.dp.toPx() },
+            topPadPx = with(density) { 24.dp.toPx() },
+            axisRowPx = with(density) { TrendAxisRowHeight.toPx() },
+            axisGapPx = with(density) { TrendAxisGap.toPx() },
+        )
+        val pointHitSize = 24.dp
+        val pointHitHalfPx = with(density) { (pointHitSize / 2).toPx() }
+        pointNodes.forEachIndexed { index, position ->
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (position.first - pointHitHalfPx).roundToInt(),
+                            (position.second - pointHitHalfPx).roundToInt(),
+                        )
+                    }
+                    .size(pointHitSize)
+                    .clearAndSetSemantics {
+                        contentDescription = mileagePointAccessibilityLabel(
+                            bars[index].label,
+                            bars[index].km,
+                            Units.distanceUnit,
+                        )
+                    },
+            )
+        }
+        Canvas(modifier = Modifier.fillMaxSize()) {
         val left = 14.dp.toPx()
         val right = size.width - 14.dp.toPx()
         val top = 24.dp.toPx()
@@ -551,6 +591,7 @@ internal fun MileageTrendChart(
                 )
             }
         }
+        }
     }
 }
 
@@ -635,6 +676,92 @@ internal fun chartColorOf(name: String, palette: List<Color>, darkTheme: Boolean
     val hue = (hash % 360u).toFloat()
     return Color.hsl(hue, saturation = 0.42f, lightness = if (darkTheme) 0.66f else 0.48f)
 }
+
+/**
+ * 一根趋势柱的读屏文案（B39，做法 1：逐柱可聚焦朗读）。
+ *
+ * 整张图原来只有一句总述，读屏用户不知道「哪个月多少钱」。每根柱给一句：
+ * 月份 + 合计 + 占当前范围合计的比例 +（最多 [categoryLimit] 个）分类明细。
+ *
+ * 例：`11 月，合计 2,214.5 元，占当前范围 60.5%；油费 919.45 元，保险 1,280 元`；
+ * 英文：`Nov, total 2,214.5 CNY, 60.5% of the range; Fuel 919.45 CNY, Insurance 1,280 CNY`。
+ *
+ * @param rangeTotal 当前筛选范围内所有（参与显示的）月份合计；0 / 非法时省略占比。
+ * @param categoryLimit 最多朗读几个分类，其余用「等 N 项」收尾，避免一句话过长。
+ */
+internal fun trendBarAccessibilityLabel(
+    bar: MonthBar,
+    rangeTotal: Double,
+    ev: Boolean = false,
+    categoryLimit: Int = 3,
+): String {
+    val month = bar.label
+    if (bar.total <= 0.0) {
+        return tr("%s，无支出", "%s, no expenses", month)
+    }
+    val totalText = "${Format.money(bar.total)} ${Units.money}"
+    val share = if (rangeTotal > 0.0 && rangeTotal.isFinite()) {
+        tr("，占当前范围 %s", ", %s of the range", percentText(bar.total, rangeTotal))
+    } else {
+        ""
+    }
+    val shown = bar.categories.take(categoryLimit.coerceAtLeast(0))
+    val categoryText = if (shown.isEmpty()) {
+        ""
+    } else {
+        val parts = shown.joinToString(if (I18n.english) ", " else "、") { category ->
+            "${DataLabels.category(category.name, ev)} ${Format.money(category.value)}"
+        }
+        val rest = bar.categories.size - shown.size
+        val suffix = if (rest > 0) tr(" 等 %d 项", " and %d more", rest) else ""
+        tr("；%s%s", "; %s%s", parts, suffix)
+    }
+    return tr("%s，合计 %s%s%s", "%s, total %s%s%s", month, totalText, share, categoryText)
+}
+
+/**
+ * 里程折线图每个月的点位（px，相对图表区域左上角）。
+ *
+ * 覆盖层的读屏节点和 Canvas 画线必须用**同一套几何**（B39），否则读屏报的位置和视觉对不上。
+ * 单月窗口没有可比对象：唯一的数据点固定在绘图区垂直中间偏下（与 Canvas 里的单点特殊处理一致）。
+ *
+ * @param values 每个月里程（顺序与轴一致）。
+ * @param reveal 入场动画进度（0–1）；读屏节点用 1（最终位置）。
+ */
+internal fun mileageNodeOffsets(
+    values: List<Double>,
+    maxValue: Double,
+    widthPx: Float,
+    heightPx: Float,
+    leftPadPx: Float,
+    rightPadPx: Float,
+    topPadPx: Float,
+    axisRowPx: Float,
+    axisGapPx: Float,
+    reveal: Float = 1f,
+): List<Pair<Float, Float>> {
+    if (values.isEmpty()) return emptyList()
+    val left = leftPadPx
+    val right = widthPx - rightPadPx
+    val top = topPadPx
+    val bottom = heightPx - axisRowPx - axisGapPx
+    val usableW = (right - left).coerceAtLeast(1f)
+    val usableH = (bottom - top).coerceAtLeast(1f)
+    val count = values.size
+    val safeMax = maxValue.coerceAtLeast(1e-9)
+    if (count == 1) {
+        return listOf(widthPx / 2f to top + usableH * 0.55f)
+    }
+    return values.mapIndexed { index, km ->
+        val x = left + usableW * index / (count - 1)
+        val y = bottom - usableH * (km / safeMax).toFloat() * reveal
+        x to y
+    }
+}
+
+/** 里程折线图一个月数据点的读屏文案（B39）：`11 月，1,380 公里`。 */
+internal fun mileagePointAccessibilityLabel(monthLabel: String, km: Double, unit: String): String =
+    tr("%s，%s %s", "%s, %s %s", monthLabel, Format.fmt(km), unit)
 
 /** 占比文案（一位小数，无 Locale 依赖）：`42.0%`、`7.5%`。 */
 internal fun percentText(value: Double, total: Double): String {
@@ -760,7 +887,13 @@ internal fun ExpenseTrendChart(
                 ) {
                     bars.forEachIndexed { index, bar ->
                         Column(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                // B39：整根柱子作为一个读屏焦点，朗读「月份 / 合计 / 占比 / 主要分类」，
+                                // 子节点（柱顶金额）不再单独朗读，避免一句话被拆成两段。
+                                .clearAndSetSemantics {
+                                    contentDescription = trendBarAccessibilityLabel(bar, focusTotal, ev)
+                                },
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Box(

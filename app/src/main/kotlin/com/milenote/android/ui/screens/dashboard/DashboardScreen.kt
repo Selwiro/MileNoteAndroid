@@ -79,6 +79,7 @@ import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.Routes
@@ -861,10 +862,14 @@ private fun TrendCard(
     val display = remember(ledger, range, today) { trendDisplayWindow(ledger, range, today) }
     val months = display.months
     val focusKeys = remember(display) { display.focus.map { monthKey(it) }.toSet() }
-    val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
+    // 月份标签（`10 月` / `Oct`）是建 bar 时按当前语言烘进去的，所以 remember 必须带上
+    // `I18n.english`：启动时会先按系统语言渲染一帧、随后才套用应用内语言偏好，
+    // 不带这个键的话柱状图月份会一直停在系统语言（B39 走查时发现：中文界面显示 Oct/Nov）。
+    val english = I18n.english
+    val mileageBars = remember(ledger, months, english) { buildMileageBars(ledger, months) }
     val palette = LocalMileNoteCategoryColors.current
     val darkTheme = LocalMileNoteDarkTheme.current
-    val monthBars = remember(ledger, palette, darkTheme, months) {
+    val monthBars = remember(ledger, palette, darkTheme, months, english) {
         buildMonthBars(ledger, palette, darkTheme, months)
     }
     // 分类视图 / 单月摘要只算选中范围，不把上下文月份算进来。

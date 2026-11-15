@@ -95,6 +95,15 @@ private const val MAX_OCR_UPSCALE = 5f
 private const val MAX_DECODE_SIDE = 2400
 
 /**
+ * API 26–27 解码的**内存预算**（单张基底位图，ARGB_8888 = 4 字节/像素）。
+ *
+ * 为什么还要按字节卡：OCR 随后还会做灰度、二值化两个增强变体（各 4 字节/像素），
+ * 老机器上 4000×3000（48 MB）光基底就吃掉大半堆；按 8 MB 卡住后，
+ * 基底 + 两个变体峰值约 24 MB，落在低端机可接受范围（B44）。
+ */
+private const val MAX_DECODE_BYTES = 8L * 1024 * 1024
+
+/**
  * 单次识别的时间预算：低清/七段屏照片会触发「多增强变体 × 中英双引擎」兜底，
  * 最坏情况十几轮整图 OCR。超过预算就停止重试，保留当前得分最高的结果。
  */
@@ -728,6 +737,40 @@ private fun prepareForOcr(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
     return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
 }
 
+/**
+ * API 26–27 的解码采样倍率（B44）：`BitmapFactory.Options.inSampleSize`。
+ *
+ * 两条约束同时满足才停：
+ * 1. 解码后最长边 ≤ [maxSide]（默认 [MAX_DECODE_SIDE]）；
+ * 2. 解码后像素数 × 4 字节 ≤ [maxBytes]（默认 [MAX_DECODE_BYTES]，老机器内存预算）。
+ *
+ * 返回值一定是 **2 的幂**：`BitmapFactory` 对非 2 的幂会向下取整到 2 的幂，解码结果不可预期。
+ * 例：4000×3000 → 最长边要 ≤2400、字节要 ≤8 MB，sample=2 仍有 12 MB，所以给 **4**
+ * （1000×750 / 3 MB）；2400×1800 → 2；1200×900 → 1。
+ *
+ * @param width 原图宽（`inJustDecodeBounds` 读到的 `outWidth`）；≤0 时按 1 处理（不采样）。
+ * @param height 原图高（`outHeight`）。
+ */
+internal fun decodeSampleSize(
+    width: Int,
+    height: Int,
+    maxSide: Int = MAX_DECODE_SIDE,
+    maxBytes: Long = MAX_DECODE_BYTES,
+): Int {
+    if (width <= 0 || height <= 0) return 1
+    var sample = 1
+    // 上限兜底：再怎么大也不超过 4096（1px 级的极端脏数据不值得再翻倍算）。
+    while (sample < 4096) {
+        val sampledWidth = (width + sample - 1) / sample
+        val sampledHeight = (height + sample - 1) / sample
+        val withinSide = maxOf(sampledWidth, sampledHeight) <= maxSide
+        val withinBytes = sampledWidth.toLong() * sampledHeight * 4L <= maxBytes
+        if (withinSide && withinBytes) return sample
+        sample *= 2
+    }
+    return sample
+}
+
 /** 从相册 URI 解码位图（API 28+ 用 ImageDecoder 自动应用 EXIF 方向，且强制软件 ARGB_8888 位图供 OCR 使用）。 */
 private fun decodeImage(context: Context, uri: Uri): Bitmap? = runCatching {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -741,8 +784,20 @@ private fun decodeImage(context: Context, uri: Uri): Bitmap? = runCatching {
             }
         }
     } else {
+        // API 26–27 没有 ImageDecoder：先只读尺寸（inJustDecodeBounds 不解码像素），
+        // 按纯函数算出 2 的幂采样倍率，再真正解码。以前直接 decodeStream 全尺寸解码，
+        // 4000×3000 的照片解码后约 48 MB，低端机容易 OOM（B44）。
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream)
+            BitmapFactory.decodeStream(stream, null, bounds)
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = decodeSampleSize(bounds.outWidth, bounds.outHeight)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inMutable = false
+        }
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)
         }
     }
 }.getOrNull()
