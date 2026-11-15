@@ -60,7 +60,8 @@ data class MergeSummary(
  * - 删除传播靠 [Ledger.tombstones]：一边删除、另一边没改 → 删除生效；另一边改过 → 保留修改（不丢数据）；
  * - 墓碑比记录新 → 记录丢弃（旧设备无法把删掉的记录同步回来）；记录比墓碑新 → 视为刻意重建，墓碑移除；
  * - 账本级配置（分类、项目库、方案）按「本机改过就本机优先、否则取远端」+ 并集合并；
- * - 车辆级删除**不传播**（本轮不涉及；按 id 取并集，最坏情况是删掉的车被另一台设备带回来）。
+ * - 车辆级删除靠 [Garage.vehicleTombstones] 传播：删除方没有该车且墓碑未过期时，
+ *   另一台设备上的整辆车会被删掉；同一侧既有车又有墓碑（还原 / 撤销）时以车为准。
  *
  * 纯函数：不修改入参，不读写文件，不依赖 Android；时间戳由调用方传入便于单测。
  */
@@ -87,6 +88,9 @@ object SyncMerge {
         val baseCars = base?.cars.orEmpty().associateBy { it.id }
         val localCars = local.cars.associateBy { it.id }
         val remoteCars = remote.cars.associateBy { it.id }
+        // 车辆级删除：只有「删除方自己已经没有这辆车」时墓碑才生效。
+        // 若同一侧既有车又有墓碑（还原 / 撤销删除），以车为准，墓碑作废。
+        val deletedVehicles = activeVehicleTombstones(local, remote, now)
         // 顺序：本机车辆顺序优先，远端多出来的车按远端顺序追加。
         val order = LinkedHashSet<String>()
         local.cars.forEach { order += it.id }
@@ -97,6 +101,14 @@ object SyncMerge {
         for (carId in order) {
             val localCar = localCars[carId]
             val remoteCar = remoteCars[carId]
+            val deletedAt = deletedVehicles[carId]
+            if (deletedAt != null) {
+                // 删除 vs 修改：另一侧的车在删除之后还有记录 / 提醒被改过 → 保留车（不丢数据），
+                // 与记录级「删除 vs 修改保留修改」同一套语义；否则整辆车删掉。
+                val survivor = localCar ?: remoteCar
+                val editedAfterDelete = survivor != null && carLastTouched(survivor) > deletedAt
+                if (!editedAfterDelete) continue
+            }
             when {
                 localCar != null && remoteCar != null ->
                     cars += mergeCar(baseCars[carId], localCar, remoteCar, now, stats)
@@ -106,11 +118,47 @@ object SyncMerge {
         }
         // 兜底：空车库不合法（normalizeGarage 要求至少一辆车），退回本机账本。
         if (cars.isEmpty()) return Result(local, MergeSummary())
+        val carIds = cars.mapTo(HashSet()) { it.id }
+        val remainingVehicleTombstones = deletedVehicles
+            .filterKeys { it !in carIds }
+            .entries
+            .map { Tombstone(id = it.key, at = it.value) }
+            .sortedWith(compareBy<Tombstone> { it.at }.thenBy { it.id })
+            .ifEmpty { null }
         val garage = local.copy(
             cars = cars,
             activeId = local.activeId.takeIf { id -> cars.any { it.id == id } } ?: cars.first().id,
+            vehicleTombstones = remainingVehicleTombstones,
         )
         return Result(garage, stats.toSummary())
+    }
+
+    /** 车辆内最后一次修改时刻（记录 / 提醒的 `updatedAt` 最大值）；用于「删除 vs 修改」裁决。 */
+    private fun carLastTouched(car: Ledger): Long {
+        var latest = 0L
+        car.records.forEach { record -> latest = maxOf(latest, record.updatedAt ?: 0L) }
+        car.reminders.forEach { reminder -> latest = maxOf(latest, reminder.updatedAt ?: 0L) }
+        return latest
+    }
+
+    /**
+     * 仍然生效的车辆墓碑：过期的不算；**墓碑持有方自己还有这辆车**时也不算（还原 / 撤销删除）。
+     *
+     * 合并时两侧都算，取较新时刻；这样 A 删除、B 未改 → B 的车被删掉并继续带墓碑上传；
+     * 之后 B 再合并时仍是同一条规则，最终两边收敛为「车没了、墓碑还在（保留 180 天）」。
+     */
+    private fun activeVehicleTombstones(local: Garage, remote: Garage, now: Long): Map<String, Long> {
+        val result = LinkedHashMap<String, Long>()
+        fun collect(tombstones: List<Tombstone>?, sideCars: Set<String>) {
+            tombstones.orEmpty().forEach { tombstone ->
+                if (tombstone.id.isEmpty() || tombstone.id in sideCars) return@forEach
+                if (now - tombstone.at > TOMBSTONE_RETENTION_MS) return@forEach
+                result[tombstone.id] = maxOf(result[tombstone.id] ?: 0L, tombstone.at)
+            }
+        }
+        collect(local.vehicleTombstones, local.cars.mapTo(HashSet()) { it.id })
+        collect(remote.vehicleTombstones, remote.cars.mapTo(HashSet()) { it.id })
+        return result
     }
 
     // -----------------------------------------------------------------------------------------

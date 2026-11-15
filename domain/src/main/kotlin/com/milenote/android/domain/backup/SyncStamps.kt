@@ -34,7 +34,36 @@ object SyncStamps {
      */
     fun stampChanges(before: Garage, after: Garage, now: Long): Garage {
         val beforeCars = before.cars.associateBy { it.id }
-        return after.copy(cars = after.cars.map { car -> stampCar(beforeCars[car.id], car, now) })
+        return after.copy(
+            cars = after.cars.map { car -> stampCar(beforeCars[car.id], car, now) },
+            vehicleTombstones = stampVehicleTombstones(before, after, now),
+        )
+    }
+
+    /**
+     * 车辆级墓碑：被整辆删掉的车留下 id + 时刻，合并时才能让另一台设备也删掉它。
+     *
+     * 记录级墓碑挂在被删车上，车没了墓碑也无处可挂；这是 B5「删掉的车会被另一台设备复活」
+     * 的根因。规则与记录墓碑一致：删除时新增 / 取较新时刻；车辆又出现（还原 / 撤销）则移除。
+     */
+    private fun stampVehicleTombstones(before: Garage, after: Garage, now: Long): List<Tombstone>? {
+        val afterIds = after.cars.mapTo(HashSet()) { it.id }
+        val merged = LinkedHashMap<String, Long>()
+        before.vehicleTombstones.orEmpty().forEach { tombstone ->
+            if (tombstone.id.isNotEmpty()) merged[tombstone.id] = maxOf(merged[tombstone.id] ?: 0L, tombstone.at)
+        }
+        after.vehicleTombstones.orEmpty().forEach { tombstone ->
+            if (tombstone.id.isNotEmpty()) merged[tombstone.id] = maxOf(merged[tombstone.id] ?: 0L, tombstone.at)
+        }
+        for (car in before.cars) {
+            if (car.id.isEmpty() || car.id in afterIds) continue
+            merged[car.id] = maxOf(merged[car.id] ?: now, now)
+        }
+        afterIds.forEach { merged.remove(it) }
+        if (merged.isEmpty()) return null
+        return merged.entries
+            .map { Tombstone(id = it.key, at = it.value) }
+            .sortedWith(compareBy<Tombstone> { it.at }.thenBy { it.id })
     }
 
     private fun stampCar(before: Ledger?, after: Ledger, now: Long): Ledger {
