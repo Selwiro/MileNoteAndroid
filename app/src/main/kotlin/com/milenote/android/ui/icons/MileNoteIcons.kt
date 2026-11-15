@@ -516,6 +516,14 @@ object MileNoteIcons {
         )
     }
 
+    /** 数据体检（心跳折线）。 */
+    val Health: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Health",
+            "M3 12h4l2-5 4 10 2-5h6",
+        )
+    }
+
     /** 文件夹（固定目录备份）。 */
     val Folder: ImageVector by lazy {
         strokeIcon(

@@ -92,11 +92,26 @@ fun removeRecords(
  *
  * 幂等：记录 / 提醒若仍在账本里（例如期间同步又拉回来了）不重复插入，只补齐快照里的字段。
  */
-fun restoreRemovedRecords(ledger: Ledger, undo: DeletedRecords): Ledger {
+fun restoreRemovedRecords(
+    ledger: Ledger,
+    undo: DeletedRecords,
+    /**
+     * 是否允许恢复出同 id 的记录。
+     *
+     * 数据体检删除「同 id 重复」时，撤销必须把原样（含重复 id）还回来；普通删除的 id 唯一，
+     * 传 true 也不会有额外影响。
+     */
+    allowDuplicateIds: Boolean = false,
+): Ledger {
     if (undo.isEmpty) return ledger
     val records = ledger.records.toMutableList()
     undo.records.forEachIndexed { i, record ->
-        if (records.none { it.id == record.id }) {
+        val exists = if (allowDuplicateIds) {
+            records.any { it == record }
+        } else {
+            records.any { it.id == record.id }
+        }
+        if (!exists) {
             val at = undo.indices.getOrElse(i) { records.size }.coerceIn(0, records.size)
             records.add(at, record)
         }

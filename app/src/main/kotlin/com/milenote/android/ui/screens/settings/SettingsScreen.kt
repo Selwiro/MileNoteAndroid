@@ -163,6 +163,7 @@ internal enum class SettingsPage {
     UNITS,
     CATEGORIES,
     IMPORT,
+    HEALTH,
     BACKUP,
     WEBDAV,
     ABOUT,
@@ -182,6 +183,7 @@ internal enum class SettingsPage {
             UNITS -> tr("单位", "Units")
             CATEGORIES -> tr("费用分类与项目", "Categories & items")
             IMPORT -> tr("外部导入", "Import")
+            HEALTH -> tr("数据体检", "Data check")
             BACKUP -> tr("备份与还原", "Backup & restore")
             WEBDAV -> tr("WebDAV 同步", "WebDAV sync")
             ABOUT -> tr("关于", "About")
@@ -498,7 +500,22 @@ fun SettingsScreen(
                 // 合并规则与提示由 VM/仓库统一处理；结果除了全局消息，还在本页顶部的
                 // 消息区显示一份 —— 设置子页里实测看不到全局 Snackbar（UX3 走查发现）。
                 val summary = vm.restoreBackupAwait(text)
-                notify(restoreSummaryMessage(summary), MessageKind.SUCCESS)
+                // 还原后自动跑一次体检（老备份可能带进 1899 日期 / 悬空提醒等脏数据）。
+                val attention = vm.healthAttentionCount()
+                notify(
+                    text = if (attention > 0) {
+                        restoreSummaryMessage(summary) + tr(" · 体检发现 %d 项", " · data check found %d", attention)
+                    } else {
+                        restoreSummaryMessage(summary)
+                    },
+                    kind = MessageKind.SUCCESS,
+                    actionLabel = if (attention > 0) tr("去体检", "Check") else null,
+                    onAction = if (attention > 0) {
+                        { pageName = SettingsPage.HEALTH.name }
+                    } else {
+                        null
+                    },
+                )
             } catch (t: Throwable) {
                 notify(
                     tr(
@@ -774,6 +791,20 @@ fun SettingsScreen(
                         demo = state.demo,
                         onOpenImporter = { source -> onOpenImporter(source) },
                     )
+
+                    SettingsPage.HEALTH -> {
+                        val ledger = activeCar
+                        if (ledger == null) {
+                            LoadingState(label = tr("正在读取本机数据…", "Loading local data…"))
+                        } else {
+                            HealthPage(
+                                ledger = ledger,
+                                onOpenRecord = { recordId -> vm.openEditor(recordId) },
+                                onOpenVehicle = { openVehicleEditor(ledger.id) },
+                                onFix = { issue -> vm.fixHealthIssue(issue) },
+                            )
+                        }
+                    }
 
                     SettingsPage.BACKUP -> BackupRestorePage(
                         carsCount = cars.size,

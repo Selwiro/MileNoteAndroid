@@ -62,6 +62,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.calc.Numbers
+import com.milenote.android.domain.calc.dataHealth
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.model.isEv
@@ -96,6 +97,7 @@ import com.milenote.android.ui.theme.MileNoteDimens
  * @param vm 主 ViewModel（读取 `state.activeCar`、写入导入结果）。
  * @param initialSource 可选初始来源（`bear` / `qianji` / `backup` 及别名），传入后自动打开文件选择器。
  * @param onClose 关闭/完成后回调（由导航层 `popBackStack`）。
+ * @param onOpenHealth 完成页「去体检」回调（导入后自动体检一次，F1）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,6 +105,7 @@ fun ImportWizardScreen(
     vm: MileNoteViewModel,
     initialSource: String? = null,
     onClose: () -> Unit,
+    onOpenHealth: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -207,7 +210,12 @@ fun ImportWizardScreen(
                     onPick = { picker.launch(arrayOf("*/*")) },
                 )
 
-                else -> ResultStep(wizard = wizard)
+                else -> ResultStep(
+                    wizard = wizard,
+                    // 导入后账本已更新：直接按当前车算一次体检，给完成页一个入口（F1）。
+                    healthAttention = ledger?.let { dataHealth(it).attentionCount } ?: 0,
+                    onOpenHealth = onOpenHealth,
+                )
             }
         }
         WizardBottomBar(wizard = wizard, onClose = closeWizard)
@@ -1239,7 +1247,11 @@ private fun editableNumber(value: Double?): String = value?.let { Numbers.jsStri
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-private fun ResultStep(wizard: ImportWizardState) {
+private fun ResultStep(
+    wizard: ImportWizardState,
+    healthAttention: Int,
+    onOpenHealth: () -> Unit,
+) {
     val result = wizard.result
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1298,6 +1310,20 @@ private fun ResultStep(wizard: ImportWizardState) {
                 ) {
                     Text(tr("撤销本次导入", "Undo this import"))
                 }
+            }
+        }
+        if (wizard.result != null && healthAttention > 0) {
+            item {
+                MessageBar(
+                    message = tr(
+                        "体检发现 %d 项数据问题（日期、重复、悬空提醒等），建议核对。",
+                        "Data check found %d issues (dates, duplicates, dangling reminders).",
+                        healthAttention,
+                    ),
+                    kind = MessageKind.WARNING,
+                    actionLabel = tr("去体检", "Check"),
+                    onAction = onOpenHealth,
+                )
             }
         }
         item {

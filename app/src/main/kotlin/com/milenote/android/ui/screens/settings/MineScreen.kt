@@ -200,6 +200,12 @@ fun MineScreen(
                     )
                     SectionDivider()
                     MineValueRow(
+                        icon = MileNoteIcons.Health,
+                        title = tr("数据体检", "Data check"),
+                        onClick = { onOpenPage(SettingsPage.HEALTH.key) },
+                    )
+                    SectionDivider()
+                    MineValueRow(
                         icon = MileNoteIcons.Import,
                         title = tr("外部导入", "Import"),
                         onClick = { onOpenPage(SettingsPage.IMPORT.key) },

@@ -64,6 +64,12 @@ import com.milenote.android.domain.calc.manualDuplicateOf
 import com.milenote.android.domain.calc.mergeFuelBatch
 import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.calc.removeRecords
+import com.milenote.android.domain.calc.removeDuplicateRecords
+import com.milenote.android.domain.calc.repairReminders
+import com.milenote.android.domain.calc.markFuelCounted
+import com.milenote.android.domain.calc.dataHealth
+import com.milenote.android.domain.calc.HealthFix
+import com.milenote.android.domain.calc.HealthIssue
 import com.milenote.android.domain.calc.restoreRemovedRecords
 import com.milenote.android.domain.calc.DeletedRecords
 import com.milenote.android.domain.import.ImportItem
@@ -673,7 +679,7 @@ class MileNoteViewModel(
         val count = undo.deleted.records.size
         viewModelScope.launch {
             repository.update(syncHistory = true) { garage ->
-                updateActive(garage) { restoreRemovedRecords(it, undo.deleted) }
+                updateActive(garage) { restoreRemovedRecords(it, undo.deleted, allowDuplicateIds = true) }
             }
             _state.value = _state.value.copy(
                 deleteUndo = null,
@@ -692,6 +698,68 @@ class MileNoteViewModel(
     fun clearDeleteUndo() {
         if (_state.value.deleteUndo != null) {
             _state.value = _state.value.copy(deleteUndo = null)
+        }
+    }
+
+    /** 当前车的体检「需要处理」数量（导入 / 还原后的摘要用）。 */
+    suspend fun healthAttentionCount(): Int =
+        repository.garage.first()?.activeCar?.let { dataHealth(it).attentionCount } ?: 0
+
+    /**
+     * 数据体检：执行一条修复动作。
+     *
+     * 删除重复记录会写入 [DeleteUndo]（底部「撤销」可原样还原，含重复 id）；
+     * 重算提醒 / 标记计入成本直接写库并提示。打开记录 / 车辆由界面层处理。
+     */
+    fun fixHealthIssue(issue: HealthIssue) {
+        when (issue.fix) {
+            HealthFix.DELETE_DUPLICATE -> issue.recordId?.let(::fixDuplicateRecords)
+            HealthFix.RECOMPUTE_REMINDER -> {
+                viewModelScope.launch {
+                    repository.update(syncHistory = true) { garage ->
+                        updateActive(garage) { repairReminders(it) }
+                    }
+                    _state.value = _state.value.copy(
+                        message = savedMessage(tr("提醒已修复", "Reminders repaired")),
+                    )
+                }
+            }
+            HealthFix.MARK_FUEL_COUNTED -> {
+                val id = issue.recordId ?: return
+                viewModelScope.launch {
+                    repository.update(syncHistory = true) { garage ->
+                        updateActive(garage) { markFuelCounted(it, id) }
+                    }
+                    _state.value = _state.value.copy(
+                        message = savedMessage(tr("已计入成本", "Marked as counted")),
+                    )
+                }
+            }
+            HealthFix.OPEN_EDITOR, HealthFix.OPEN_VEHICLE, null -> Unit
+        }
+    }
+
+    /** 同 id 只留一条（较新），其余删除并给撤销。 */
+    private fun fixDuplicateRecords(id: String) {
+        val carId = _state.value.activeCar?.id
+        viewModelScope.launch {
+            var undo: DeletedRecords? = null
+            repository.update(syncHistory = true) { garage ->
+                updateActive(garage) { ledger ->
+                    val removal = removeDuplicateRecords(ledger, id)
+                    undo = removal.undo
+                    removal.ledger
+                }
+            }
+            val deleted = undo ?: DeletedRecords()
+            if (deleted.isEmpty) return@launch
+            val message = savedMessage(
+                tr("已删除 %d 条重复记录", "Deleted %d duplicate records", deleted.records.size),
+            )
+            _state.value = _state.value.copy(
+                deleteUndo = carId?.let { DeleteUndo(message = message, carId = it, deleted = deleted) },
+                message = message,
+            )
         }
     }
 

@@ -356,6 +356,13 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     vm = vm,
                     initialSource = entry.arguments?.getString("source"),
                     onClose = { navController.popBackStack() },
+                    onOpenHealth = {
+                        navController.navigate(
+                            Routes.settingsPageRoute(
+                                com.milenote.android.ui.screens.settings.SettingsPage.HEALTH.key,
+                            ),
+                        )
+                    },
                     modifier = Modifier.padding(inner),
                 )
             }
