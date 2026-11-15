@@ -392,7 +392,7 @@ private fun ReportShareCard(data: ReportData, ledger: Ledger, modifier: Modifier
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = tr("里程志", "MileNote"),
+                    text = ReportCopy.appName(),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = ShareInk,
@@ -766,14 +766,14 @@ private fun shareStats(data: ReportData): List<ShareStat> {
             icon = MileNoteIcons.Calendar,
             value = data.monthlyAvg?.let { Format.fmt(kotlin.math.round(it)) } ?: "—",
             unit = if (data.monthlyAvg != null) Units.money else null,
-            label = tr("月均", "Monthly"),
+            label = ReportCopy.monthlyLabel(),
         )
     } else {
         ShareStat(
             icon = MileNoteIcons.Calendar,
             value = Format.fmt(data.daily),
             unit = Units.money,
-            label = tr("日均", "Daily avg"),
+            label = ReportCopy.dailyLabel(),
         )
     }
     return listOf(
@@ -781,13 +781,13 @@ private fun shareStats(data: ReportData): List<ShareStat> {
             icon = MileNoteIcons.Road,
             value = data.distance?.let { Format.fmt(it) } ?: "—",
             unit = if (data.distance != null) Units.distanceUnit else null,
-            label = tr("里程", "Distance"),
+            label = ReportCopy.distanceLabel(),
         ),
         ShareStat(
             icon = MileNoteIcons.Wallet,
             value = data.perKm?.let { Format.money(it) } ?: "—",
             unit = if (data.perKm != null) Units.money else null,
-            label = tr("每公里", "Per km"),
+            label = ReportCopy.perKmLabel(),
         ),
         third,
     )
@@ -895,11 +895,7 @@ private fun sharePeriodLabel(data: ReportData): String = when (data.period.kind)
     ReportKind.ALL -> tr("全部记录", "All records")
 }
 
-private fun shareSpendLabel(data: ReportData): String = when (data.period.kind) {
-    ReportKind.MONTH -> tr("本月支出", "This month")
-    ReportKind.YEAR -> tr("本年支出", "This year")
-    ReportKind.ALL -> tr("累计支出", "All time")
-}
+private fun shareSpendLabel(data: ReportData): String = ReportCopy.spendLabel(data.period.kind)
 
 private fun shareRangeLabel(data: ReportData): String {
     val fromIso = if (data.period.kind == ReportKind.ALL) {
@@ -954,7 +950,7 @@ private fun parenthesize(text: String): String =
 internal fun buildReportText(data: ReportData, ledger: Ledger): String {
     val profile = ledger.energyProfile
     val sb = StringBuilder()
-    sb.append(tr("里程志", "MileNote")).append(" · ").append(reportPeriodTitle(data))
+    sb.append(ReportCopy.appName()).append(" · ").append(reportPeriodTitle(data))
     if (data.inProgress) {
         sb.append(parenthesize(tr("截至 %s", "through %s", shortDate(data.range.to))))
     }

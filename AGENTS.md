@@ -55,6 +55,18 @@ wrapper 发行包下载慢时改 `gradle/wrapper/gradle-wrapper.properties` 的 
 密钥路径可用 `storeFile` 覆盖。未提供时 release 构建产出 `app-release-unsigned.apk`，不影响任何人 clone 后构建。
 **绝不**把口令写进代码、文档或提交信息。换签名会导致老用户无法覆盖安装，密钥需单独备份。
 
+## 验收（每次 UI 改动）
+
+1. `./dev-gradle.sh :domain:test :app:testDebugUnitTest` 全绿（2026-11-15 基线 domain 468 + app 394）；
+2. `./dev-gradle.sh :app:assembleDebug` 通过；
+3. **只要动了界面，就按「1.0× / 1.3× / 2.0× 字号 × 中 / 英」至少各看一眼**（模拟器
+   `adb shell settings put system font_scale 1.0|1.3|2.0` + 我的 → 外观 → 语言），
+   重点看：文字有没有被裁、按钮是否仍可点（≥48dp）、单位/金额是否串行；
+4. 涉及触控/无障碍的改动，用 `uiautomator dump` 核对点击区（≥48dp）或逐点语义节点；
+5. 涉及数据的改动，走一遍「改完重启仍在」；涉及同步/备份的，至少覆盖一次失败态。
+
+> 这条清单是 UX9 的落点：以前只有报告页验 1.3×，其他页面靠自觉；现在所有 UI 改动都要过字号/中英两关。
+
 ## 版本管理
 
 - 分支 `main`；**仓库历史自 0.27.0 起**（更早的 0.26.x / 1.26.x 不在本仓库）。

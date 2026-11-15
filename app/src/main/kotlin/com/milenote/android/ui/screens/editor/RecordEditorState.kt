@@ -433,6 +433,33 @@ internal class RecordEditorState(
     }
 
     /** 构造待保存的 [Record]（不修改原记录）。 */
+    /**
+     * 用草稿回填表单（UX1 / B22）。
+     *
+     * 草稿存的是 [Record]，这里逐字段写回文本输入框（数字统一走 [numberText]，与打开
+     * 既有记录时的回填口径一致）；分类/项目等结构性字段直接覆盖。
+     */
+    fun applyDraft(record: Record) {
+        amount = numberText(record.amount)
+        date = record.date
+        category = record.category
+        odometer = numberText(record.odometer)
+        liters = numberText(record.liters)
+        kwh = numberText(record.kwh)
+        unitPrice = numberText(record.unitPrice)
+        fuelGrade = record.fuelGrade ?: fuelGrade
+        payable = numberText(record.payable)
+        discount = numberText(record.discount)
+        rate = numberText(record.rate)
+        distance = numberText(record.distance)
+        full = record.full ?: true
+        missed = record.missed ?: false
+        note = record.note.orEmpty()
+        location = record.location.orEmpty()
+        projects = splitProjects(record.projects)
+        charging = record.kwh != null
+    }
+
     fun buildRecord(): Record {
         val base = original ?: Record(id = recordId, kind = if (isManual) "manual" else "expense")
         val record = base.copy(

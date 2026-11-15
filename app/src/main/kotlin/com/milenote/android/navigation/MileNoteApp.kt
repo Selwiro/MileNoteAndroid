@@ -198,16 +198,20 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         }
     }
 
+    // 全局操作结果消息（保存 / 恢复 / 切换车辆等）统一用**根级消息条**展示。
+    //
+    // 以前走各路由 Scaffold 的 SnackbarHost：设置子页（备份与还原、我的车辆…）里实测
+    // 完全不显示（T025 走查发现：恢复备份、保存车辆都看不到结果），因为外层 Scaffold 的
+    // Snackbar 被页面自己的不透明内容盖住了。根级覆盖层不依赖路由结构，哪里都能看到。
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
+        // 删除提示由独立的撤销条承担；同一句文案不再重复显示（B19）。
+        if (state.deleteUndo?.message == message) {
+            vm.consumeMessage()
+            return@LaunchedEffect
+        }
+        delay(MessageBarDurationMillis)
         vm.consumeMessage()
-        // 删除提示由独立的撤销条承担；同一句文案不再重复弹 Snackbar（B19）。
-        if (state.deleteUndo?.message == message) return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = message,
-            withDismissAction = false,
-            duration = SnackbarDuration.Short,
-        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -355,6 +359,23 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     modifier = Modifier.padding(inner),
                 )
             }
+        }
+    }
+    // 根级消息条：任何路由（含设置子页）都盖在最上层，点击可提前关掉。
+    state.message?.takeIf { it != state.deleteUndo?.message }?.let { message ->
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+        ) {
+            MessageBar(
+                // 中性色：state.message 里既有成功也有失败（如「恢复失败：…」），
+                // 统一成绿色 SUCCESS 会把错误说成成功。
+                message = message,
+                kind = MessageKind.INFO,
+                onDismiss = { vm.consumeMessage() },
+            )
         }
     }
 
@@ -835,3 +856,6 @@ private fun androidx.compose.foundation.layout.RowScope.BottomBarTab(
         )
     }
 }
+
+/** 根级消息条的停留时间：够读完一句「已恢复备份：…」又不挡操作。 */
+private const val MessageBarDurationMillis = 3_200L

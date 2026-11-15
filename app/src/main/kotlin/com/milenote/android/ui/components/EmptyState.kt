@@ -71,6 +71,9 @@ fun EmptyState(
     /** 第三个文字入口（UX7：空总览里补「完善车辆信息」）；为 null 时不显示。 */
     tertiaryLabel: String? = null,
     onTertiaryAction: (() -> Unit)? = null,
+    /** 按钮行下方的小字链接（UX8：空态里指路「查看全部记录」）；为 null 时不显示。 */
+    linkLabel: String? = null,
+    onLinkAction: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -152,6 +155,13 @@ fun EmptyState(
                         Text(tertiaryLabel, style = MaterialTheme.typography.labelLarge)
                     }
                 }
+            }
+        }
+        // UX8：按钮行下方的小字入口 —— 空态时把「记录列表在哪」直接写出来，
+        // 不指望新用户去认右上角那个和标题同色的小图标。
+        if (linkLabel != null && onLinkAction != null) {
+            TextButton(onClick = onLinkAction) {
+                Text(linkLabel, style = MaterialTheme.typography.labelMedium)
             }
         }
     }

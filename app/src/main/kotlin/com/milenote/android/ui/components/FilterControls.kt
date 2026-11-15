@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.icons.MileNoteIcons
+import com.milenote.android.ui.theme.MileNoteDimens
 
 /*
  * 紧凑筛选控件（明细页 / 记录页 / 卡片右上角共用）。
@@ -54,12 +55,13 @@ import com.milenote.android.ui.icons.MileNoteIcons
  *   数量不挂在按钮上（角标会盖住漏斗图标、压到搜索条描边），由下方已选 chips 与面板里的计数表达；
  * - FilterPill 仍是卡片头 / 总览的 32dp 紧凑胶囊，与列表页 44dp 搜索条是两种场景，不混用。
  *
- * 38dp 圆钮低于 [com.milenote.android.ui.theme.MileNoteDimens.TouchTarget]（48dp），
- * 与既有 32dp 紧凑行同级，属于列表页紧凑控件；不因此改动 Dimens 设计 token。
+ * UX9（2026-11-15）：搜索条高度由 44dp 提到 [MileNoteDimens.TouchTarget]（48dp），
+ * 右侧漏斗钮的**命中区**同步补到 48dp（视觉圆钮仍 38dp）—— 之前 38dp 低于无障碍建议，
+ * 且它是进「筛选」的唯一入口。视觉上搜索条只高 4dp，图标大小与配色不变。
  */
 
-/** 列表页搜索条高度：44dp（420dpi = 116px）。 */
-private val SearchBarHeight = 44.dp
+/** 列表页搜索条高度：48dp（= 无障碍最小触控目标；2026-11-15 由 44dp 提高）。 */
+private val SearchBarHeight = 48.dp
 
 /** 搜索条右侧筛选圆钮直径：38dp（在 44dp 条内上下各留 3dp）。 */
 private val SearchBarActionSize = 38.dp
@@ -85,7 +87,7 @@ internal fun SearchBarShell(
                 color = if (focused) scheme.primary else scheme.outlineVariant,
                 shape = CircleShape,
             )
-            .padding(start = 16.dp, end = 3.dp),
+            .padding(start = 16.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
@@ -189,20 +191,27 @@ internal fun SearchBarFilterButton(
     } else {
         tr("筛选", "Filter")
     }
+    // 命中区 48dp（= 容器高度），视觉圆钮仍是 38dp：手指点得到、外观不变。
     Box(
         modifier = modifier
-            .size(SearchBarActionSize)
-            .clip(CircleShape)
-            .background(if (active) scheme.primaryContainer else Color.Transparent)
+            .size(MileNoteDimens.TouchTarget)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = MileNoteIcons.FilterList,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(20.dp),
-            tint = if (active) scheme.onPrimaryContainer else scheme.onSurface,
-        )
+        Box(
+            modifier = Modifier
+                .size(SearchBarActionSize)
+                .clip(CircleShape)
+                .background(if (active) scheme.primaryContainer else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = MileNoteIcons.FilterList,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(20.dp),
+                tint = if (active) scheme.onPrimaryContainer else scheme.onSurface,
+            )
+        }
     }
 }
 

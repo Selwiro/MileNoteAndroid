@@ -704,35 +704,31 @@ private fun heroStats(data: ReportData): List<HeroStat> {
             // 月均取整：既符合「月均 ¥1,204」的读数习惯，也避免 1,278.47 + USD 在窄列里被裁掉。
             value = data.monthlyAvg?.let { Format.fmt(kotlin.math.round(it)) } ?: "—",
             unit = if (data.monthlyAvg != null) Units.money else null,
-            label = tr("月均", "Monthly"),
+            label = ReportCopy.monthlyLabel(),
         )
     } else {
         HeroStat(
             value = Format.fmt(data.daily),
             unit = Units.money,
-            label = tr("日均", "Daily avg"),
+            label = ReportCopy.dailyLabel(),
         )
     }
     return listOf(
         HeroStat(
             value = distance?.let { Format.fmt(it) } ?: "—",
             unit = if (distance != null) Units.distanceUnit else null,
-            label = tr("里程", "Distance"),
+            label = ReportCopy.distanceLabel(),
         ),
         HeroStat(
             value = perKm?.let { Format.money(it) } ?: "—",
             unit = if (perKm != null) Units.money else null,
-            label = tr("每公里", "Per km"),
+            label = ReportCopy.perKmLabel(),
         ),
         third,
     )
 }
 
-private fun heroSpendLabel(data: ReportData): String = when (data.period.kind) {
-    ReportKind.MONTH -> tr("本月支出", "This month")
-    ReportKind.YEAR -> tr("本年支出", "This year")
-    ReportKind.ALL -> tr("累计支出", "All time")
-}
+private fun heroSpendLabel(data: ReportData): String = ReportCopy.spendLabel(data.period.kind)
 
 // ---------------------------------------------------------------------------------------------
 // 对比（环比 / 同比 双条图）

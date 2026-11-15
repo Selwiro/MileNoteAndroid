@@ -253,6 +253,9 @@ private fun DashboardContent(
                     onTertiaryAction = {
                         onNavigate(Routes.settingsPageRoute(SettingsPage.VEHICLES.key))
                     },
+                    // UX8：费用明细入口原本只有右上角同色小图标，新用户找不到；空态直接给文字入口。
+                    linkLabel = tr("查看全部记录（费用明细）", "See all records (expense details)"),
+                    onLinkAction = { onNavigate(Routes.RECORDS) },
                 )
             }
             return@LazyColumn

@@ -40,17 +40,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.calc.Dates
@@ -112,6 +116,35 @@ fun RecordEditorScreen(
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
 
+    // UX1 / B22：填到一半被系统回收或长按返回时不再白丢输入。
+    // 每次改动防抖 600ms 落一份本机草稿（只有一条、不含图片），重进时提示继续编辑。
+    val context = LocalContext.current
+    val draftStore = remember { EditorDraftStore(context) }
+    var pendingDraft by remember(form) { mutableStateOf(draftStore.load(ledger.id)) }
+    LaunchedEffect(form) {
+        snapshotFlow {
+            if (!form.isDirty) return@snapshotFlow ""
+            runCatching { form.buildRecord().toString() }.getOrDefault("")
+        }.collectLatest { fingerprint ->
+            // 表单还没改动时不落盘、也**不要**清草稿：编辑器刚打开时表单是 pristine，
+            // 这里若清一次，会把「上次没填完」的草稿在用户回答提示前就删掉（实测踩过）。
+            // 草稿只在保存成功 / 用户明确丢弃时清除。
+            if (fingerprint.isEmpty()) return@collectLatest
+            // 防抖：连续输入时只保留最后一次；collectLatest 会取消上一次的等待。
+            delay(600)
+            runCatching {
+                draftStore.save(
+                    EditorDraft(
+                        carId = ledger.id,
+                        editingId = form.original?.id,
+                        record = form.buildRecord(),
+                        savedAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
+    }
+
     // 有未保存改动时先确认再关闭；没有改动直接关（保持原来的轻快手感）。
     fun requestDismiss() {
         if (form.isDirty) confirmDiscard = true else onDismiss()
@@ -155,6 +188,7 @@ fun RecordEditorScreen(
             if (record != null) {
                 // 真正写入（或重复确认）后由 VM 关闭编辑器；这里不提前关，
                 // 否则重复确认点「取消」时整份表单已经没了（B21）。
+                draftStore.clear()
                 vm.saveRecord(record)
             }
         },
@@ -191,6 +225,42 @@ fun RecordEditorScreen(
         )
     }
 
+    // UX1 / B22：检测到上次没填完的草稿
+    pendingDraft?.let { draft ->
+        AlertDialog(
+            onDismissRequest = { pendingDraft = null },
+            title = { Text(tr("检测到未完成的记录", "Unfinished entry found")) },
+            text = {
+                Text(
+                    tr(
+                        "上次填到一半的内容已保留（含金额与分类），继续编辑吗？",
+                        "Your unfinished entry (amount and category included) was kept. Continue editing?",
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        form.applyDraft(draft.record)
+                        pendingDraft = null
+                    },
+                ) {
+                    Text(tr("继续编辑", "Continue"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        draftStore.clear()
+                        pendingDraft = null
+                    },
+                ) {
+                    Text(tr("丢弃草稿", "Discard draft"))
+                }
+            },
+        )
+    }
+
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
@@ -200,6 +270,7 @@ fun RecordEditorScreen(
                 TextButton(
                     onClick = {
                         confirmDiscard = false
+                        draftStore.clear()
                         onDismiss()
                     },
                 ) {
