@@ -1,5 +1,6 @@
 package com.milenote.android.i18n
 
+import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.CategoryConfig
 import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Ledger
@@ -94,6 +95,8 @@ object DataLabels {
      */
     fun category(name: String?, ev: Boolean = false): String {
         val raw = name.orEmpty()
+        // T007：空分类在统计层并进「未分类」桶，显示层统一成两种语言；账本值不变。
+        if (raw == Categories.UNCATEGORIZED) return tr("未分类", "Uncategorized")
         if (ev && raw == "油费") return tr("电费", "Charging")
         if (!I18n.english) return raw
         return CATEGORY_EN[raw] ?: raw

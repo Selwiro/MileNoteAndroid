@@ -42,4 +42,12 @@ class DataLabelsTest {
     fun `custom categories are left untouched`() {
         assertEquals("洗车卡", DataLabels.category("洗车卡", ev = true))
     }
+
+    @Test
+    fun `uncategorized bucket has a readable label in both languages`() {
+        // T007：空分类在统计层用内部 key 聚合，界面不能把 "__uncategorized__" 直接显示出来。
+        assertEquals("未分类", DataLabels.category("__uncategorized__"))
+        I18n.applyEnglish(true)
+        assertEquals("Uncategorized", DataLabels.category("__uncategorized__"))
+    }
 }

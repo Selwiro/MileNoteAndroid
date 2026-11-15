@@ -172,6 +172,21 @@ class StatsTest {
     }
 
     @Test
+    fun `blank category records go into uncategorized bucket`() {
+        val ledger = testLedger(
+            records = listOf(
+                Record(id = "a", date = "2026-01-01", category = "", amount = 120.0),
+                Record(id = "b", date = "2026-01-02", category = "停车费", amount = 30.0),
+            ),
+        )
+        val result = stats(ledger)
+        assertEquals(150.0, result.total, 1e-9)
+        // T007：空分类不能被静默丢掉，否则分类合计 < 总支出。
+        assertEquals(120.0, result.categories.first { it.name == Categories.UNCATEGORIZED }.value, 1e-9)
+        assertEquals(result.total, result.categories.sumOf { it.value }, 1e-9)
+    }
+
+    @Test
     fun `custom categories participate in stats`() {
         val ledger = blankLedger().copy(
             customCategories = listOf("充电费"),

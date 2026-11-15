@@ -668,6 +668,10 @@ internal fun monthAxisLabel(month: YearMonth): String =
  * 保证同一分类在所有图表中颜色一致。
  */
 internal fun chartColorOf(name: String, palette: List<Color>, darkTheme: Boolean): Color {
+    // T007：未分类统一用中性灰，避免 hash 出来的随机彩色被误读成一个具体分类。
+    if (name == com.milenote.android.domain.calc.Categories.UNCATEGORIZED) {
+        return Color.hsl(0f, saturation = 0f, lightness = if (darkTheme) 0.66f else 0.52f)
+    }
     val normalized = if (name == "维修保养") "保养" else name
     val index = MileNoteCategoryNames.indexOf(normalized)
     if (index >= 0 && index < palette.size) return palette[index]

@@ -199,6 +199,18 @@ class BackupModelTest {
     }
 
     @Test
+    fun `legacy blank category records decode instead of blocking the whole backup`() {
+        // T007：历史数据里可能有空分类记录；整份拒绝等于把唯一副本挡在门外，
+        // 解码放行后报告会把它归入「未分类」，数据体检再提示修复。
+        val garage = simpleGarage().let { g ->
+            g.copy(cars = listOf(g.cars[0].copy(records = listOf(record.copy(category = "")))))
+        }
+        val decoded = BackupCodec.decode(BackupCodec.encode(garage))
+        assertEquals(1, decoded.cars[0].records.size)
+        assertEquals("", decoded.cars[0].records[0].category)
+    }
+
+    @Test
     fun `invalid backups are rejected`() {
         assertThrows(BackupException::class.java) { BackupCodec.decode("not json") }
         assertThrows(BackupException::class.java) { BackupCodec.decode("[]") }

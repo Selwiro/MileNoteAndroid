@@ -311,6 +311,21 @@ class ReportTest {
     }
 
     @Test
+    fun `blank categories get an uncategorized row and sum to total`() {
+        val ledger = ledgerWith(
+            listOf(
+                plain("2026-10-01", "", 120.0),
+                plain("2026-10-02", "油费", 80.0),
+            ),
+        )
+        val data = report(ledger, month(2026, 10), today)
+        assertEquals(200.0, data.total, 1e-9)
+        // T007：构成卡必须有「未分类」兜底，分类合计要等于总支出（分享图同源）。
+        assertEquals(120.0, data.categories.first { it.name == Categories.UNCATEGORIZED }.value, 1e-9)
+        assertEquals(data.total, data.categories.sumOf { it.value }, 1e-9)
+    }
+
+    @Test
     fun `uncounted fuel stays out of total but counts as fuel`() {
         val ledger = ledgerWith(
             listOf(

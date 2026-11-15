@@ -25,6 +25,15 @@ object Categories {
     /** 第 9 类「汽车美容」在各皮肤中的固定颜色。 */
     const val EXTRA_COLOR: String = "#b58ac4"
 
+    /**
+     * 「未分类」聚合桶的内部 key（T007）。
+     *
+     * 导入的脏数据可能带空分类：这些记录仍会进总支出，但不在 [options] 里，
+     * 若只按 options 聚合，构成卡的分类合计就会小于总支出。统计层把它们并进这个桶，
+     * 显示层统一映射成「未分类 / Uncategorized」；**不写回账本**，也不参与导入匹配。
+     */
+    const val UNCATEGORIZED: String = "__uncategorized__"
+
     /** 5 套皮肤。 */
     val THEMES: Map<String, Theme> = linkedMapOf(
         "blue" to Theme(

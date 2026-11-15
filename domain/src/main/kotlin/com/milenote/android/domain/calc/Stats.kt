@@ -61,13 +61,23 @@ fun stats(ledger: Ledger, from: String = "", to: String = "9999-12-31"): StatsRe
     val records = ledger.records.filter { (from.isEmpty() || it.date >= from) && it.date <= to }
     val total = records.sumOf { costOf(it, ledger) }
 
-    val categories = Categories.options(ledger).map { name ->
-        CategoryValue(
-            name = name,
-            value = records
-                .filter { Categories.normalize(it.category) == name }
-                .sumOf { costOf(it, ledger) },
+    val categories = buildList {
+        addAll(
+            Categories.options(ledger).map { name ->
+                CategoryValue(
+                    name = name,
+                    value = records
+                        .filter { Categories.normalize(it.category) == name }
+                        .sumOf { costOf(it, ledger) },
+                )
+            },
         )
+        // T007：空分类（导入脏数据）不在 options 里，单独归一个「未分类」桶，
+        // 否则构成卡的分类合计 < 总支出，用户会以为算错。只有真的存在这类记录时才加。
+        val uncategorized = records
+            .filter { Categories.normalize(it.category).isEmpty() }
+            .sumOf { costOf(it, ledger) }
+        if (uncategorized > 0.0) add(CategoryValue(Categories.UNCATEGORIZED, uncategorized))
     }
 
     val profile = ledger.energyProfile

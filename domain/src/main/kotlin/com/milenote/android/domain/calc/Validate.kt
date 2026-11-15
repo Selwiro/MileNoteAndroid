@@ -61,6 +61,14 @@ fun recordIssue(
     requireServiceOdometer: Boolean = false,
     /** 是否拒绝早于 1970 的日期（导入 / 编辑器传 true；备份校验保持默认 false）。 */
     requirePlausibleDate: Boolean = false,
+    /**
+     * 是否允许空分类（T007）。
+     *
+     * 编辑器 / 导入向导仍然拒绝空分类（默认 false）；只有备份 / 同步解码时放宽：
+     * 历史数据里可能有空分类记录，整份拒绝会把用户的唯一副本挡在门外。
+     * 这些记录会被统计层归进「未分类」，并由数据体检提示修复。
+     */
+    allowBlankCategory: Boolean = false,
 ): RecordIssue? {
     if (Dates.dateValue(record.date).isEmpty()) {
         return RecordIssue(RecordField.DATE, tr("日期无效", "Invalid date"))
@@ -68,7 +76,8 @@ fun recordIssue(
     if (requirePlausibleDate && !Dates.isPlausibleRecordDate(record.date)) {
         return RecordIssue(RecordField.DATE, tr("日期早于 1970 年，请检查", "The date is before 1970 — check it"))
     }
-    if (record.category !in Categories.ALL &&
+    if (!allowBlankCategory &&
+        record.category !in Categories.ALL &&
         record.category !in customCategories &&
         record.category != "维修保养"
     ) {
@@ -123,9 +132,11 @@ fun validateRecord(
     customCategories: List<String> = emptyList(),
     requireServiceOdometer: Boolean = false,
     requirePlausibleDate: Boolean = false,
+    allowBlankCategory: Boolean = false,
 ): String = recordIssue(
     record = record,
     customCategories = customCategories,
     requireServiceOdometer = requireServiceOdometer,
     requirePlausibleDate = requirePlausibleDate,
+    allowBlankCategory = allowBlankCategory,
 )?.message ?: ""

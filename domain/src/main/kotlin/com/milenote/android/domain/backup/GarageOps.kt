@@ -47,7 +47,11 @@ object GarageOps {
         val custom = ledger.customCategories.orEmpty()
         for (r in ledger.records) {
             if (r.id.isEmpty()) throw BackupException(tr("备份包含无效费用记录", "The data contains an invalid expense record"))
-            if (validateRecord(r, custom).isNotEmpty()) throw BackupException(tr("备份包含无效费用记录", "The data contains an invalid expense record"))
+            // T007：空分类只在备份 / 同步解码时放行（历史脏数据），统计层归入「未分类」；
+            // 编辑器与导入向导仍要求选分类。
+            if (validateRecord(r, custom, allowBlankCategory = true).isNotEmpty()) {
+                throw BackupException(tr("备份包含无效费用记录", "The data contains an invalid expense record"))
+            }
         }
         if (ledger.records.map { it.id }.toSet().size != ledger.records.size) {
             throw BackupException(tr("费用记录编号重复", "Duplicate expense record ID"))

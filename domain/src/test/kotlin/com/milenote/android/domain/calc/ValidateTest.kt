@@ -51,6 +51,15 @@ class ValidateTest {
     }
 
     @Test
+    fun `blank category is rejected by default but allowed for legacy decode`() {
+        val blank = Record(id = "x", date = "2026-11-01", category = "", amount = 10.0)
+        // 编辑器 / 导入向导仍要求选分类。
+        assertEquals("请选择汽车费用分类", validateRecord(blank))
+        // T007：备份 / 同步解码放行，统计层归入「未分类」。
+        assertEquals("", validateRecord(blank, allowBlankCategory = true))
+    }
+
+    @Test
     fun `ev manual consumption requires a positive rate`() {
         val manual = evRecord(amount = 0.0, kwh = 40.0, kind = "manual", distance = 100.0)
         assertEquals("请填写有效油耗/电耗", validateRecord(manual))
