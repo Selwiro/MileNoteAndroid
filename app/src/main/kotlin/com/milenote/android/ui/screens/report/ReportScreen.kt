@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -901,10 +903,14 @@ private fun LegendDot(color: Color, label: String) {
 private fun CompareRowView(row: CompareRow, previousLabel: String) {
     val scheme = MaterialTheme.colorScheme
     val max = maxOf(row.current, row.previous, 1e-9)
+    // B43：行高从固定 44dp 改成「最小 44dp + 内容自适应」，固定列宽随字号放大。
+    // 否则 2.0× 下两行金额上下被切掉一半，标签也被 56dp 截成省略号。
+    val columnScale = compareColumnScale(LocalDensity.current.fontScale)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .heightIn(min = 44.dp)
+            .padding(vertical = 4.dp)
             .semantics(mergeDescendants = true) {
                 contentDescription = tr(
                     "%s：本期 %s，%s %s",
@@ -922,7 +928,9 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
             fontSize = 13.sp,
             color = scheme.onSurfaceVariant,
             maxLines = 1,
-            modifier = Modifier.width(56.dp),
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(min = 56.dp * columnScale),
         )
         Column(
             modifier = Modifier
@@ -942,7 +950,7 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
             )
         }
         Column(
-            modifier = Modifier.width(82.dp),
+            modifier = Modifier.widthIn(min = 82.dp * columnScale),
             horizontalAlignment = Alignment.End,
         ) {
             Text(

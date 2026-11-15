@@ -74,11 +74,13 @@ import com.milenote.android.domain.model.POWERTRAIN_PHEV
 import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.normalizePowertrain
 import com.milenote.android.domain.model.powertrainKey
+import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.components.FormField
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
+import com.milenote.android.ui.vehicleDeleteMessage
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.theme.MileNoteShapeTokens
@@ -109,7 +111,7 @@ import kotlinx.coroutines.withContext
  * @param recordCount 该车已有记录数（删除提示 / 动力类型切换确认用）。
  * @param onDismiss 关闭弹层。
  * @param onSave 校验通过后回传车辆对象与「是否一并删除不再适用的保养提醒」。
- * @param onDelete 删除该车（VM 内部会再弹一次确认）；新增时为 null。
+ * @param onDelete 删除该车；新增时为 null。弹窗内先做二次确认（B35），确认后才调用并关闭。
  */
 @Composable
 internal fun VehicleEditorDialog(
@@ -148,6 +150,8 @@ internal fun VehicleEditorDialog(
     // 动力类型改变且有历史记录时的待确认保存；非空即显示确认框。
     var pendingPowertrainSave by remember { mutableStateOf<Vehicle?>(null) }
     var prunePowertrainReminders by remember { mutableStateOf(true) }
+    // B35：删除确认放在弹窗内部。只有确认后才 onDelete + onDismiss；取消留在编辑器里，本次修改不丢。
+    var confirmDelete by remember { mutableStateOf(false) }
 
     fun notifyError(text: String) {
         hint = null
@@ -497,10 +501,7 @@ internal fun VehicleEditorDialog(
                             }
                             if (onDelete != null) {
                                 OutlinedButton(
-                                    onClick = {
-                                        onDelete.invoke()
-                                        onDismiss()
-                                    },
+                                    onClick = { confirmDelete = true },
                                     shape = MileNoteShapeTokens.full,
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                                     modifier = Modifier
@@ -583,6 +584,37 @@ internal fun VehicleEditorDialog(
                 TextButton(onClick = { pendingPowertrainSave = null }) {
                     Text(tr("取消", "Cancel"))
                 }
+            },
+        )
+    }
+
+    // B35：删除二次确认就放在弹窗里，取消只关确认框 —— 之前是先 onDismiss() 再弹确认，
+    // 用户点「取消」时连这次未保存的修改一起丢了。
+    val deleteAction = onDelete
+    if (confirmDelete && deleteAction != null) {
+        val vehicleName = if (initial.name.isBlank()) {
+            tr("这辆车", "this car")
+        } else {
+            DataLabels.vehicleName(initial.name)
+        }
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            shape = MileNoteShapes.extraLarge,
+            title = { Text(tr("删除车辆", "Delete vehicle")) },
+            text = { Text(vehicleDeleteMessage(vehicleName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        deleteAction.invoke()
+                        onDismiss()
+                    },
+                ) {
+                    Text(tr("删除", "Delete"), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text(tr("取消", "Cancel")) }
             },
         )
     }

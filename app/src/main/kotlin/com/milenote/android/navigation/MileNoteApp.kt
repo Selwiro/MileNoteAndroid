@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -82,6 +83,7 @@ import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
 import com.milenote.android.ui.icons.MileNoteIcons
 import com.milenote.android.ui.theme.LocalMileNoteDarkTheme
+import com.milenote.android.ui.theme.MileNoteDimens
 import com.milenote.android.ui.screens.dashboard.DashboardScreen
 import com.milenote.android.ui.screens.fuel.EnergyDetailScreen
 import com.milenote.android.ui.screens.fuel.FuelScreen
@@ -817,6 +819,9 @@ private fun androidx.compose.foundation.layout.RowScope.BottomBarTab(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
+            // B37：24dp 图标 + 上下各 8dp 只有 40dp，低于无障碍建议的 48dp；这里补到 48dp。
+            // 图标不加文字仍是既定设计，只是命中区变大、底栏高出 8dp。
+            .heightIn(min = MileNoteDimens.TouchTarget)
             .clickable { onClick() }
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center,

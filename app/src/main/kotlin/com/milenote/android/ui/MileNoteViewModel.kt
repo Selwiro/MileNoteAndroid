@@ -108,6 +108,18 @@ data class DeleteUndo(
     val deleted: DeletedRecords,
 )
 
+/**
+ * 删除车辆的二次确认说明（B35）。
+ *
+ * 车辆编辑弹窗内的确认框（先确认再关编辑器）与 [MileNoteViewModel.deleteVehicle] 的全局确认框
+ * 共用同一句，避免只改一处导致两处文案走岔。
+ */
+internal fun vehicleDeleteMessage(name: String): String = tr(
+    "将删除「%s」及其全部费用、提醒与保养记录。建议先导出完整备份。",
+    "This deletes \"%s\" and all its expenses, reminders and service records. Export a full backup first.",
+    name,
+)
+
 /** 通用确认弹层。 */
 data class PendingConfirm(
     val title: String,
@@ -773,11 +785,22 @@ class MileNoteViewModel(
         }
     }
 
-    fun deleteVehicle(id: String) {
+    /**
+     * 删除车辆。
+     *
+     * [confirmFirst] = false 表示调用方（车辆编辑弹窗）已经在**弹窗内**做过二次确认（B35）：
+     * 那时不再弹全局确认框，否则一次删除要连点两次确认；而且弹窗内确认后先关编辑器、取消则保留编辑，
+     * 不会再把这次未保存的修改一起丢掉。
+     */
+    fun deleteVehicle(id: String, confirmFirst: Boolean = true) {
         if (_state.value.demo) {
             _state.value = _state.value.copy(
                 message = tr("演示模式下不能删除车辆，请先退出演示", "Exit the demo before deleting a vehicle"),
             )
+            return
+        }
+        if (!confirmFirst) {
+            performVehicleDelete(id)
             return
         }
         val rawName = _state.value.garage?.cars?.firstOrNull { it.id == id }?.vehicle?.name
@@ -785,27 +808,31 @@ class MileNoteViewModel(
         confirm(
             PendingConfirm(
                 title = tr("删除车辆", "Delete vehicle"),
-                message = tr("将删除「%s」及其全部费用、提醒与保养记录。建议先导出完整备份。", "This deletes \"%s\" and all its expenses, reminders and service records. Export a full backup first.", name),
+                message = vehicleDeleteMessage(name),
                 confirmLabel = tr("删除", "Delete"),
                 destructive = true,
             ) {
-                viewModelScope.launch {
-                    runCatching { repository.deleteData("one", id) }
-                        .onSuccess {
-                            // 删除前留了快照：让「备份与还原」页立刻出现回滚入口。
-                            runCatching { refreshReplaceSnapshot() }
-                            _state.value = _state.value.copy(
-                                message = savedMessage(tr("已删除车辆", "Vehicle deleted")),
-                            )
-                        }
-                        .onFailure { e ->
-                            _state.value = _state.value.copy(
-                                message = e.message ?: tr("删除失败，数据未改变", "Delete failed — nothing was changed"),
-                            )
-                        }
-                }
+                performVehicleDelete(id)
             },
         )
+    }
+
+    private fun performVehicleDelete(id: String) {
+        viewModelScope.launch {
+            runCatching { repository.deleteData("one", id) }
+                .onSuccess {
+                    // 删除前留了快照：让「备份与还原」页立刻出现回滚入口。
+                    runCatching { refreshReplaceSnapshot() }
+                    _state.value = _state.value.copy(
+                        message = savedMessage(tr("已删除车辆", "Vehicle deleted")),
+                    )
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        message = e.message ?: tr("删除失败，数据未改变", "Delete failed — nothing was changed"),
+                    )
+                }
+        }
     }
 
     fun deleteAllData() {

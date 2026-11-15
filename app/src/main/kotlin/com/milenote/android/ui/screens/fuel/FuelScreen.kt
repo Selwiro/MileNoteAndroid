@@ -3,6 +3,9 @@ package com.milenote.android.ui.screens.fuel
 import com.milenote.android.ui.Today
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -150,6 +153,9 @@ fun FuelScreen(
     var priceFetchedAt by remember(ev) { mutableStateOf(cachedAtStart?.fetchedAtMillis) }
     var priceStale by remember(ev) { mutableStateOf(false) }
     var priceLoading by remember(ev) { mutableStateOf(!ev && cachedAtStart == null) }
+    // B40：拒绝定位权限 / 有权限但没有 last-known fix 时，卡里要有一句提示 +「去设置」入口，
+    // 否则点了「获取当前城市油价」之后界面什么都不会发生。
+    var locationIssue by remember(ev) { mutableStateOf<FuelLocationIssue?>(null) }
 
     /** [force] = 手动刷新（忽略当天缓存）；自动刷新（进页面/跨天）时 force=false。 */
     fun refreshPrice(reLocate: Boolean, force: Boolean = false) {
@@ -162,6 +168,11 @@ fun FuelScreen(
                     fuelLocation = next
                     saveFuelLocation(context, next)
                     locationRemembered = true
+                    locationIssue = null
+                } else {
+                    // 权限给了但没有 last-known fix（室内 / 刚开机 / 定位服务关闭）：给一句提示，
+                    // 仍然按已记住的城市或默认城市取价（不再静默）。
+                    locationIssue = FuelLocationIssue.NO_FIX
                 }
             }
             val cached = priceCache?.load(fuelLocation)
@@ -201,7 +212,12 @@ fun FuelScreen(
         rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
-            if (granted) refreshPrice(reLocate = true, force = true)
+            if (granted) {
+                locationIssue = null
+                refreshPrice(reLocate = true, force = true)
+            } else {
+                locationIssue = FuelLocationIssue.PERMISSION_DENIED
+            }
         }
     } else {
         null
@@ -291,6 +307,8 @@ fun FuelScreen(
                 },
                 lastUpdatedMillis = priceFetchedAt,
                 stale = priceStale,
+                locationIssue = locationIssue,
+                onOpenLocationSettings = { openAppSettings(context) },
                 onRefresh = { refreshPrice(reLocate = false, force = true) },
                 onGetCurrentCityPrice = {
                     if (LocationResolver.hasPermission(context)) {
@@ -416,6 +434,36 @@ fun FuelScreen(
 
 }
 
+/**
+ * 今日油价卡的定位问题（B40）。
+ *
+ * [PERMISSION_DENIED]：用户拒绝了定位权限（或勾了「不再询问」）；
+ * [NO_FIX]：权限有了，但系统没有 last-known fix（室内 / 刚开机 / 定位服务关闭）。
+ * 两种都按「已记住的城市或默认城市」出价，但必须在卡里说一句，不能静默。
+ */
+internal enum class FuelLocationIssue { PERMISSION_DENIED, NO_FIX }
+
+/** 定位问题的提示文案（中英同源，[FuelLocationIssue] 为空时不显示提示）。 */
+internal fun fuelLocationIssueText(issue: FuelLocationIssue): String = when (issue) {
+    FuelLocationIssue.PERMISSION_DENIED -> tr(
+        "未获得定位权限，正在显示默认城市的参考油价",
+        "Location permission denied — showing the default city's reference prices",
+    )
+    FuelLocationIssue.NO_FIX -> tr(
+        "未获取到当前位置，正在显示默认城市的参考油价",
+        "Couldn't get your current location — showing the default city's reference prices",
+    )
+}
+
+/** 打开本应用的系统设置页：让用户在被拒权限后能自己回去打开定位（B40 的「去设置」）。 */
+private fun openAppSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null),
+    )
+    runCatching { context.startActivity(intent) }
+}
+
 /** 今日油价卡：车辆标号价格 + 下次调价/预测；无定位时默认北京。 */
 @Composable
 private fun FuelPriceCard(
@@ -427,6 +475,8 @@ private fun FuelPriceCard(
     stale: Boolean,
     onRefresh: () -> Unit,
     onGetCurrentCityPrice: () -> Unit,
+    locationIssue: FuelLocationIssue? = null,
+    onOpenLocationSettings: () -> Unit = {},
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard(
@@ -452,6 +502,29 @@ private fun FuelPriceCard(
             }
         },
     ) {
+        // B40：定位失败的就地提示（默认城市取价），带「去设置」入口；成功定位后自动消失。
+        locationIssue?.let { issue ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = fuelLocationIssueText(issue),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = onOpenLocationSettings,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(tr("去设置", "Settings"), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
         when {
             loading && info == null -> {
                 Row(

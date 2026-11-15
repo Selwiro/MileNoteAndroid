@@ -37,6 +37,19 @@ internal fun barFraction(value: Double, max: Double): Float {
     return (value / max).toFloat().coerceIn(0f, 1f)
 }
 
+/**
+ * 对比卡行内固定列宽（标签 56dp / 金额 82dp）的字号放大倍数（B43）。
+ *
+ * 固定宽度不随字号变，2.0× 下金额会被裁掉、标签只剩省略号；这里按系统字号等比放大，
+ * 上限夹到 2.0×（再大就让条形列太窄，得不偿失），异常值按 1.0× 兜底。
+ */
+internal fun compareColumnScale(fontScale: Float): Float = when {
+    fontScale.isNaN() -> 1f
+    fontScale <= 1f -> 1f
+    fontScale >= 2f -> 2f
+    else -> fontScale
+}
+
 /** 空轨道 + 实心条；无数据时只留一道浅轨道。 */
 @Composable
 internal fun BarTrack(

@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.milenote.android.domain.calc.Categories
@@ -165,6 +166,21 @@ private val EditorCategoryOrder = listOf(
 private const val AddCategoryCell = "__add_category__"
 
 /**
+ * 分类网格的列数（B38）：随系统字号收窄，保证「汽车美容」这类四字名在 2.0× 下不被截成「汽车…」。
+ *
+ * - ≤ 1.3×：5 列（默认布局，和旧版一致）
+ * - 1.3–1.8×：4 列
+ * - ≥ 1.8×：3 列（每格更宽，四字全显示）
+ *
+ * 抽成纯函数：Compose 侧只需 `LocalDensity.current.fontScale`，单测直接覆盖三档边界。
+ */
+internal fun categoryGridColumns(fontScale: Float): Int = when {
+    !fontScale.isFinite() || fontScale <= 1.3f -> 5
+    fontScale < 1.8f -> 4
+    else -> 3
+}
+
+/**
  * 费用分类：置顶、无标题，5 列图标在上文字在下的网格。
  * 内置分类按固定顺序排列（被隐藏的分类不出现），自定义分类排在「汽车用品」之后，
  * 「新增分类」固定最后。显示名走 `DataLabels.categoryFor`（改名 + 能量档位，存储值不变）。
@@ -183,12 +199,14 @@ internal fun CategoryField(
     val cells = builtinCategories.map { it to false } +
         customCategories.map { it to false } +
         (AddCategoryCell to true)
+    // B38：字号放大后按 fontScale 收窄列数（1.0/1.3× 五列、1.8× 四列、2.0× 三列），四字分类才放得下。
+    val columns = categoryGridColumns(LocalDensity.current.fontScale)
 
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        cells.chunked(5).forEach { row ->
+        cells.chunked(columns).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -213,7 +231,7 @@ internal fun CategoryField(
                         },
                     )
                 }
-                repeat(5 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                repeat(columns - row.size) { Spacer(modifier = Modifier.weight(1f)) }
             }
         }
     }

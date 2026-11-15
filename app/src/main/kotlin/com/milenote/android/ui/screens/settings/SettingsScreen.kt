@@ -777,7 +777,8 @@ fun SettingsScreen(
                     vm.saveVehicle(vehicle, prunePowertrainReminders = prunePowertrainReminders)
                 }
             },
-            onDelete = target.id?.let { id -> { vm.deleteVehicle(id) } },
+            // B35：删除确认已在编辑弹窗内做过，这里直接删，不再弹第二次全局确认。
+            onDelete = target.id?.let { id -> { vm.deleteVehicle(id, confirmFirst = false) } },
         )
     }
 }
