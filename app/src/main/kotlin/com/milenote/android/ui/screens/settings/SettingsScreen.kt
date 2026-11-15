@@ -251,6 +251,7 @@ fun SettingsScreen(
     var message by remember { mutableStateOf<SettingsMessage?>(null) }
     var busy by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<VehicleEditTarget?>(null) }
+    var showSetupWizard by remember { mutableStateOf(false) }
     var pendingBackup by remember { mutableStateOf<String?>(null) }
     var pendingCsv by remember { mutableStateOf<ByteArray?>(null) }
     var pendingXlsx by remember { mutableStateOf<ByteArray?>(null) }
@@ -669,7 +670,7 @@ fun SettingsScreen(
                                 ),
                                 actionLabel = tr("添加车辆", "Add vehicle"),
                                 actionIcon = MileNoteIcons.Add,
-                                onAction = { openVehicleEditor(null) },
+                                onAction = { showSetupWizard = true },
                             )
                         }
 
@@ -680,7 +681,7 @@ fun SettingsScreen(
                                     description = tr("添加第一辆车，开始记录每一%s的花费。", "Add your first car and start tracking the cost of every %s.", Units.distanceUnit),
                                     icon = MileNoteIcons.Car,
                                     actionLabel = tr("添加车辆", "Add vehicle"),
-                                    onAction = { openVehicleEditor(null) },
+                                    onAction = { showSetupWizard = true },
                                 )
                             } else {
                                 // 竖排：一行一辆、卡片占满内容宽度；间距用 CardGap，比区块间 SectionGap 更紧凑。
@@ -887,6 +888,20 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showSetupWizard) {
+        VehicleSetupWizard(
+            onDismiss = { showSetupWizard = false },
+            onFinish = { vehicle, baseDate, enablePlan ->
+                showSetupWizard = false
+                vm.addVehicleWithSetup(vehicle, baseDate, enablePlan)
+            },
+            onUseFullEditor = {
+                showSetupWizard = false
+                openVehicleEditor(null)
+            },
+        )
     }
 
     editing?.let { target ->

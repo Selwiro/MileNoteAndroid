@@ -147,6 +147,7 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     var backupBusy by remember { mutableStateOf(false) }
     var reminderDismissed by rememberSaveable { mutableStateOf(false) }
+    var showSetupWizard by rememberSaveable { mutableStateOf(false) }
     // 30 天未备份：只在有固定目录时给「一键备份」，否则引导去备份页选目录（F4）。
     val overdueDays = remember(settings.lastBackupAt) { backupOverdueDays(settings.lastBackupAt) }
 
@@ -200,8 +201,23 @@ fun DashboardScreen(
         onOpenBackupPage = { onNavigate(Routes.settingsPageRoute(SettingsPage.BACKUP.key)) },
         reminderDismissed = reminderDismissed,
         onDismissReminder = { reminderDismissed = true },
+        onOpenSetup = { showSetupWizard = true },
         modifier = modifier,
     )
+
+    if (showSetupWizard) {
+        com.milenote.android.ui.screens.settings.VehicleSetupWizard(
+            onDismiss = { showSetupWizard = false },
+            onFinish = { vehicle, baseDate, enablePlan ->
+                showSetupWizard = false
+                vm.addVehicleWithSetup(vehicle, baseDate, enablePlan)
+            },
+            onUseFullEditor = {
+                showSetupWizard = false
+                onNavigate(Routes.settingsPageRoute(SettingsPage.VEHICLES.key))
+            },
+        )
+    }
 }
 
 @Composable
@@ -220,6 +236,7 @@ private fun DashboardContent(
     onOpenBackupPage: () -> Unit,
     reminderDismissed: Boolean,
     onDismissReminder: () -> Unit,
+    onOpenSetup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = Today.current
@@ -329,10 +346,8 @@ private fun DashboardContent(
                     onSecondaryAction = onEnterDemo,
                     // UX7（便宜版）：先把车建对（动力类型 / 起始里程），再记第一笔；
                     // 完整 3 步向导按 D2=A 留 1.1，这里只给一个直达入口。
-                    tertiaryLabel = tr("完善车辆信息", "Complete vehicle info"),
-                    onTertiaryAction = {
-                        onNavigate(Routes.settingsPageRoute(SettingsPage.VEHICLES.key))
-                    },
+                    tertiaryLabel = tr("开始设置我的车", "Set up my car"),
+                    onTertiaryAction = onOpenSetup,
                     // UX8：费用明细入口原本只有右上角同色小图标，新用户找不到；空态直接给文字入口。
                     linkLabel = tr("查看全部记录（费用明细）", "See all records (expense details)"),
                     onLinkAction = { onNavigate(Routes.RECORDS) },

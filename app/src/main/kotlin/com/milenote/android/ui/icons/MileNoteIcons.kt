@@ -516,6 +516,14 @@ object MileNoteIcons {
         )
     }
 
+    /** 空选圆（向导单选项）。 */
+    val Circle: ImageVector by lazy {
+        strokeIcon(
+            name = "MileNote.Circle",
+            "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z",
+        )
+    }
+
     /** 数据体检（心跳折线）。 */
     val Health: ImageVector by lazy {
         strokeIcon(

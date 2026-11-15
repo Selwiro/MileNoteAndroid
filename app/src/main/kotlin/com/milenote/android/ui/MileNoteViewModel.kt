@@ -877,6 +877,53 @@ class MileNoteViewModel(
     }
 
     /**
+     * 建车向导（F6）：创建车辆，可选按提车日期 / 起始里程生成默认保养方案。
+     *
+     * 与 [addVehicle] 的唯一区别是「顺手启用默认方案」；都走同一次仓储写入，
+     * 避免先建车再调用方案导致 activeId 竞争。
+     */
+    fun addVehicleWithSetup(
+        vehicle: Vehicle,
+        baseDate: String?,
+        enablePlan: Boolean,
+    ) {
+        val nextVehicle = when (vehicle.powertrainKey) {
+            POWERTRAIN_EV -> vehicle.copy(fuelCostSource = null, fuelGrade = null)
+            POWERTRAIN_PHEV -> vehicle.copy(fuelCostSource = null)
+            else -> vehicle
+        }
+        val baseKm = nextVehicle.startKm?.takeIf { it > 0 } ?: nextVehicle.currentKm.takeIf { it > 0 }
+        viewModelScope.launch {
+            val reminders = if (enablePlan && baseKm != null) {
+                defaultServiceReminders(
+                    baseDate = baseDate ?: Dates.iso(Dates.today()),
+                    baseKm = baseKm,
+                    includeFirst = true,
+                    powertrain = nextVehicle.powertrainKey,
+                )
+            } else {
+                emptyList()
+            }
+            val result = repository.update(syncHistory = false) { garage ->
+                val ledger = blankLedger(powertrain = nextVehicle.powertrain)
+                    .copy(
+                        id = Ids.newId(),
+                        vehicle = nextVehicle,
+                        reminders = reminders,
+                        servicePlanConfigured = if (reminders.isNotEmpty()) true else null,
+                    )
+                garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
+            }
+            val failed = result == null || repository.writeError.value != null
+            _state.value = _state.value.copy(
+                showVehicleEditor = failed,
+                vehicleSwitcher = false,
+                message = savedMessage(tr("已添加车辆", "Vehicle added")),
+            )
+        }
+    }
+
+    /**
      * 删除车辆。
      *
      * [confirmFirst] = false 表示调用方（车辆编辑弹窗）已经在**弹窗内**做过二次确认（B35）：
