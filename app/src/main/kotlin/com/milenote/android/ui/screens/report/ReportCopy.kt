@@ -44,4 +44,20 @@ internal object ReportCopy {
     fun dailyLabel(): String = tr("日均", "Daily avg")
 
     fun monthlyLabel(): String = tr("月均", "Monthly")
+
+    /**
+     * 累计月均的口径说明（T007）。
+     *
+     * 月均 = 累计支出 ÷ 首笔至今的自然月数（含没有记录的月份），记录稀疏时看着会偏低；
+     * 这行把「摊了几个月、其中几个月有记录」写出来，用户不用猜口径。月报 / 年报不显示。
+     */
+    fun monthlyAverageNote(spanMonths: Int?, monthsWithData: Int): String? {
+        val span = spanMonths?.takeIf { it > 0 } ?: return null
+        return tr(
+            "月均按 %d 个自然月均摊（其中有记录 %d 个月）",
+            "Monthly average spreads spending over %d calendar months (%d with records)",
+            span,
+            monthsWithData,
+        )
+    }
 }

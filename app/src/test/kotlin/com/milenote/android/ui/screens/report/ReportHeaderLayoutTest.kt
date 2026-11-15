@@ -1,0 +1,118 @@
+package com.milenote.android.ui.screens.report
+
+import com.milenote.android.domain.calc.ReportKind
+import com.milenote.android.i18n.I18n
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import java.time.LocalDate
+
+/**
+ * T007 / T008 报告页的纯函数：卡头两行切换、周期胶囊宽度、空态「回到本月」、累计月均口径说明。
+ *
+ * 这些边界（1.3× / 2.0× 字号、异常字号、期是否当期）只有单测能稳定覆盖，
+ * 截图只验最终视觉。
+ */
+class ReportHeaderLayoutTest {
+
+    private val today = LocalDate.of(2026, 11, 16)
+
+    @Before
+    fun setUp() {
+        I18n.applyEnglish(false)
+    }
+
+    @After
+    fun tearDown() {
+        I18n.applyEnglish(false)
+    }
+
+    // ---------------------------------------------------------------- 卡头布局
+
+    @Test
+    fun normal_scale_keeps_single_row() {
+        assertFalse(periodHeaderStacks(1f, 411f))
+        assertFalse(periodHeaderStacks(1.15f, 411f))
+    }
+
+    @Test
+    fun large_font_switches_to_two_rows() {
+        assertTrue(periodHeaderStacks(1.3f, 411f))
+        assertTrue(periodHeaderStacks(1.5f, 411f))
+        assertTrue(periodHeaderStacks(2f, 411f))
+    }
+
+    @Test
+    fun narrow_screen_switches_even_at_normal_font() {
+        assertTrue(periodHeaderStacks(1f, 320f))
+        assertFalse(periodHeaderStacks(1f, 340f))
+    }
+
+    @Test
+    fun broken_scales_do_not_crash_or_flip_the_wrong_way() {
+        assertFalse(periodHeaderStacks(Float.NaN, 411f))
+        assertTrue(periodHeaderStacks(Float.POSITIVE_INFINITY, 411f))
+        // 宽度非法（0 / NaN）时保持单行，避免测量阶段来回切换布局。
+        assertFalse(periodHeaderStacks(1f, 0f))
+        assertFalse(periodHeaderStacks(1f, Float.NaN))
+    }
+
+    @Test
+    fun period_label_width_grows_with_font_scale_and_is_clamped() {
+        assertEquals(132f, periodLabelMaxWidthDp(1f), 0.01f)
+        assertEquals(171.6f, periodLabelMaxWidthDp(1.3f), 0.01f)
+        assertEquals(264f, periodLabelMaxWidthDp(2f), 0.01f)
+        assertEquals(264f, periodLabelMaxWidthDp(3f), 0.01f)
+        assertEquals(132f, periodLabelMaxWidthDp(Float.NaN), 0.01f)
+    }
+
+    // ---------------------------------------------------------------- 空态出口
+
+    @Test
+    fun current_period_has_no_back_to_now_action() {
+        assertNull(reportNowActionLabel(ReportKind.MONTH, 2026, 11, today))
+        assertNull(reportNowActionLabel(ReportKind.YEAR, 2026, 1, today))
+        assertNull(reportNowActionLabel(ReportKind.ALL, 2025, 1, today))
+    }
+
+    @Test
+    fun old_period_offers_back_to_this_month_or_year() {
+        assertEquals("回到本月", reportNowActionLabel(ReportKind.MONTH, 2025, 3, today))
+        assertEquals("回到今年", reportNowActionLabel(ReportKind.YEAR, 2025, 1, today))
+        // 未来月份没有「回到本月」以外的歧义，同样允许快速回来。
+        assertEquals("回到本月", reportNowActionLabel(ReportKind.MONTH, 2027, 1, today))
+    }
+
+    @Test
+    fun back_to_now_labels_are_translated() {
+        I18n.applyEnglish(true)
+        assertEquals("Back to this month", reportNowActionLabel(ReportKind.MONTH, 2025, 3, today))
+        assertEquals("Back to this year", reportNowActionLabel(ReportKind.YEAR, 2025, 1, today))
+    }
+
+    // ---------------------------------------------------------------- 月均口径说明
+
+    @Test
+    fun monthly_average_note_is_null_without_a_span() {
+        assertNull(ReportCopy.monthlyAverageNote(null, 0))
+        assertNull(ReportCopy.monthlyAverageNote(0, 0))
+    }
+
+    @Test
+    fun monthly_average_note_mentions_both_month_counts() {
+        val note = ReportCopy.monthlyAverageNote(12, 8)!!
+        assertTrue(note.contains("12"))
+        assertTrue(note.contains("8"))
+        assertTrue(note.contains("自然月"))
+
+        I18n.applyEnglish(true)
+        val en = ReportCopy.monthlyAverageNote(12, 8)!!
+        assertTrue(en.contains("12"))
+        assertTrue(en.contains("8"))
+        assertTrue(en.contains("calendar months"))
+    }
+}

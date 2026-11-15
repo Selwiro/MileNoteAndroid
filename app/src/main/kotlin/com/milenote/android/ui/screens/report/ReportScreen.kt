@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -220,6 +221,13 @@ private fun ReportContent(
         }
     }
 
+    // T008：翻到很早的空月份后，不用一路点「下一期」回来。
+    fun jumpToNow() {
+        monthYear = today.year
+        monthMonth = today.monthValue
+        yearValue = today.year
+    }
+
     BackHandler(enabled = shareOpen) { onDismissShare() }
 
     val comparison = comparisonModel(data, kind)
@@ -279,6 +287,7 @@ private fun ReportContent(
                         onPrev = { if (canPrev) goPrev() },
                         canPrev = canPrev,
                         onAdd = { vm.openEditor() },
+                        onJumpToNow = { jumpToNow() },
                     )
                 }
             } else {
@@ -355,6 +364,28 @@ private fun ReportContent(
 // 周期头 / 演示提示
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * T008：卡头是否换成「tab 一行 + 周期胶囊一行」。
+ *
+ * 单行布局在 1.3× 以上字号（或很窄的屏）放不下三个 tab + 周期胶囊：
+ * 2.0× 时中文三 tab 约 280dp、胶囊约 300dp，一行必然出界。纯函数便于单测边界。
+ */
+internal fun periodHeaderStacks(fontScale: Float, widthDp: Float): Boolean {
+    // NaN / 负值按 1.0× 处理（防御异常测量）；+∞ 视为超大字号，必须切两行。
+    val scale = when {
+        fontScale.isNaN() || fontScale <= 0f -> 1f
+        fontScale == Float.POSITIVE_INFINITY -> 2f
+        else -> fontScale
+    }
+    return scale >= 1.3f || (widthDp.isFinite() && widthDp > 0f && widthDp < 340f)
+}
+
+/** T008：周期胶囊里日期文字的宽度上限；字号放大后同步放宽，避免「2026 年 11 月」被裁。 */
+internal fun periodLabelMaxWidthDp(fontScale: Float): Float {
+    val scale = if (fontScale.isFinite()) fontScale.coerceIn(1f, 2f) else 1f
+    return 132f * scale
+}
+
 @Composable
 private fun PeriodHeader(
     data: ReportData,
@@ -366,39 +397,81 @@ private fun PeriodHeader(
     onNext: () -> Unit,
     onPick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            HeaderTextTabs(
-                labels = listOf(
-                    tr("月报", "Month"),
-                    tr("年报", "Year"),
-                    tr("累计", "All time"),
-                ),
-                selectedIndex = kind.ordinal,
-                onSelect = onKind,
-            )
-        }
-        if (kind == ReportKind.ALL) {
-            Text(
-                text = periodLabel(data, data.period),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
+    val fontScale = LocalDensity.current.fontScale
+    val labels = listOf(
+        tr("月报", "Month"),
+        tr("年报", "Year"),
+        tr("累计", "All time"),
+    )
+    val labelMaxWidthDp = periodLabelMaxWidthDp(fontScale)
+    val tail: @Composable () -> Unit = {
+        PeriodTail(
+            data = data,
+            kind = kind,
+            canPrev = canPrev,
+            canNext = canNext,
+            onPrev = onPrev,
+            onNext = onNext,
+            onPick = onPick,
+            labelMaxWidthDp = labelMaxWidthDp,
+        )
+    }
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (periodHeaderStacks(fontScale, maxWidth.value)) {
+            // 字号大 / 屏窄：tab 独占一行，周期胶囊换到下一行靠右，避免互相挤压。
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                HeaderTextTabs(labels = labels, selectedIndex = kind.ordinal, onSelect = onKind)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    tail()
+                }
+            }
         } else {
-            PeriodStepper(
-                label = periodLabel(data, data.period),
-                canPrev = canPrev,
-                canNext = canNext,
-                onPrev = onPrev,
-                onNext = onNext,
-                onPick = onPick,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    HeaderTextTabs(labels = labels, selectedIndex = kind.ordinal, onSelect = onKind)
+                }
+                tail()
+            }
         }
+    }
+}
+
+/** 卡头右侧：月报 / 年报显示翻期胶囊，累计显示静态时段。 */
+@Composable
+private fun PeriodTail(
+    data: ReportData,
+    kind: ReportKind,
+    canPrev: Boolean,
+    canNext: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onPick: () -> Unit,
+    labelMaxWidthDp: Float,
+) {
+    if (kind == ReportKind.ALL) {
+        Text(
+            text = periodLabel(data, data.period),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    } else {
+        PeriodStepper(
+            label = periodLabel(data, data.period),
+            canPrev = canPrev,
+            canNext = canNext,
+            onPrev = onPrev,
+            onNext = onNext,
+            onPick = onPick,
+            labelMaxWidthDp = labelMaxWidthDp,
+        )
     }
 }
 
@@ -452,10 +525,12 @@ private fun PeriodStepper(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onPick: () -> Unit,
+    labelMaxWidthDp: Float = 132f,
 ) {
     Row(
         modifier = Modifier
-            .height(32.dp)
+            // T008：原来固定 32dp 高，2.0× 字号会把年月文字裁掉；改成最小高度，让胶囊随字号长高。
+            .heightIn(min = 32.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         verticalAlignment = Alignment.CenterVertically,
@@ -473,7 +548,7 @@ private fun PeriodStepper(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .widthIn(max = 132.dp)
+                .widthIn(max = labelMaxWidthDp.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onPick)
                 .padding(horizontal = 2.dp),
@@ -540,6 +615,12 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
         ""
     }
     val stats = heroStats(data)
+    // T007：累计口径的月均含「没有记录的自然月」，在封面上写清口径，避免用户以为算错。
+    val monthlyNote = if (data.period.kind == ReportKind.ALL) {
+        ReportCopy.monthlyAverageNote(data.spanMonths, data.monthsWithData)
+    } else {
+        null
+    }
     val summary = tr(
         "%s支出 %s %s，%s",
         "%s spending %s %s, %s",
@@ -547,7 +628,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
         Format.money(data.total),
         Units.money,
         stats.joinToString("，", ", ") { "${it.label} ${it.value}${it.unit.orEmpty()}" },
-    )
+    ) + (monthlyNote?.let { "，$it" } ?: "")
 
     Column(
         modifier = Modifier
@@ -673,6 +754,16 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                     )
                 }
             }
+        }
+
+        monthlyNote?.let { note ->
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = note,
+                fontSize = 10.sp,
+                color = content.copy(alpha = 0.55f),
+                maxLines = 2,
+            )
         }
 
         if (rangeText.isNotEmpty()) {
@@ -1468,12 +1559,31 @@ private fun recordDate(record: Record, withYear: Boolean): String =
 // 空态 / 读账失败
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * T008：空态里「回到本月 / 今年」的按钮文案；已经在当期时返回 null（不显示）。
+ */
+internal fun reportNowActionLabel(
+    kind: ReportKind,
+    year: Int,
+    month: Int,
+    today: LocalDate,
+): String? = when (kind) {
+    ReportKind.MONTH -> if (year != today.year || month != today.monthValue) {
+        tr("回到本月", "Back to this month")
+    } else {
+        null
+    }
+    ReportKind.YEAR -> if (year != today.year) tr("回到今年", "Back to this year") else null
+    ReportKind.ALL -> null
+}
+
 @Composable
 private fun EmptyReportCard(
     data: ReportData,
     onPrev: () -> Unit,
     canPrev: Boolean,
     onAdd: () -> Unit,
+    onJumpToNow: (() -> Unit)? = null,
 ) {
     val future = data.period.isFuture(Today.current)
     val title = when {
@@ -1485,7 +1595,7 @@ private fun EmptyReportCard(
             tr("本月还没有记录", "No entries this month")
         data.inProgress -> tr("今年还没有记录", "No entries this year")
         data.period.kind == ReportKind.MONTH ->
-            tr("%d 年 %d 月还没有记录", "No entries in %s %d", data.period.year, data.period.month)
+            tr("%d 年 %d 月还没有记录", "No entries in %d/%d", data.period.year, data.period.month)
         else -> tr("%d 年还没有记录", "No entries in %d", data.period.year)
     }
     val description = when {
@@ -1494,14 +1604,24 @@ private fun EmptyReportCard(
             tr("记一笔，或回看上一期。", "Add an entry, or look back at the previous period.")
         else -> tr("这一段还没有记账。", "Nothing was recorded in this period.")
     }
+    val nowLabel = reportNowActionLabel(
+        kind = data.period.kind,
+        year = data.period.year,
+        month = data.period.month,
+        today = Today.current,
+    )?.takeIf { onJumpToNow != null }
     EmptyState(
         title = title,
         description = description,
         icon = MileNoteIcons.FileText,
-        actionLabel = if (canPrev) tr("查看上一期", "View previous") else null,
-        onAction = if (canPrev) onPrev else null,
+        // 回到本月 / 今年优先级最高：翻远之后这是最常用的出口；没翻远时保持原来的「查看上一期」。
+        actionLabel = nowLabel ?: if (canPrev) tr("查看上一期", "View previous") else null,
+        onAction = if (nowLabel != null) onJumpToNow else if (canPrev) onPrev else null,
         secondaryLabel = tr("记一笔", "Add entry"),
         onSecondaryAction = onAdd,
+        // 两个主按钮已经占满一行，2.0× 字号下第三个按钮会挤爆；「查看上一期」降为下方小字入口。
+        linkLabel = if (nowLabel != null && canPrev) tr("查看上一期", "View previous") else null,
+        onLinkAction = if (nowLabel != null && canPrev) onPrev else null,
     )
 }
 

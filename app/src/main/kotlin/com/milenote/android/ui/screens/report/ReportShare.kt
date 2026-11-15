@@ -7,15 +7,20 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,6 +56,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -102,6 +108,7 @@ private val ShareAccent = Color(0xFF9CC7E4)
  * PNG 写到 `cacheDir/exports/`，`file_paths.xml` 已配该目录，FileProvider 直接分享 / SAF 保存。
  * 录制失败时提示并退回文本分享。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ReportShareOverlay(
     data: ReportData,
@@ -109,6 +116,9 @@ internal fun ReportShareOverlay(
     onDismiss: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // T008：预览高度随屏幕高度收缩（320×480dp 上 240dp 预览会把底部顶出屏幕）。
+    val previewMaxHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.38f)
+        .coerceIn(140.dp, 240.dp)
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -198,6 +208,8 @@ internal fun ReportShareOverlay(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // T008：320×480dp 这类小屏上，标题 + 按钮 + 预览会超过一屏，允许上下滚动。
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     // 吞掉卡片区域的点击，避免点在卡上把遮罩关掉。
                     .clickable(onClick = {}),
@@ -220,10 +232,12 @@ internal fun ReportShareOverlay(
                         )
                     }
                 }
-                Row(
+                // T008：320dp 宽时三个文字按钮挤在一行会把文案裁成一条；改成能换行的 FlowRow。
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(
                         onClick = {
@@ -271,7 +285,6 @@ internal fun ReportShareOverlay(
                             }
                         },
                         enabled = !busy,
-                        modifier = Modifier.weight(1f),
                     ) { Text(tr("分享图片", "Share image")) }
                     TextButton(onClick = { shareText() }, enabled = !busy) {
                         Text(tr("分享文本", "Share text"))
@@ -298,7 +311,8 @@ internal fun ReportShareOverlay(
                             .align(Alignment.CenterHorizontally)
                             .widthIn(max = 300.dp)
                             .fillMaxWidth(0.86f)
-                            .aspectRatio(3f / 4f)
+                            // T008：小屏上 3:4 预览会把整张分享卡顶出屏幕，限制最大高度（ContentScale.Fit 保持比例）。
+                            .heightIn(max = previewMaxHeight)
                             .clip(RoundedCornerShape(18.dp))
                             .border(
                                 width = 1.dp,
@@ -313,6 +327,7 @@ internal fun ReportShareOverlay(
                             .align(Alignment.CenterHorizontally)
                             .widthIn(max = 300.dp)
                             .fillMaxWidth(0.86f)
+                            .heightIn(max = previewMaxHeight)
                             .aspectRatio(3f / 4f)
                             .clip(RoundedCornerShape(18.dp))
                             .background(MaterialTheme.colorScheme.surfaceContainer),
