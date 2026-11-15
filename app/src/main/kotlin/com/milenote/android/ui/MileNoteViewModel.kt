@@ -1538,7 +1538,7 @@ class MileNoteViewModel(
                 // 与自动同步共用一把锁：避免两路并发 PUT 与 markSynced 乱序。
                 webDavRepository.syncMutex.withLock {
                     val localJson = repository.exportBackup()
-                    val localHash = webDavRepository.plainHash(localJson)
+                    val localHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(localJson) }
                     val meta = webDavRepository.uploadLedger(localJson, force = true)
                     val encrypted = webDavRepository.hasEncryptionPassword()
                     webDavRepository.markSynced(meta.etag, localHash, localHash)
@@ -1593,8 +1593,8 @@ class MileNoteViewModel(
                             val text = fetched.ledger.text
                             applyRemoteBackup(text, mode)
                             val localJson = repository.exportBackup()
-                            val localHash = webDavRepository.plainHash(localJson)
-                            val remoteHash = webDavRepository.plainHash(text)
+                            val localHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(localJson) }
+                            val remoteHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(text) }
                             webDavRepository.markSynced(fetched.meta.etag, localHash, remoteHash)
                             webDavRepository.saveBaseline(localJson)
                             updateWebDav {
@@ -1645,21 +1645,33 @@ class MileNoteViewModel(
                                 }
                                 is WebDavFetchResult.Found -> {
                                     val text = fetched.ledger.text
-                                    val current = _state.value.garage ?: repository.load()
+                                    val current = repository.garage.value ?: repository.load()
                                     // 记录级三向合并（有基线时按每条记录的 updatedAt 裁决）；无基线时降级为
                                     // 「本机优先 + 只增」，与自动同步同一套逻辑，避免手动合并丢修改。
-                                    val base = runCatching {
-                                        webDavRepository.readBaseline()?.let { BackupCodec.decode(it) }
-                                    }.getOrNull()
-                                    val outcome = SyncMerge.mergeGarage(
-                                        base = base,
-                                        local = current,
-                                        remote = BackupCodec.decode(text),
-                                        now = System.currentTimeMillis(),
-                                    )
-                                    val applied = repository.replace(outcome.garage)
-                                    val mergedJson = BackupCodec.encode(applied)
-                                    val mergedHash = webDavRepository.plainHash(mergedJson)
+                                    val base = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            webDavRepository.readBaseline()?.let { BackupCodec.decode(it) }
+                                        }.getOrNull()
+                                    }
+                                    val remote = withContext(Dispatchers.IO) { BackupCodec.decode(text) }
+                                    val outcome = withContext(Dispatchers.IO) {
+                                        SyncMerge.mergeGarage(
+                                            base = base,
+                                            local = current,
+                                            remote = remote,
+                                            now = System.currentTimeMillis(),
+                                        )
+                                    }
+                                    // 与自动同步一致：只有本地仍是同步开始时的快照才写回；期间用户又记了一笔就放弃。
+                                    val applied = repository.replaceIfUnchanged(current, outcome.garage)
+                                        ?: throw IllegalStateException(
+                                            tr(
+                                                "同步期间本地又有新修改，已放弃本次合并，请重试",
+                                                "Local changes arrived during sync — this merge was skipped, try again",
+                                            ),
+                                        )
+                                    val mergedJson = withContext(Dispatchers.IO) { BackupCodec.encode(applied) }
+                                    val mergedHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(mergedJson) }
                                     val meta = webDavRepository.uploadLedger(mergedJson, force = true)
                                     webDavRepository.markSynced(meta.etag, mergedHash, mergedHash)
                                     webDavRepository.saveBaseline(mergedJson)
@@ -1847,13 +1859,20 @@ class MileNoteViewModel(
         }
     }
 
-    private suspend fun applyRemoteBackup(text: String, mode: WebDavDownloadMode) {
-        val current = _state.value.garage ?: repository.load()
+    private suspend fun applyRemoteBackup(text: String, mode: WebDavDownloadMode) = withContext(Dispatchers.IO) {
+        val current = repository.garage.value ?: repository.load()
         val next = when (mode) {
             WebDavDownloadMode.MERGE -> BackupCodec.restore(current, text)
             WebDavDownloadMode.REPLACE -> BackupCodec.decode(text)
         }
-        repository.replace(next)
+        // 同步期间用户可能又记了一笔：只有本地仍是同步开始时的快照才覆盖（B8）。
+        repository.replaceIfUnchanged(current, next)
+            ?: throw IllegalStateException(
+                tr(
+                    "同步期间本地又有新修改，已放弃本次覆盖，请重试",
+                    "Local changes arrived during sync — this overwrite was skipped, try again",
+                ),
+            )
     }
 
     private fun updateWebDav(transform: (WebDavUiState) -> WebDavUiState) {

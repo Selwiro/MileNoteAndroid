@@ -159,15 +159,15 @@ class WebDavRepository(
      *
      * @return 远端有文件时 [WebDavFetchResult.Found]；404 时 [WebDavFetchResult.NotFound]。
      */
-    suspend fun fetchLedger(): WebDavFetchResult {
+    suspend fun fetchLedger(): WebDavFetchResult = withContext(Dispatchers.IO) {
         val content = client.get(requireCredentials()) ?: run {
             encryptedRemoteCache = null
-            return WebDavFetchResult.NotFound
+            return@withContext WebDavFetchResult.NotFound
         }
         val text = content.bytes.toString(Charsets.UTF_8)
         if (!LedgerCrypto.isEncrypted(text)) {
             encryptedRemoteCache = null
-            return WebDavFetchResult.Found(
+            return@withContext WebDavFetchResult.Found(
                 bytes = content.bytes,
                 meta = content.meta,
                 ledger = RemoteLedger.Plain(text),
@@ -175,7 +175,7 @@ class WebDavRepository(
         }
         encryptedRemoteCache = content.bytes
         val password = configStore.readEncryptionPassword()
-            ?: return WebDavFetchResult.PasswordRequired
+            ?: return@withContext WebDavFetchResult.PasswordRequired
         val plain = try {
             LedgerCrypto.decryptIfEncrypted(text, password)
         } catch (e: BackupException) {
@@ -185,7 +185,7 @@ class WebDavRepository(
             )
         }
         encryptedRemoteCache = null
-        return WebDavFetchResult.Found(
+        return@withContext WebDavFetchResult.Found(
             bytes = content.bytes,
             meta = content.meta,
             ledger = RemoteLedger.Decrypted(plain),
@@ -217,7 +217,7 @@ class WebDavRepository(
         plainJson: String,
         force: Boolean = false,
         expectedEtag: String? = null,
-    ): WebDavRemoteMeta {
+    ): WebDavRemoteMeta = withContext(Dispatchers.IO) {
         val credentials = requireCredentials()
         val cfg = configStore.config.first()
             ?: throw WebDavException(tr("请先配置 WebDAV 服务器", "Configure the WebDAV server first"))
@@ -239,7 +239,7 @@ class WebDavRepository(
             plainJson.toByteArray(Charsets.UTF_8)
         }
         val condition = webDavUploadCondition(force, expectedEtag)
-        return client.put(
+        return@withContext client.put(
             credentials = credentials,
             bytes = bytes,
             ifMatchEtag = condition.ifMatchEtag,

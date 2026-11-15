@@ -8,7 +8,10 @@ import com.milenote.android.domain.backup.SyncPlan
 import com.milenote.android.domain.model.Garage
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.webdav.WebDavPreconditionFailedException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /** 自动同步结果。 */
 data class AutoSyncOutcome(
@@ -53,6 +56,8 @@ class WebDavAutoSyncEngine(
     private val garage: GarageRepository,
     private val webDav: WebDavRepository,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** 同步的编码 / 哈希 / 加解密都放这里，避免阻塞界面线程（B6）。 */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /** 连续失败次数与下次允许重试的时间（进程内退避，避免每次编辑都重试失败的网络请求）。 */
     private var consecutiveFailures = 0
@@ -75,9 +80,11 @@ class WebDavAutoSyncEngine(
      * @param ignoreBackoff 手动同步传 true：无视上次失败的退避，立即尝试。
      */
     suspend fun sync(recordAutoResult: Boolean = true, ignoreBackoff: Boolean = false): AutoSyncOutcome =
-        webDav.syncMutex.withLock {
-            skipReason(ignoreBackoff)?.let { return@withLock it }
-            runWithRetries(recordAutoResult)
+        withContext(io) {
+            webDav.syncMutex.withLock {
+                skipReason(ignoreBackoff)?.let { return@withLock it }
+                runWithRetries(recordAutoResult)
+            }
         }
 
     /** 带 412 重试的同步循环：每次重试都是一次全新的 fetch + 判定 + 合并。 */
