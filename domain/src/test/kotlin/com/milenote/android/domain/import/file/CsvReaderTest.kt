@@ -111,6 +111,25 @@ class CsvReaderTest {
     }
 
     @Test
+    fun `treats a stray quote in the middle of a field as a literal`() {
+        val text = "名称,金额\n12\"屏支架,30\n停车,10"
+        val rows = reader.readRows(text.toByteArray(Charsets.UTF_8))
+
+        assertEquals(3, rows.size)
+        assertEquals(listOf("12\"屏支架", "30"), rows[1])
+        assertEquals(listOf("停车", "10"), rows[2])
+    }
+
+    @Test
+    fun `rejects a quote that is never closed`() {
+        val text = "名称,金额\n\"未闭合,30\n停车,10"
+        val exception = assertThrows(SpreadsheetReadException::class.java) {
+            reader.readRows(text.toByteArray(Charsets.UTF_8))
+        }
+        assertTrue(exception.message!!.contains("引号"))
+    }
+
+    @Test
     fun `rejects blank content`() {
         val exception = assertThrows(SpreadsheetReadException::class.java) {
             reader.read("   \n\n".toByteArray(Charsets.UTF_8), "空.csv")

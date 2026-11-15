@@ -84,7 +84,7 @@ internal fun applyRowEdit(
     val error = if (item.error in NON_EDITABLE_IMPORT_ERRORS) {
         item.error
     } else {
-        validateRecord(record, customCategories)
+        validateRecord(record, customCategories, requireServiceOdometer = true)
     }
     return item.copy(record = record, error = error)
 }

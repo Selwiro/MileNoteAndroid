@@ -60,6 +60,27 @@ class ValidateTest {
     }
 
     @Test
+    fun `service records require an odometer only when the caller asks`() {
+        val service = Record(
+            id = "s1",
+            date = "2026-11-01",
+            category = "保养",
+            amount = 300.0,
+            odometer = null,
+            projects = "机油机滤",
+        )
+        // 备份校验保持默认：老备份里没里程的保养记录不能整份拒绝。
+        assertEquals("", validateRecord(service))
+        assertTrue(validateRecord(service, requireServiceOdometer = true).isNotEmpty())
+        assertEquals("", validateRecord(service.copy(odometer = 42_000.0), requireServiceOdometer = true))
+        // 非服务类不受影响。
+        assertEquals(
+            "",
+            validateRecord(service.copy(category = "停车费", amount = 10.0), requireServiceOdometer = true),
+        )
+    }
+
+    @Test
     fun `ev amount must still be positive unless service or manual`() {
         assertTrue(validateRecord(evRecord(amount = 0.0)).isNotEmpty())
         assertEquals("", validateRecord(evRecord(amount = 0.0, kind = "manual", rate = 6.0, distance = 100.0)))

@@ -1,11 +1,15 @@
 package com.milenote.android.domain.import.file
 
+import com.milenote.android.domain.i18n.tr
+
 /**
  * .csv / .tsv / .txt 文本表格读取器。
  *
  * 规则与 Web 端 `parseDelimited` 保持一致：
  * - 自动探测分隔符：首行含 tab 用 tab；否则比较 `;` 与 `,`，分号更多时用分号；
  * - 双引号包裹字段，字段内 `""` 表示一个引号，引号内允许分隔符和换行；
+ * - 只有**字段开头**的引号才开启引用；字段中间的引号按普通字符处理；
+ * - 引号一直没闭合时抛 [SpreadsheetReadException]（带行号），不把后面所有行吞成一行；
  * - 兼容 CRLF / LF / CR 换行与 UTF-8 BOM；
  * - 完全空白的行会被忽略。
  *
@@ -54,22 +58,37 @@ class CsvReader {
         var row = mutableListOf<String>()
         val cell = StringBuilder()
         var quoted = false
+        // 只有「字段开头」的引号才开启引用；字段中间的引号按普通字符处理，
+        // 避免备注里的 12"屏 把后面所有行吞成一行（审计 B13）。
+        var atFieldStart = true
         var index = 0
         while (index < text.length) {
             val char = text[index]
             when {
-                char == '"' -> {
-                    if (quoted && index + 1 < text.length && text[index + 1] == '"') {
+                char == '"' && quoted -> {
+                    if (index + 1 < text.length && text[index + 1] == '"') {
                         cell.append('"')
                         index++
                     } else {
-                        quoted = !quoted
+                        quoted = false
                     }
+                    atFieldStart = false
+                }
+
+                char == '"' && atFieldStart -> {
+                    quoted = true
+                    atFieldStart = false
+                }
+
+                char == '"' -> {
+                    cell.append('"')
+                    atFieldStart = false
                 }
 
                 char == delimiter && !quoted -> {
                     row.add(cell.toString())
                     cell.clear()
+                    atFieldStart = true
                 }
 
                 (char == '\n' || char == '\r') && !quoted -> {
@@ -80,11 +99,24 @@ class CsvReader {
                     cell.clear()
                     if (row.any { it.isNotBlank() }) rows.add(row)
                     row = mutableListOf()
+                    atFieldStart = true
                 }
 
-                else -> cell.append(char)
+                else -> {
+                    cell.append(char)
+                    atFieldStart = false
+                }
             }
             index++
+        }
+        if (quoted) {
+            throw SpreadsheetReadException(
+                tr(
+                    "第 %d 行附近有引号没有闭合，请检查该行",
+                    "A quote near row %d is not closed — check that row",
+                    rows.size + 1,
+                ),
+            )
         }
         row.add(cell.toString())
         if (row.any { it.isNotBlank() }) rows.add(row)

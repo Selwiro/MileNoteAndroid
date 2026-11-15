@@ -5,6 +5,7 @@ import com.milenote.android.domain.evLedger
 import com.milenote.android.domain.import.inferServiceNote
 import com.milenote.android.domain.model.PlanEntry
 import com.milenote.android.domain.model.Record
+import com.milenote.android.domain.model.Reminder
 import com.milenote.android.domain.model.blankLedger
 import com.milenote.android.domain.testLedger
 import org.junit.Assert.assertEquals
@@ -97,6 +98,34 @@ class ServiceHistoryTest {
         next = syncServiceHistory(next.copy(records = emptyList()))
         assertEquals(0, next.reminders.size)
         assertEquals(0, syncServiceHistory(blankLedger()).reminders.size)
+    }
+
+    @Test
+    fun `legacy service record without odometer keeps the existing due km`() {
+        val reminder = Reminder(
+            id = "legacy",
+            title = "机油机滤",
+            projects = listOf("机油机滤"),
+            intervalKm = 10_000.0,
+            dueKm = 50_000.0,
+            dueDate = "",
+        )
+        val ledger = testLedger(
+            records = listOf(
+                Record(
+                    id = "s1",
+                    date = "2026-05-01",
+                    category = "保养",
+                    amount = 300.0,
+                    odometer = null,
+                    projects = "机油机滤",
+                ),
+            ),
+        ).copy(reminders = listOf(reminder))
+
+        val next = syncServiceHistory(ledger)
+
+        assertEquals(50_000.0, next.reminders.first { it.id == "legacy" }.dueKm!!, 1e-9)
     }
 
     @Test

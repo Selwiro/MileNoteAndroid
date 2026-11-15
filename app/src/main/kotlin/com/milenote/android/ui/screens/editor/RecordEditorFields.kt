@@ -261,7 +261,11 @@ internal fun OdometerField(
     FormField(
         value = form.odometer,
         onValueChange = { form.odometer = it },
-        label = tr("总里程（选填）", "Odometer (optional)"),
+        label = if (form.requiresOdometer) {
+            tr("总里程（必填）", "Odometer (required)")
+        } else {
+            tr("总里程（选填）", "Odometer (optional)")
+        },
         suffix = Units.distanceUnit,
         keyboardType = KeyboardType.Decimal,
         leadingIcon = MileNoteIcons.Road,

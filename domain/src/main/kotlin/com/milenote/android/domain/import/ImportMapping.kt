@@ -164,7 +164,7 @@ fun importRows(
     val error = if (TYPE_SKIP.containsMatchIn(type)) {
         "非支出记录，已跳过"
     } else {
-        validateRecord(record, customCategories)
+        validateRecord(record, customCategories, requireServiceOdometer = true)
     }
     ImportItem(row = i + 2, record = record, error = error, rawCategory = rawCategory)
 }
@@ -286,7 +286,7 @@ fun normalizeImport(
         val error = when {
             TYPE_SKIP.containsMatchIn(type) -> "非支出记录，已跳过"
             currency !in setOf("CNY", "人民币", "RMB", "") -> "非人民币记录，请先换算"
-            else -> validateRecord(record, customCategories)
+            else -> validateRecord(record, customCategories, requireServiceOdometer = true)
         }
         item.copy(record = record, error = error)
     }

@@ -42,6 +42,18 @@ class RecordEditorStateTest {
     )
 
     @Test
+    fun `service record requires an odometer`() {
+        val form = RecordEditorState(ledger(), EditorTarget(category = "保养"))
+        form.amount = "300"
+        form.projects = listOf("机油机滤")
+
+        assertTrue(form.validate()!!.contains("总里程"))
+
+        form.odometer = "42000"
+        assertNull(form.validate())
+    }
+
+    @Test
     fun `ev editor title and category switch to charging`() {
         val form = RecordEditorState(ledger(ev = true), EditorTarget())
         assertTrue(form.isEv)

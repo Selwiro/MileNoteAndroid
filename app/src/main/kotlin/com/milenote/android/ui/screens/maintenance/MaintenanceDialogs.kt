@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.maintenance
 
+import com.milenote.android.ui.Today
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -230,10 +231,10 @@ internal fun CompleteServiceDialog(
                         dateValue == null || dateValue.isEmpty() -> tr("日期无效", "Invalid date")
                         odometer.isNotBlank() && (odometerValue == null || odometerValue < 0) ->
                             tr("里程必须是有效非负数", "Mileage must be a valid non-negative number")
-                        reminder.intervalKm != null && odometerValue == null ->
+                        odometerValue == null ->
                             tr(
-                                "该提醒按里程循环，请填写总里程",
-                                "This reminder repeats by mileage — enter the odometer",
+                                "完成保养请填写总里程",
+                                "Enter the odometer to complete this service",
                             )
                         projects.isEmpty() -> tr("请填写维修保养项目", "Enter at least one service item")
                         amountValue == null || amountValue < 0 ->
@@ -432,7 +433,7 @@ internal fun DefaultServicePlanDialog(
 ) {
     var baseDate by remember(ledger.id) {
         mutableStateOf(
-            ledger.vehicle.companionDate?.takeIf { Dates.isValid(it) } ?: Dates.iso(Dates.today()),
+            ledger.vehicle.companionDate?.takeIf { Dates.isValid(it) } ?: Dates.iso(Today.current),
         )
     }
     var baseKm by remember(ledger.id) { mutableStateOf(formatDecimalInput(ledger.vehicle.startKm ?: 0.0)) }
@@ -665,7 +666,7 @@ internal fun ServicePlanEditorDialog(
         mutableStateOf(
             ledger.servicePlanBase?.date?.takeIf { Dates.isValid(it) }
                 ?: ledger.vehicle.companionDate?.takeIf { Dates.isValid(it) }
-                ?: Dates.iso(Dates.today()),
+                ?: Dates.iso(Today.current),
         )
     }
     var baseKm by remember(ledger.id) {

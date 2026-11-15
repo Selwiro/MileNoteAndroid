@@ -79,7 +79,13 @@ fun syncServiceHistory(ledger: Ledger): Ledger {
                 baseDate = latest.date,
                 baseKm = latestOdometer,
                 dueDate = if (intervalMonths > 0) Dates.addMonths(latest.date, intervalMonths) else "",
-                dueKm = if (intervalKm > 0 && latestOdometer != null) latestOdometer + intervalKm else null,
+                // 新保养记录已要求填总里程（B12）；老备份 / 老记录没有里程时保留原来的下次里程，
+                // 不要把 dueKm 清空导致提醒永久静默（等用户编辑那条记录补上里程即可重算）。
+                dueKm = when {
+                    intervalKm <= 0 -> null
+                    latestOdometer != null -> latestOdometer + intervalKm
+                    else -> current.dueKm
+                },
                 historyRecordId = latest.id,
             )
             val index = reminders.indexOfFirst { it.id == current.id }

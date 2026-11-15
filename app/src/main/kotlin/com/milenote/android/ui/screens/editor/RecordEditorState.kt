@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.editor
 
+import com.milenote.android.ui.Today
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,6 +10,7 @@ import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.fillEnergyAmounts
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.Numbers
+import com.milenote.android.domain.calc.ODOMETER_REQUIRED_CATEGORIES
 import com.milenote.android.domain.calc.SERVICE_CATEGORIES
 import com.milenote.android.domain.calc.serviceProjectOptions
 import com.milenote.android.domain.calc.splitProjects
@@ -101,7 +103,7 @@ internal class RecordEditorState(
         original?.amount?.takeIf { it > 0.0 }?.let { Numbers.jsString(it) } ?: "",
     )
     var date by mutableStateOf(
-        original?.date?.takeIf { Dates.isValid(it) } ?: Dates.iso(Dates.today()),
+        original?.date?.takeIf { Dates.isValid(it) } ?: Dates.iso(Today.current),
     )
     var category by mutableStateOf(original?.category ?: target.category)
     var odometer by mutableStateOf(numberText(original?.odometer))
@@ -211,6 +213,10 @@ internal class RecordEditorState(
     /** 当前是否为服务类（保养 / 维修 / 汽车美容 / 旧维修保养）。 */
     val isService: Boolean
         get() = Categories.normalize(category) in SERVICE_CATEGORIES
+
+    /** 是否必须填写总里程（保养 / 维修 / 旧维修保养；汽车美容不强制）。 */
+    val requiresOdometer: Boolean
+        get() = Categories.normalize(effectiveCategory) in ODOMETER_REQUIRED_CATEGORIES
 
     /**
      * 当前是否为保险：保险也支持「项目」多选（交强险/车损险/三者险 + 自定义），
@@ -455,7 +461,7 @@ internal class RecordEditorState(
                 Units.distanceUnit,
             )
         }
-        return validateRecord(buildRecord(), customCategories).ifBlank { null }
+        return validateRecord(buildRecord(), customCategories, requireServiceOdometer = true).ifBlank { null }
     }
 
     /** 点「保存」时调用：打开错误提示并尝试构造记录；失败返回 null。 */
