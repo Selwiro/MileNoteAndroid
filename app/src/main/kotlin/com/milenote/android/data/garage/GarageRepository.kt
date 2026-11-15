@@ -293,12 +293,19 @@ class GarageRepository(
     /**
      * 为导入这类「批量改账本」操作留一份本机快照，供结果页撤销。
      *
-     * 与 [deleteData] / [replace] 的快照共用同一个目录与保留份数；只复制当前文件，不写账本。
-     * @return 是否留下了快照（首次启动还没有账本文件时为 false）。
+     * 与 [deleteData] / [replace] 的快照共用同一个目录与保留份数。
+     * 空账本首次导入时还没有 `garage.json`，先把当前（空）账本落盘，快照才有东西可复制——
+     * 否则「装好 App 第一次导入」这种最常见的情况反而没有撤销入口（B23）。
+     * @return 是否留下了快照。
      */
     suspend fun snapshotForUndo(): Boolean = mutex.withLock {
         if (_demoMode.value || writeBlocked) return@withLock false
-        withContext(io) { runCatching { store.snapshot() != null }.getOrDefault(false) }
+        withContext(io) {
+            runCatching {
+                if (!store.exists()) store.write(BackupCodec.encode(_garage.value ?: loadLocked()))
+                store.snapshot() != null
+            }.getOrDefault(false)
+        }
     }
 
     /** 最近一次破坏性操作（整体覆盖 / 删除）前的本地快照（设置页据此显示「回滚」入口）。 */

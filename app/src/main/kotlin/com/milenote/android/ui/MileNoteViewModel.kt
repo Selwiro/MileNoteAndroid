@@ -537,7 +537,7 @@ class MileNoteViewModel(
                     },
                     confirmLabel = tr("删除", "Delete"),
                     destructive = true,
-                ) { performDelete(existing, restoreReminders = true) },
+                ) { performDelete(existing, restoreReminders = true, onDeleted = onDeleted) },
             )
         }
     }

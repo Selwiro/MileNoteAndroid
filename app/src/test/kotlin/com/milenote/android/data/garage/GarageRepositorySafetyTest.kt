@@ -233,6 +233,19 @@ class GarageRepositorySafetyTest {
     }
 
     @Test
+    fun `snapshot for undo works on a fresh install with no ledger file`() = runBlocking {
+        val store = FakeStore(null).apply { snapshotOnWrite = true }
+        val repo = GarageRepository(store)
+        repo.load()
+
+        // 空账本首次导入：没有 garage.json，也要能留快照，否则结果页没有「撤销本次导入」。
+        assertTrue(repo.snapshotForUndo())
+        assertNotNull(store.latestSnapshot())
+        assertEquals("应先落一份空账本，快照才有东西可复制", 1, store.writes.size)
+        assertNotNull(BackupCodec.decode(store.writes.single()))
+    }
+
+    @Test
     fun `replace snapshots the current ledger before overwriting`() = runBlocking {
         val store = FakeStore(emptyLedgerJson).apply { snapshotOnWrite = true }
         val repo = GarageRepository(store)
