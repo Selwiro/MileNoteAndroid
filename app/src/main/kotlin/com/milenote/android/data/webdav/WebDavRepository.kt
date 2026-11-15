@@ -9,6 +9,7 @@ import com.milenote.android.platform.webdav.WebDavClient
 import com.milenote.android.platform.webdav.WebDavCredentials
 import com.milenote.android.platform.webdav.WebDavException
 import com.milenote.android.platform.webdav.WebDavUrl
+import com.milenote.android.platform.webdav.webDavUploadCondition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -197,13 +198,14 @@ class WebDavRepository(
     /**
      * 上传本地账本（[plainJson] 是 [com.milenote.android.domain.backup.BackupCodec.encode] 的明文 JSON）。
      *
-     * 条件请求策略：
-     * - `force = false`（默认）：`expectedEtag`（本次刚 fetch 到的 ETag）优先，其次 `syncState.lastEtag`
-     *   → `If-Match`；两者都没有 → `If-None-Match: *`（只允许新建，避免覆盖其他设备已存在的文件）；
+     * 条件请求策略（见 [webDavUploadCondition]）：
+     * - `force = false`（默认）：只有本次刚 fetch 到的 `expectedEtag` 才发 `If-Match`；
+     *   没有 ETag 时发 `If-None-Match: *`（只允许新建），**不再回退到上次同步的 `lastEtag`**——
+     *   远端文件被删后，旧 ETag 会让每次上传都 412（T019 后的回归）；
      * - `force = true`：不带条件，直接覆盖远端（用户确认「用本地覆盖远端」、或服务器不返回 ETag 时使用）。
      *
      * **412 重试**：自动同步遇到 412 会重新 fetch 并把新 ETag 通过 [expectedEtag] 传进来重试，
-     * 避免一直拿过期 `lastEtag` 死锁（T019）。
+     * 最多 3 次尝试；因为条件只认本次 fetch 到的 ETag，不会用旧值反复撞 412。
      *
      * 已保存加密密码时上传加密信封，否则上传明文。上传的是**明文 JSON**，加密/明文由配置决定，
      * 调用方不再自己处理字节。
@@ -236,16 +238,12 @@ class WebDavRepository(
         } else {
             plainJson.toByteArray(Charsets.UTF_8)
         }
-        val ifMatchEtag = when {
-            force -> null
-            !expectedEtag.isNullOrEmpty() -> expectedEtag
-            else -> syncState.value.lastEtag
-        }
+        val condition = webDavUploadCondition(force, expectedEtag)
         return client.put(
             credentials = credentials,
             bytes = bytes,
-            ifMatchEtag = ifMatchEtag,
-            ifNoneMatchAny = !force && ifMatchEtag == null,
+            ifMatchEtag = condition.ifMatchEtag,
+            ifNoneMatchAny = condition.ifNoneMatchAny,
         )
     }
 
