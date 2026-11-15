@@ -482,19 +482,6 @@ class ReportTest {
         val data = report(ledger, month(2026, 10), today)
         assertEquals(900.0, data.highlights.topExpense!!.amount, 1e-9)
         assertEquals(8.0, data.highlights.priciestEnergy!!.unitPrice!!, 1e-9)
-        assertEquals("A 站", data.highlights.topStation!!.station)
-        assertEquals(2, data.highlights.topStation!!.count)
-    }
-
-    @Test
-    fun `top station hidden when every place visited once`() {
-        val ledger = ledgerWith(
-            listOf(
-                fuelRecord("2026-10-02", 1000.0, 40.0).copy(location = "A 站"),
-                fuelRecord("2026-10-09", 1200.0, 40.0).copy(location = "B 站"),
-            ),
-        )
-        assertNull(report(ledger, month(2026, 10), today).highlights.topStation)
     }
 
     // ---------------------------------------------------------------- 年报
@@ -603,7 +590,6 @@ class ReportTest {
         val data = report(ledger, all, today)
         assertEquals(1200.0, data.highlights.topExpense!!.amount, 1e-9)
         assertEquals(8.0, data.highlights.priciestEnergy!!.unitPrice!!, 1e-9)
-        assertEquals(2, data.highlights.topStation!!.count)
     }
 
     // ---------------------------------------------------------------- 其它

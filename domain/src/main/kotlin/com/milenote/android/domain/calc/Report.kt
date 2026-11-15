@@ -121,9 +121,6 @@ data class MonthlyTotal(val year: Int, val month: Int, val total: Double)
 /** 趋势图的一个年度点（累计视角）。 */
 data class YearlyTotal(val year: Int, val total: Double)
 
-/** 常去的站点：地点 + 次数 + 该站点累计花费。 */
-data class StationCount(val station: String, val count: Int, val cost: Double)
-
 /**
  * 一条能量流的报告数字（燃油 / 电荷各自一份）。
  *
@@ -147,7 +144,7 @@ data class ReportEnergyLine(
 data class ReportHighlights(
     val topExpense: Record? = null,
     val priciestEnergy: Record? = null,
-    val topStation: StationCount? = null,
+
 )
 
 /**
@@ -548,7 +545,7 @@ private fun buildTrends(
     }
 }
 
-/** 三条「之最」：最大一笔、最贵一次能源、最常去的站点（≥2 次才算）。 */
+/** 两条「之最」：最大一笔、最贵一次能源（2026-11-15 用户要求报告不展示「最常去的站」）。 */
 private fun highlightsOf(ledger: Ledger, records: List<Record>): ReportHighlights {
     val topExpense = records
         .filter { costOf(it, ledger) > 0.0 }
@@ -570,19 +567,5 @@ private fun highlightsOf(ledger: Ledger, records: List<Record>): ReportHighlight
         .firstOrNull()
         ?.first
 
-    val topStation = energyRecords
-        .filter { !it.location.isNullOrBlank() }
-        .groupBy { it.location!!.trim() }
-        .map { (station, rows) ->
-            StationCount(station, rows.size, rows.sumOf { costOf(it, ledger) })
-        }
-        .filter { it.count >= 2 }
-        .sortedWith(
-            compareByDescending<StationCount> { it.count }
-                .thenByDescending { it.cost }
-                .thenBy { it.station },
-        )
-        .firstOrNull()
-
-    return ReportHighlights(topExpense = topExpense, priciestEnergy = priciestEnergy, topStation = topStation)
+    return ReportHighlights(topExpense = topExpense, priciestEnergy = priciestEnergy)
 }

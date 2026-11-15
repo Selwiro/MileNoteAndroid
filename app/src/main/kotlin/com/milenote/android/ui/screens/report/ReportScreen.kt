@@ -315,7 +315,7 @@ private fun ReportContent(
                         },
                     )
                 }
-                if (data.highlights.let { it.topExpense != null || it.priciestEnergy != null || it.topStation != null }) {
+                if (data.highlights.let { it.topExpense != null || it.priciestEnergy != null }) {
                     item(key = "highlights") {
                         HighlightsCard(ledger = ledger, data = data, today = today)
                     }
@@ -1338,7 +1338,6 @@ private fun HighlightsCard(ledger: Ledger, data: ReportData, today: LocalDate) {
         val tileCount = listOfNotNull(
             data.highlights.topExpense,
             data.highlights.priciestEnergy,
-            data.highlights.topStation,
         ).size
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1373,16 +1372,7 @@ private fun HighlightsCard(ledger: Ledger, data: ReportData, today: LocalDate) {
                     ).joinToString(" · "),
                 )
             }
-            data.highlights.topStation?.let { station ->
-                HighlightTile(
-                    modifier = Modifier.weight(1f),
-                    icon = MileNoteIcons.Location,
-                    label = tr("最常去", "Most visited"),
-                    value = station.station,
-                    sub = tr("%d 次", "%d visits", station.count),
-                )
-            }
-            repeat((3 - tileCount).coerceAtLeast(0)) {
+            repeat((2 - tileCount).coerceAtLeast(0)) {
                 Spacer(modifier = Modifier.weight(1f))
             }
         }

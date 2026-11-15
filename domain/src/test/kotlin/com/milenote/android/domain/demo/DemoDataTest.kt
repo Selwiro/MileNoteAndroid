@@ -276,15 +276,14 @@ class DemoDataTest {
 
     @Test
     fun `demo energy records carry stations and mixed samples`() {
-        // 报告页「最常去」与编辑页「加油站 / 充电站」都要有数据；三台车至少三种站点。
+        // 编辑页「加油站 / 充电站」要有数据；三台车至少三种站点（报告页已不展示「最常去」）。
         for (car in DemoData.createDemoGarage(d("2026-11-14")).cars) {
             val energy = car.records.filter { Categories.isEnergy(it.category) }
             assertTrue("${car.id} 能源记录缺地点", energy.all { !it.location.isNullOrBlank() })
             assertTrue("${car.id} 能源站点少于 2 个", energy.mapNotNull { it.location }.toSet().size >= 2)
             assertTrue("${car.id} 没有单价", energy.all { it.unitPrice != null && it.unitPrice!! > 0 })
         }
-        val top = report(DemoData.createDemoGarage(d("2026-11-14")).cars[0], ReportPeriod(ReportKind.ALL), d("2026-11-14"))
-        assertNotNull("报告页「最常去」为空", top.highlights.topStation)
+
     }
 
     @Test
