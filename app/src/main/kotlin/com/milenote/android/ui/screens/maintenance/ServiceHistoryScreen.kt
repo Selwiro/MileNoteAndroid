@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.maintenance
 
+import com.milenote.android.ui.Today
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,7 +88,7 @@ fun ServiceHistoryScreen(
     }
 
     val ev = ledger.isEv
-    val today = remember { Dates.today() }
+    val today = Today.current
     val km = remember(ledger) { currentKm(ledger) }
     val history = remember(ledger.records) {
         ledger.records

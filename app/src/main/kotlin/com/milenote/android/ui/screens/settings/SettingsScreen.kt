@@ -90,10 +90,7 @@ import com.milenote.android.domain.model.blankVehicle
 import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.AppLanguage
-import com.milenote.android.i18n.CurrencyUnit
-import com.milenote.android.i18n.DistanceUnit
 import com.milenote.android.i18n.Units
-import com.milenote.android.i18n.VolumeUnit
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.FileExporter
@@ -598,12 +595,7 @@ fun SettingsScreen(
 
                     SettingsPage.UNITS -> SettingsPageList {
                         item("units") {
-                            UnitsSection(
-                                settings = settings,
-                                onCurrencyChange = { unit -> vm.setCurrency(unit) },
-                                onDistanceUnitChange = { unit -> vm.setDistanceUnit(unit) },
-                                onVolumeUnitChange = { unit -> vm.setVolumeUnit(unit) },
-                            )
+                            UnitsSection()
                         }
                     }
 
@@ -1036,25 +1028,6 @@ private fun languageOptions(): List<Pair<AppLanguage, String>> = listOf(
     AppLanguage.EN to "English",
 )
 
-/** 货币选择项：跟随语言（默认）/ 元 / 美元。只影响显示符号。 */
-private fun currencyOptions(): List<Pair<CurrencyUnit?, String>> = listOf(
-    null to tr("跟随语言", "Auto"),
-    CurrencyUnit.CNY to tr("元", "CNY"),
-    CurrencyUnit.USD to tr("美元", "USD"),
-)
-
-/** 里程选择项：公里 / 英里。只影响显示标签。 */
-private fun distanceUnitOptions(): List<Pair<DistanceUnit, String>> = listOf(
-    DistanceUnit.KM to tr("公里", "km"),
-    DistanceUnit.MILE to tr("英里", "mi"),
-)
-
-/** 油量选择项：升 / 加仑。只影响显示标签。 */
-private fun volumeUnitOptions(): List<Pair<VolumeUnit, String>> = listOf(
-    VolumeUnit.LITER to tr("升", "L"),
-    VolumeUnit.GALLON to tr("加仑", "gal"),
-)
-
 @Composable
 private fun AppearanceSection(
     settings: AppSettings,
@@ -1087,75 +1060,31 @@ private fun AppearanceSection(
 }
 
 /**
- * 单位页（与「外观」平级）：货币 / 里程 / 油量只影响显示标签，不做数值换算。
+ * 单位页（1.0 锁死版）。
  *
- * 油量单位只服务燃油车；纯电车辆充电量固定为度（kWh），不随该设置变化。
+ * 1.0 之前「单位」只换显示标签、不换算数值：英文界面会把人民币显示成 `$`，切英里会把
+ * 42,000 km 标成 42,000 mi。与其保留一组看起来像错的选项，不如 1.0 固定为原始录入单位，
+ * 等真正做了汇率 / 单位换算再放开（见 decisions 2026-11-15）。
  */
 @Composable
-private fun UnitsSection(
-    settings: AppSettings,
-    onCurrencyChange: (CurrencyUnit?) -> Unit,
-    onDistanceUnitChange: (DistanceUnit) -> Unit,
-    onVolumeUnitChange: (VolumeUnit) -> Unit,
-) {
+private fun UnitsSection() {
     val scheme = MaterialTheme.colorScheme
-    SectionCard {
-        Text(
-            text = tr("单位只改显示标签，不换算数值。", "Units only change display labels; values are not converted."),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.size(12.dp))
-
-        Text(tr("货币", "Currency"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(8.dp))
-        SegmentedChoiceRow(
-            options = currencyOptions(),
-            selected = settings.currency,
-            onSelect = onCurrencyChange,
-        )
-        Spacer(modifier = Modifier.size(6.dp))
-        Text(
-            text = tr("默认跟随语言：中文元 / 英文美元。", "Follows the language by default: CNY for Chinese, USD for English."),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-
-        SectionDivider()
-
-        Text(tr("里程", "Distance"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(8.dp))
-        SegmentedChoiceRow(
-            options = distanceUnitOptions(),
-            selected = settings.distanceUnit,
-            onSelect = onDistanceUnitChange,
-        )
-
-        SectionDivider()
-
-        Text(tr("油量（燃油车）", "Volume (fuel vehicles)"), style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.size(8.dp))
-        SegmentedChoiceRow(
-            options = volumeUnitOptions(),
-            selected = settings.volumeUnit,
-            onSelect = onVolumeUnitChange,
-        )
-        Spacer(modifier = Modifier.size(6.dp))
+    SectionCard(title = tr("显示单位", "Display units")) {
         Text(
             text = tr(
-                "纯电车辆充电量固定显示为度（kWh），不受此项影响。",
-                "For EVs, charging amounts always display in kWh and are not affected by this setting.",
+                "当前版本按原始录入单位显示：元 / 公里 / 升。",
+                "This version always displays the original units: CNY / km / L.",
             ),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleSmall,
         )
-
-        SectionDivider()
-
+        Spacer(modifier = Modifier.size(8.dp))
         Text(
             text = tr(
-                "燃油按里程/油量组合，纯电固定为度/百公里。",
-                "Fuel economy follows the distance/volume combination; EVs always use kWh/100 km.",
+                "不做汇率或单位换算：账本里的金额与里程始终是录入时的数值。自动换算会在后续版本评估，" +
+                    "在此之前不提供切换，避免「$ 显示人民币」这类误解。",
+                "No currency or unit conversion is applied — amounts and distances stay exactly as entered. " +
+                    "Automatic conversion will be evaluated in a later release; until then the switch is hidden " +
+                    "so CNY amounts are never shown as USD or kilometers as miles.",
             ),
             style = MaterialTheme.typography.bodySmall,
             color = scheme.onSurfaceVariant,

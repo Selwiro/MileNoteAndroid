@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.fuel
 
+import com.milenote.android.ui.Today
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,7 +108,7 @@ fun EnergyDetailScreen(
     val profile = ledger.vehicle.energyProfile
     val ev = profile == EnergyProfile.ELECTRIC_ONLY
     val phev = profile == EnergyProfile.DUAL
-    val today = Dates.today()
+    val today = Today.current
 
     // 明细列表使用本页独立的筛选（不影响统计页的概览 / 走势）。
     val allEnergyRecords = remember(ledger.records) {

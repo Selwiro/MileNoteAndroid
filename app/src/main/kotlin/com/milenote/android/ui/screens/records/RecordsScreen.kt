@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.records
 
+import com.milenote.android.ui.Today
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -182,7 +183,7 @@ private fun RecordsContent(
         keyboardController?.hide()
     }
 
-    val today = remember { Dates.today() }
+    val today = Today.current
     val filtered = remember(ledger, filter, today) {
         filterRecords(
             ledger = ledger,

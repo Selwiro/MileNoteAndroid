@@ -1,6 +1,9 @@
 package com.milenote.android.domain.calc
 
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
@@ -77,6 +80,20 @@ object Dates {
     fun addMonths(date: String, count: Int): String {
         val parsed = parse(date) ?: return ""
         return iso(addMonths(parsed, count))
+    }
+
+    /**
+     * 距离「本地下一个零点」还有多少毫秒（至少 1000，避免 0 延迟忙等）。
+     *
+     * 供全局「今天」定时刷新用；用 [ZoneId] 的 `atStartOfDay`，DTS/夏令时也按当地日历计算。
+     */
+    fun millisUntilNextMidnight(
+        nowMillis: Long = System.currentTimeMillis(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): Long {
+        val now = Instant.ofEpochMilli(nowMillis).atZone(zone)
+        val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay(zone)
+        return Duration.between(now, nextMidnight).toMillis().coerceAtLeast(1_000L)
     }
 
     /** 两个日期相差天数（b - a）。 */

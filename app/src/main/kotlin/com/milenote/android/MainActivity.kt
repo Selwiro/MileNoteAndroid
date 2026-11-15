@@ -24,15 +24,20 @@ import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.i18n.AppLanguage
 import com.milenote.android.i18n.CurrencyUnit
+import com.milenote.android.i18n.DistanceUnit
+import com.milenote.android.i18n.VolumeUnit
 import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
+import com.milenote.android.domain.calc.Dates
 import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.AppShortcut
 import com.milenote.android.navigation.MileNoteApp
 import com.milenote.android.ui.MileNoteViewModel
+import com.milenote.android.ui.Today
 import com.milenote.android.ui.theme.AppTheme
 import com.milenote.android.ui.theme.MileNoteTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,10 +81,10 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(english) { I18n.applyEnglish(english) }
 
-            // 单位显示口径：货币默认跟随界面语言（中文元 / 英文美元），里程/油量默认公里/升。
-            val effectiveCurrency = settings.currency ?: if (english) CurrencyUnit.USD else CurrencyUnit.CNY
-            LaunchedEffect(effectiveCurrency, settings.distanceUnit, settings.volumeUnit) {
-                Units.apply(effectiveCurrency, settings.distanceUnit, settings.volumeUnit)
+            // 单位显示口径（B11）：1.0 锁死「元 / 公里 / 升」，不再按界面语言切美元，
+            // 也不再允许英里/加仑（只换标签不换算会让数字看起来是错的）。
+            LaunchedEffect(Unit) {
+                Units.apply(CurrencyUnit.CNY, DistanceUnit.KM, VolumeUnit.LITER)
             }
 
             // 系统分享进来的导入内容：交给 VM，MileNoteApp 会自动跳到导入向导。
@@ -91,11 +96,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // 全局「今天」：回前台先刷新一次，再启动零点定时器（B10）。
             // WebDAV 自动同步仅在前台运行：每次进入前台（冷启动 + 从后台回来）同步一次，退出后不保留后台任务。
-            // 修复前只有 composition 首次创建时跑一次，切回前台不会拉远端更新，失败退避也不清零。
             LaunchedEffect(Unit) {
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    Today.refresh()
                     vm.maybeAutoSyncOnOpen()
+                }
+            }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    Today.refresh()
+                    delay(Dates.millisUntilNextMidnight())
                 }
             }
             val appTheme = remember(garage?.theme) { AppTheme.fromId(garage?.theme) }

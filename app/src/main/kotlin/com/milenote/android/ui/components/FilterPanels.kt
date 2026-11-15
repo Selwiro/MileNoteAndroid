@@ -136,7 +136,7 @@ fun rangeLabel(period: Period, customRange: DateRange?): String =
 fun rangePillLabel(
     period: Period,
     customRange: DateRange?,
-    today: LocalDate = Dates.today(),
+    today: LocalDate = com.milenote.android.ui.Today.current,
 ): String {
     customRangeLabel(customRange)?.let { return it }
     if (!I18n.english) return period.rangeLabel()

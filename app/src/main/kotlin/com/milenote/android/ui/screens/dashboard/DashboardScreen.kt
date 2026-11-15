@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.dashboard
 
+import com.milenote.android.ui.Today
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -166,7 +167,7 @@ private fun DashboardContent(
     onReloadLedger: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val today = remember { Dates.today() }
+    val today = Today.current
     // 每张卡片各自一份范围，互不关联；趋势卡内的「支出 / 里程」两个 tab 共用趋势卡这一份。
     var statsPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
     var statsCustomRange by remember { mutableStateOf<DateRange?>(null) }
@@ -852,10 +853,12 @@ private fun TrendCard(
     var highlight by remember { mutableStateOf<String?>(null) }
     val tab = TrendTab.entries.firstOrNull { it.name == tabName } ?: TrendTab.MILEAGE
     val view = ExpenseChartView.entries.firstOrNull { it.name == viewName } ?: ExpenseChartView.MONTH
-    val window = remember(ledger, range) { trendMonthWindow(ledger, range) }
+    // 图表窗口要跟着全局「今天」走：跨零点 / 跨月后「全部」「今年」的右边界不能停在昨天。
+    val today = Today.current
+    val window = remember(ledger, range, today) { trendMonthWindow(ledger, range, today) }
     // 单月范围自动带上下文月份（最多 6 个月），避免图表只剩一个孤点 / 孤柱；
     // display.focus 是其中属于选中范围的月份，分类视图只汇总这批。
-    val display = remember(ledger, range) { trendDisplayWindow(ledger, range) }
+    val display = remember(ledger, range, today) { trendDisplayWindow(ledger, range, today) }
     val months = display.months
     val focusKeys = remember(display) { display.focus.map { monthKey(it) }.toSet() }
     val mileageBars = remember(ledger, months) { buildMileageBars(ledger, months) }
@@ -877,8 +880,8 @@ private fun TrendCard(
     }
     // 单月摘要的日均：本月算到今天，历史月算整月。
     val summaryDays = remember(months, range) {
-        val end = (Dates.parse(range.to) ?: Dates.today()).let {
-            if (it.isAfter(Dates.today())) Dates.today() else it
+        val end = (Dates.parse(range.to) ?: Today.current).let {
+            if (it.isAfter(Today.current)) Today.current else it
         }
         (Dates.daysBetween(months.first().atDay(1), end) + 1).toInt().coerceAtLeast(1)
     }

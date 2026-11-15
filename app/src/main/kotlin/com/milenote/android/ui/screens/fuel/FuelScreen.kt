@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.fuel
 
+import com.milenote.android.ui.Today
 import android.Manifest
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -209,7 +210,7 @@ fun FuelScreen(
     // 打开油耗页时自动刷新当前记住位置的油价；不重新定位。纯电车辆不发起任何油价抓取。
     LaunchedEffect(ev) { if (!ev) refreshPrice(reLocate = false) }
 
-    val today = Dates.today()
+    val today = Today.current
     // 概览卡与走势卡各自一份范围，互不关联；插混「油耗 / 电耗」两个 tab 共用走势卡这一份。
     var overviewPeriod by rememberSaveable { mutableStateOf(Period.ALL) }
     var overviewCustomRange by remember { mutableStateOf<DateRange?>(null) }

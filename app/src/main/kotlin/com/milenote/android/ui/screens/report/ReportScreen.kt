@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.report
 
+import com.milenote.android.ui.Today
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -150,7 +151,7 @@ private fun ReportContent(
     onShareAvailableChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val today = remember { Dates.today() }
+    val today = Today.current
     var kindName by rememberSaveable { mutableStateOf(ReportKind.MONTH.name) }
     var monthYear by rememberSaveable { mutableIntStateOf(today.year) }
     var monthMonth by rememberSaveable { mutableIntStateOf(today.monthValue) }
@@ -1480,7 +1481,7 @@ private fun EmptyReportCard(
     canPrev: Boolean,
     onAdd: () -> Unit,
 ) {
-    val future = data.period.isFuture(Dates.today())
+    val future = data.period.isFuture(Today.current)
     val title = when {
         future && data.period.kind == ReportKind.MONTH ->
             tr("还没到 %d 年 %d 月", "Not there yet: %d/%d", data.period.year, data.period.month)

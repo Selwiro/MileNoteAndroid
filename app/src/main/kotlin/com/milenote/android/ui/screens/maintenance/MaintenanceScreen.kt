@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.maintenance
 
+import com.milenote.android.ui.Today
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +99,7 @@ fun MaintenanceScreen(
         return
     }
 
-    val today = Dates.today()
+    val today = Today.current
     val km = remember(ledger) { currentKm(ledger) }
     val rows = remember(ledger, today, km) {
         val base = runCatching { servicePlanRows(ledger, today, km) }
