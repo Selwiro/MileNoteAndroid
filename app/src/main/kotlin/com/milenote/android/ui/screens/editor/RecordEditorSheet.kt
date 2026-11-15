@@ -143,8 +143,9 @@ fun RecordEditorScreen(
         onSave = {
             val record = form.attemptSave()
             if (record != null) {
+                // 真正写入（或重复确认）后由 VM 关闭编辑器；这里不提前关，
+                // 否则重复确认点「取消」时整份表单已经没了（B21）。
                 vm.saveRecord(record)
-                onDismiss()
             }
         },
         onDelete = {
@@ -254,6 +255,7 @@ private fun RecordEditorBody(
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
+        val error = form.currentError()
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -268,10 +270,6 @@ private fun RecordEditorBody(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                val error = form.currentError()
-                if (error != null) {
-                    MessageBar(message = error, kind = MessageKind.ERROR)
-                }
                 if (!form.isManual) {
                     CategoryField(form = form)
                 }
@@ -315,6 +313,7 @@ private fun RecordEditorBody(
             }
             EditorActionBar(
                 isEditing = form.original != null,
+                error = error,
                 onDelete = onDelete,
                 onCancel = onDismiss,
                 onSave = onSave,
@@ -360,11 +359,23 @@ private fun EditorHeader(title: String, onBack: () -> Unit) {
 @Composable
 private fun EditorActionBar(
     isEditing: Boolean,
+    error: String?,
     onDelete: () -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 错误摘要固定在按钮上方：无论滚到哪里，点保存都能立刻看到为什么没保存（B20）。
+        if (error != null) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+            )
+        }
         HorizontalDivider(
             thickness = 1.dp,
             color = MaterialTheme.colorScheme.outlineVariant,

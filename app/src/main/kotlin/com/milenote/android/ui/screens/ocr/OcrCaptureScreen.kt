@@ -477,10 +477,7 @@ private fun ResultOverlay(
     var parsed by remember(recognizedText) { mutableStateOf(receipt) }
     var rawText by remember(recognizedText) { mutableStateOf(recognizedText) }
     var showQuickFill by remember(recognizedText) { mutableStateOf(false) }
-    val hasUsefulField = parsed != null && (
-        parsed?.amount != null || parsed?.liters != null ||
-            parsed?.date?.isNotBlank() == true || parsed?.odometer != null
-        )
+    val hasUsefulField = hasUsefulReceiptField(parsed)
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface,

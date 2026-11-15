@@ -153,7 +153,7 @@ fun RecordsScreen(
         onFilterChange = { vm.setListFilter(ListFilterPages.RECORDS, it) },
         onAddRecord = { vm.openEditor() },
         onOpenRecord = { recordId -> vm.openEditor(recordId) },
-        onDeleteRecords = vm::deleteRecords,
+        onDeleteRecords = { records, onDeleted -> vm.deleteRecords(records, onDeleted) },
         onChangeCategory = vm::changeRecordsCategory,
         onBack = onBack,
         modifier = modifier,
@@ -168,7 +168,7 @@ private fun RecordsContent(
     onFilterChange: (ListFilterState) -> Unit,
     onAddRecord: () -> Unit,
     onOpenRecord: (String) -> Unit,
-    onDeleteRecords: (List<Record>) -> Unit,
+    onDeleteRecords: (List<Record>, () -> Unit) -> Unit,
     onChangeCategory: (List<Record>, String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -415,8 +415,8 @@ private fun RecordsContent(
                 onCategory = { showCategorySheet = true },
                 onDelete = {
                     val picked = selectedRecords
-                    exitSelection()
-                    onDeleteRecords(picked)
+                    // 不在确认前退出多选：点「取消」时应保留选中（B19）。
+                    onDeleteRecords(picked) { exitSelection() }
                 },
             )
         }

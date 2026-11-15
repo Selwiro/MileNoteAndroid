@@ -1381,9 +1381,10 @@ private fun BackupRestorePage(
                     Spacer(modifier = Modifier.height(8.dp))
                     MessageBar(
                         message = tr(
-                            "已有 %d 天没有备份。本机是唯一副本，建议现在导出一次（JSON 或 CSV / Excel 均可）。",
-                            "No backup for %d days. This device holds the only copy — export one now " +
-                                "(JSON, CSV or Excel).",
+                            "已有 %d 天没有完整备份（JSON）。本机是唯一副本，建议现在导出一次；" +
+                                "CSV / Excel 是报表导出，不能还原。",
+                            "No full backup (JSON) for %d days. This device holds the only copy — export one now; " +
+                                "CSV / Excel are reports and cannot be restored.",
                             overdueDays,
                         ),
                         kind = MessageKind.WARNING,

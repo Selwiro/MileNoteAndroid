@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavType
@@ -75,6 +76,7 @@ import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
+import com.milenote.android.ui.DeleteUndo
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
@@ -194,22 +196,19 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         }
     }
 
-    LaunchedEffect(state.message, state.deleteUndo) {
+    LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        // 只有「确实来自这次删除」的提示才挂「撤销」（期间别的提示不会误带撤销动作）。
-        val undo = state.deleteUndo?.takeIf { it.message == message }
-        val result = snackbarHostState.showSnackbar(
-            message = message,
-            actionLabel = if (undo != null) tr("撤销", "Undo") else null,
-            withDismissAction = false,
-            duration = if (undo != null) SnackbarDuration.Long else SnackbarDuration.Short,
-        )
         vm.consumeMessage()
-        if (undo != null) {
-            if (result == SnackbarResult.ActionPerformed) vm.undoDelete() else vm.clearDeleteUndo()
-        }
+        // 删除提示由独立的撤销条承担；同一句文案不再重复弹 Snackbar（B19）。
+        if (state.deleteUndo?.message == message) return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = message,
+            withDismissAction = false,
+            duration = SnackbarDuration.Short,
+        )
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     // 每个导航目标自带 Scaffold（顶栏 / 底栏 / Snackbar），外层不再按路由开关栏：
     // 外层开关会在同一帧先撤掉栏、目标页内容晚一帧才换，看起来「闪一下」
     // （2026-11-12 用户反馈）。现在栏与内容在同一个目标里一起换，转场期间屏幕保持上一页的完整画面。
@@ -357,6 +356,24 @@ fun MileNoteApp(vm: MileNoteViewModel) {
         }
     }
 
+        // 删除撤销条：独立于 Snackbar，10 秒内不会被同步提示顶掉（B19）。
+        state.deleteUndo?.let { undo ->
+            DeleteUndoBar(
+                undo = undo,
+                onUndo = vm::undoDelete,
+                onDismiss = vm::clearDeleteUndo,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = if (currentRoute == Routes.DASHBOARD) 80.dp else 12.dp,
+                    ),
+            )
+        }
+    }
+
     // 记一笔 / 编辑记录：独立全屏页面（覆盖底栏，返回键先关页面）。
     state.editor?.let { target ->
         com.milenote.android.ui.screens.editor.RecordEditorScreen(
@@ -464,6 +481,48 @@ fun MileNoteApp(vm: MileNoteViewModel) {
     }
 }
 
+
+/** 删除后的独立撤销条：不占 Snackbar 队列，10 秒后自动消失。 */
+@Composable
+private fun DeleteUndoBar(
+    undo: DeleteUndo,
+    onUndo: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LaunchedEffect(undo) {
+        delay(10_000)
+        onDismiss()
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = undo.message,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onUndo) {
+                Text(
+                    text = tr("撤销", "Undo"),
+                    color = MaterialTheme.colorScheme.inversePrimary,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
 
 /**
  * 底栏 4 tab 页的骨架：顶栏（标题 + 车辆胶囊 + 明细入口）+ 底部导航 + 横向 pager。
