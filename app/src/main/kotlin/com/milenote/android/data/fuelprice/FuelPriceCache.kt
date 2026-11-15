@@ -47,8 +47,13 @@ class FuelPriceCache(context: Context) {
     companion object {
         private const val PREFS_NAME = "milenote-fuel-price-cache"
 
-        /** 数据源/文案口径版本：更换油价数据源或字段口径时 +1（旧缓存会被丢弃并重抓）。 */
-        const val CACHE_VERSION = 5
+        /**
+         * 数据源/文案口径版本：更换油价数据源或字段口径时 +1（旧缓存会被丢弃并重抓）。
+         *
+         * - 6（2026-11-15）：修掉 JSON null 被当成字符串 "null" 的解析问题，旧缓存里的
+         *   「下次调价：null」作废重抓。
+         */
+        const val CACHE_VERSION = 6
 
         private val json = Json { ignoreUnknownKeys = true }
 

@@ -13,6 +13,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
@@ -505,7 +506,25 @@ class FuelPriceRepository(
             return result
         }
 
-        private fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.content
+        /**
+         * 读一个字符串字段。
+         *
+         * 注意：`JsonNull` 也是 `JsonPrimitive`，它的 `content` 是字符串 `"null"`，
+         * 直接取会把这个字面量当真值传下去（油价卡就曾显示「下次调价：null」）。
+         * 这里统一把 JSON null、空白字符串都当「没有」。
+         */
+        private fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)
+            ?.takeIf { it !is JsonNull }
+            ?.content
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+        /** 同上，供直接拿 `JsonObject` 子元素的地方（预测方向 / 备注）共用。 */
+        private fun JsonElement?.textOrNull(): String? = (this as? JsonPrimitive)
+            ?.takeIf { it !is JsonNull }
+            ?.content
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
 
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
@@ -606,7 +625,7 @@ class FuelPriceRepository(
             if (price92 == null && price95 == null && price98 == null && price0 == null) return null
 
             val forecastRoot = runCatching { Json.parseToJsonElement(forecastBody.orEmpty()) as? JsonObject }.getOrNull()
-            val direction = (forecastRoot?.get("direction") as? JsonPrimitive)?.content
+            val direction = forecastRoot?.get("direction").textOrNull()
             val trend = when {
                 direction == null -> null
                 direction.contains("下") -> "下调"
@@ -634,20 +653,29 @@ class FuelPriceRepository(
                 price0 = price0,
                 nextAdjustmentText = adjustmentLabel,
                 trend = if (stale) null else trend,
-                forecast = (forecastRoot?.get("note") as? JsonPrimitive)?.content,
+                forecast = forecastRoot?.get("note").textOrNull(),
                 dataDate = dataDate?.toString(),
                 dataStale = stale,
                 cityLevel = cityLevel,
             )
         }
 
+        /** 上游用来表示「还没排下一轮」的占位字符串（JSON null 之外，个别源会写成字符串）。 */
+        private val ADJUSTMENT_PLACEHOLDERS = setOf(
+            "null", "none", "undefined", "nil", "n/a", "na", "-", "--", "—", "–",
+        )
+
         /** "11月12日24时" → 「11 月 12 日 24 时」；其它格式原样返回（去掉多余空格）。 */
         internal fun normalizeAdjustmentLabel(
             raw: String?,
             today: LocalDate = LocalDate.now(SHANGHAI),
         ): String? {
-            if (raw.isNullOrBlank()) return null
-            val match = Regex("(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日\\s*24\\s*时").find(raw)
+            val text = raw?.trim().orEmpty()
+            if (text.isEmpty()) return null
+            // 上游可能把「没有下次调价」写成 JSON null（已在 text() 拦掉）或字符串 "null"：
+            // 一律当没有，交给界面显示「时间待公布」，不要把 null 字面量端给用户。
+            if (text.lowercase() in ADJUSTMENT_PLACEHOLDERS) return null
+            val match = Regex("(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日\\s*24\\s*时").find(text)
             if (match != null) {
                 val month = match.groupValues[1].toIntOrNull() ?: return null
                 val day = match.groupValues[2].toIntOrNull() ?: return null
@@ -655,7 +683,7 @@ class FuelPriceRepository(
                 // 继续展示会把上一轮的日期当成下一轮的（13 日还写 12 日 24 时）。
                 return nextAdjustmentLabel(month, day, today)
             }
-            return raw.replace(" ", "")
+            return text.replace(" ", "")
         }
 
         /** 解析「全国油价趋势看板」prices.json：provinces_data[省][标号] 是按 dates 对齐的价格数组。 */
@@ -682,7 +710,8 @@ class FuelPriceRepository(
             if (price92 == null && price95 == null && price98 == null && price0 == null) return null
 
             val next = root["next"] as? JsonObject
-            val direction = next?.get("direction")?.let { (it as? JsonPrimitive)?.content }
+            // JSON null 也是 JsonPrimitive，直接取 content 会得到字符串 "null" → 被误判成「搁浅」。
+            val direction = next?.get("direction").textOrNull()
             val trend = when {
                 direction == null -> null
                 direction.contains("下") -> "下调"

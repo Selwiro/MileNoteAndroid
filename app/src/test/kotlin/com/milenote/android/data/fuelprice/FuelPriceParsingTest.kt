@@ -118,6 +118,73 @@ class FuelPriceParsingTest {
         assertEquals("待公布", info.nextAdjustmentText)
     }
 
+    // 上游 fanzbus 的实际形状：没有排下一轮时 next_adjustment / next_adjustment_label 是 **JSON null**。
+    // JsonNull 也是 JsonPrimitive、content 是字符串 "null"，旧实现会把它当真值 → 油价卡显示「下次调价：null」。
+    private val fanzbusNullAdjustmentPrices = """
+        {
+          "fetched_at": "2026-11-14T10:39:27+08:00",
+          "last_change_at": "2026-11-14T10:39:27+08:00",
+          "next_adjustment": null,
+          "next_adjustment_label": null,
+          "next_adjustment_rolled": false,
+          "provinces": [{"province": "北京", "p92": 8.37, "p95": 8.92}]
+        }
+    """.trimIndent()
+
+    @Test
+    fun `json null adjustment label stays absent instead of the string null`() {
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "北京", provinceName = "北京", cityName = null,
+            pricesBody = fanzbusNullAdjustmentPrices, citiesBody = null, forecastBody = null,
+            today = LocalDate.parse("2026-11-15"),
+        )!!
+        // 界面据此显示「下次调价：时间待公布」
+        assertNull(info.nextAdjustmentText)
+        assertFalse(info.dataStale)
+    }
+
+    @Test
+    fun `json null forecast fields are absent, not null string or fake trend`() {
+        // direction 为 JSON null 时不能落进 when 的 else 分支被当成「搁浅」。
+        val forecast = """{"status":"pending","direction":null,"note":null}"""
+        val info = FuelPriceRepository.parseFanzbusJson(
+            regionName = "北京", provinceName = "北京", cityName = null,
+            pricesBody = fanzbusNullAdjustmentPrices, citiesBody = null, forecastBody = forecast,
+            today = LocalDate.parse("2026-11-15"),
+        )!!
+        assertNull(info.trend)
+        assertNull(info.forecast)
+    }
+
+    @Test
+    fun `oil price json null direction is not reported as an unchanged trend`() {
+        val body = """
+            {
+              "next": {"date": null, "direction": null, "reason": null},
+              "provinces_data": {"北京": {"92": [7.85, 8.89], "95": [8.35, 9.46]}}
+            }
+        """.trimIndent()
+        val info = FuelPriceRepository.parseOilPriceJson(
+            regionName = "北京", provinceName = "北京", body = body,
+            today = LocalDate.parse("2026-11-15"),
+        )!!
+        assertNull(info.trend)
+        assertNull(info.nextAdjustmentText)
+        assertNull(info.forecast)
+    }
+
+    @Test
+    fun `placeholder strings for the next adjustment are treated as missing`() {
+        val today = LocalDate.parse("2026-11-15")
+        assertNull(FuelPriceRepository.normalizeAdjustmentLabel("null", today))
+        assertNull(FuelPriceRepository.normalizeAdjustmentLabel(" None ", today))
+        assertNull(FuelPriceRepository.normalizeAdjustmentLabel("undefined", today))
+        assertNull(FuelPriceRepository.normalizeAdjustmentLabel("-", today))
+        // 正常值（含上游自己给的「待公布」）不受影响
+        assertEquals("待公布", FuelPriceRepository.normalizeAdjustmentLabel("待公布", today))
+        assertEquals("11 月 27 日 24 时", FuelPriceRepository.normalizeAdjustmentLabel("11月27日24时", today))
+    }
+
     @Test
     fun `normalizes adjustment labels`() {
         val before = LocalDate.parse("2026-11-10")
