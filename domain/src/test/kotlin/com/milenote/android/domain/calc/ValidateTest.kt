@@ -81,6 +81,13 @@ class ValidateTest {
     }
 
     @Test
+    fun `pre-1970 dates are rejected only when the caller asks`() {
+        val old = evRecord().copy(date = "1899-12-31")
+        assertEquals("", validateRecord(old))
+        assertTrue(validateRecord(old, requirePlausibleDate = true).contains("1970"))
+    }
+
+    @Test
     fun `ev amount must still be positive unless service or manual`() {
         assertTrue(validateRecord(evRecord(amount = 0.0)).isNotEmpty())
         assertEquals("", validateRecord(evRecord(amount = 0.0, kind = "manual", rate = 6.0, distance = 100.0)))

@@ -430,6 +430,25 @@ class ReportTest {
     }
 
     @Test
+    fun `energy unit price only counts records included in cost`() {
+        val data = report(
+            testLedger(
+                listOf(
+                    fuelRecord("2026-11-02", 1000.0, 40.0, amount = 300.0, fuelCounted = true),
+                    // 不计成本的一笔：金额按 0 计，升数也不能进均价分母。
+                    fuelRecord("2026-11-10", 1400.0, 100.0, amount = 750.0, fuelCounted = false),
+                ),
+            ),
+            month(2026, 11),
+            today,
+        )
+
+        assertEquals(140.0, data.fuel!!.amount, 1e-9)
+        assertEquals(300.0, data.fuel!!.cost, 1e-9)
+        assertEquals(7.5, data.fuel!!.unitPrice!!, 1e-9)
+    }
+
+    @Test
     fun `fuel flow is null on ev ledger and electric null on fuel ledger`() {
         val ev = report(
             evLedger(listOf(evRecord("2026-11-05", 1000.0, 20.0), evRecord("2026-11-13", 1200.0, 18.0))),

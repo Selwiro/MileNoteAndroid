@@ -116,6 +116,10 @@ internal class ImportWizardState(
     var result by mutableStateOf<WizardResult?>(null)
         private set
 
+    /** 本次导入前是否留下了快照；结果页据此显示「撤销本次导入」（B23）。 */
+    var canUndoImport by mutableStateOf(false)
+        private set
+
     private var previewGeneration = 0
 
     private val ledger get() = vm.state.value.activeCar
@@ -639,6 +643,7 @@ internal class ImportWizardState(
                         val withFuelTank = hasFuelTank && src != ImportSource.CSV
                         // 等待真实写库结果再展示成功：修复「先报成功、后写库失败」。
                         val written = vm.applyImportAwait(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
+                        canUndoImport = written.undoAvailable
                         result = WizardResult(
                             title = if (overwriteDuplicates) {
                                 tr("导入完成（已覆盖重复）", "Import complete (duplicates overwritten)")
@@ -681,6 +686,33 @@ internal class ImportWizardState(
                 step = 2
             } catch (e: Exception) {
                 error = e.message ?: tr("导入失败，请重试", "Import failed — try again")
+            } finally {
+                busy = false
+                busyMessage = null
+            }
+        }
+    }
+
+    /** 撤销本次导入：回到导入前快照（B23）。 */
+    fun undoImport() {
+        if (busy || !canUndoImport) return
+        scope.launch {
+            busy = true
+            busyMessage = tr("正在撤销导入…", "Undoing the import…")
+            error = null
+            try {
+                if (!vm.undoLastImport()) {
+                    throw ImportFileException(
+                        tr("撤销失败：没有可用的导入前快照", "Undo failed: no usable pre-import snapshot"),
+                    )
+                }
+                canUndoImport = false
+                result = WizardResult(
+                    title = tr("已撤销本次导入", "Import undone"),
+                    lines = listOf(tr("已恢复导入前的数据。", "The data from before the import was restored.")),
+                )
+            } catch (e: Exception) {
+                error = e.message ?: tr("撤销失败，请重试", "Undo failed — try again")
             } finally {
                 busy = false
                 busyMessage = null

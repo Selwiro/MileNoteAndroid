@@ -202,19 +202,22 @@ class XlsxReaderTest {
 
     @Test
     fun `supports the 1904 date system`() {
+        val serial = java.time.temporal.ChronoUnit.DAYS
+            .between(java.time.LocalDate.of(1904, 1, 1), java.time.LocalDate.of(2020, 1, 1))
+            .toDouble()
         val bytes = XlsxFixture.build(
             sheets = listOf(
                 XlsxFixture.Sheet(
                     "表",
                     XlsxFixture.row(1, XlsxFixture.inline("A1", "日期")) +
-                        XlsxFixture.row(2, XlsxFixture.number("A2", 0.0, style = 1)),
+                        XlsxFixture.row(2, XlsxFixture.number("A2", serial, style = 1)),
                 ),
             ),
             cellXfs = listOf(0, 14),
             date1904 = true,
         )
 
-        assertEquals("1904-01-01", reader.read(bytes).rows[0][0])
+        assertEquals("2020-01-01", reader.read(bytes).rows[0][0])
     }
 
     @Test

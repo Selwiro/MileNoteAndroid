@@ -29,8 +29,13 @@ fun validateRecord(
      * 否则老备份里没里程的保养记录会被整份拒绝，破坏 `version:2` 兼容。
      */
     requireServiceOdometer: Boolean = false,
+    /** 是否拒绝早于 1970 的日期（导入 / 编辑器传 true；备份校验保持默认 false）。 */
+    requirePlausibleDate: Boolean = false,
 ): String {
     if (Dates.dateValue(record.date).isEmpty()) return tr("日期无效", "Invalid date")
+    if (requirePlausibleDate && !Dates.isPlausibleRecordDate(record.date)) {
+        return tr("日期早于 1970 年，请检查", "The date is before 1970 — check it")
+    }
     if (record.category !in Categories.ALL &&
         record.category !in customCategories &&
         record.category != "维修保养"

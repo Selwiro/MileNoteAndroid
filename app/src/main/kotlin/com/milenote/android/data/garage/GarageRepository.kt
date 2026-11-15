@@ -290,6 +290,17 @@ class GarageRepository(
         store.latestQuarantined() ?: if (writeBlocked) store.currentFile().takeIf { it.exists() } else null
     }
 
+    /**
+     * 为导入这类「批量改账本」操作留一份本机快照，供结果页撤销。
+     *
+     * 与 [deleteData] / [replace] 的快照共用同一个目录与保留份数；只复制当前文件，不写账本。
+     * @return 是否留下了快照（首次启动还没有账本文件时为 false）。
+     */
+    suspend fun snapshotForUndo(): Boolean = mutex.withLock {
+        if (_demoMode.value || writeBlocked) return@withLock false
+        withContext(io) { runCatching { store.snapshot() != null }.getOrDefault(false) }
+    }
+
     /** 最近一次破坏性操作（整体覆盖 / 删除）前的本地快照（设置页据此显示「回滚」入口）。 */
     suspend fun latestReplaceSnapshot(): File? = withContext(io) { store.latestSnapshot() }
 

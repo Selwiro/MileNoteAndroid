@@ -469,6 +469,11 @@ private fun energyLine(
     }
     val amount = counted.sumOf { amountOf(it) ?: 0.0 }
     val cost = counted.sumOf { costOf(it, ledger) }
+    // 均价要和「成本」同口径：fuelCounted=false 的记录金额按 0 计，升数不能留在分母里，
+    // 否则会出现「花费 300 元 / 140 升 = 2.14 元/升」这种明显偏低的数（B14）。
+    val costedAmount = counted
+        .filter { costOf(it, ledger) > 0.0 }
+        .sumOf { amountOf(it) ?: 0.0 }
     val rate = energy?.rate
     // stats() 只为混动补累计估算（燃油车「无区间就是无区间」）；报告的能源卡需要一条兜底，
     // 这里在没满箱区间时自己算，界面标「估算」。
@@ -484,7 +489,7 @@ private fun energyLine(
         count = counted.size,
         amount = amount,
         cost = cost,
-        unitPrice = if (amount > 0.0) cost / amount else null,
+        unitPrice = if (costedAmount > 0.0 && cost > 0.0) cost / costedAmount else null,
         rate = rate,
         intervals = energy?.intervals?.size ?: 0,
         estimated = estimated,

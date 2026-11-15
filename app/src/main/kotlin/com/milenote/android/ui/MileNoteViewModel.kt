@@ -91,6 +91,8 @@ data class PendingRecordDelete(
     val record: Record,
     /** 该记录完成的提醒标题。 */
     val reminderTitles: List<String>,
+    /** 删除完成后的回调（多选页用来退出多选）；取消时不调用。 */
+    val onDeleted: (() -> Unit)? = null,
 )
 
 /**
@@ -202,6 +204,8 @@ data class ImportWriteResult(
     val skipped: Int,
     val overwritten: Int,
     val completedServices: Int,
+    /** 导入前是否留下了可回滚快照（结果页据此显示「撤销本次导入」）。 */
+    val undoAvailable: Boolean = false,
 )
 
 /** 全局 UI 状态。 */
@@ -497,7 +501,7 @@ class MileNoteViewModel(
      * - 单条、无关联提醒 → 直接删除，底部提示可撤销；
      * - 多条 → 先确认（有完成提醒会一并恢复），再删除，底部提示可撤销。
      */
-    fun deleteRecords(records: List<Record>) {
+    fun deleteRecords(records: List<Record>, onDeleted: (() -> Unit)? = null) {
         val active = _state.value.activeCar ?: return
         val ids = records.map { it.id }.toSet()
         val existing = active.records.filter { it.id in ids }
@@ -511,10 +515,11 @@ class MileNoteViewModel(
                     recordDelete = PendingRecordDelete(
                         record = existing.first(),
                         reminderTitles = reminderTitles,
+                        onDeleted = onDeleted,
                     ),
                 )
             }
-            existing.size == 1 -> performDelete(existing, restoreReminders = true)
+            existing.size == 1 -> performDelete(existing, restoreReminders = true, onDeleted = onDeleted)
             else -> confirm(
                 PendingConfirm(
                     title = tr("删除选中的 %d 条记录？", "Delete %d selected records?", existing.size),
@@ -545,7 +550,11 @@ class MileNoteViewModel(
      *
      * @param restoreReminders 是否把被删记录完成过的保养提醒恢复为未完成。
      */
-    private fun performDelete(records: List<Record>, restoreReminders: Boolean) {
+    private fun performDelete(
+        records: List<Record>,
+        restoreReminders: Boolean,
+        onDeleted: (() -> Unit)? = null,
+    ) {
         val ids = records.map { it.id }.toSet()
         val carId = _state.value.activeCar?.id
         viewModelScope.launch {
@@ -560,6 +569,7 @@ class MileNoteViewModel(
             val deleted = snapshot ?: DeletedRecords()
             if (deleted.isEmpty) {
                 _state.value = _state.value.copy(recordDelete = null)
+                onDeleted?.invoke()
                 return@launch
             }
             val count = deleted.records.size
@@ -580,6 +590,7 @@ class MileNoteViewModel(
                 deleteUndo = carId?.let { DeleteUndo(message = shown, carId = it, deleted = deleted) },
                 message = shown,
             )
+            onDeleted?.invoke()
         }
     }
 
@@ -648,7 +659,8 @@ class MileNoteViewModel(
 
     /** 删除记录；[restoreReminders] 为 true 时同时恢复该记录完成的保养提醒。 */
     fun confirmRecordDelete(record: Record, restoreReminders: Boolean) {
-        performDelete(listOf(record), restoreReminders)
+        val onDeleted = _state.value.recordDelete?.onDeleted
+        performDelete(listOf(record), restoreReminders, onDeleted)
     }
 
     // ---------- 车辆 ----------
@@ -1253,15 +1265,20 @@ class MileNoteViewModel(
         var skipped = 0
         var overwritten = 0
         var completedServices = 0
+        // 导入前留快照：结果页可一键撤销本次导入（B23）。
+        val undoAvailable = repository.snapshotForUndo()
         repository.update(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
-                        // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据作为新记录写回。
+                        // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据写回。
+                        // 复用旧 id / 口径字段，保住「提醒 → 记录」的关联（B17）。
+                        val reused = LinkedHashMap<String, Record>()
                         val baseRecords = if (overwriteDuplicates) {
                             val kept = ledger.records.toMutableList()
                             items.filter { it.isValid }.forEach { item ->
                                 val old = duplicateOf(kept, item.record)
                                 if (old != null) {
                                     kept.removeAll { it.id == old.id }
+                                    reused[item.record.id] = old
                                     overwritten++
                                 }
                             }
@@ -1269,10 +1286,26 @@ class MileNoteViewModel(
                         } else {
                             ledger.records
                         }
-                        val result = if (fuelBasis != null) {
-                            mergeFuelBatch(baseRecords, items, fuelBasis)
+                        val preparedItems = if (reused.isEmpty()) {
+                            items
                         } else {
-                            mergeImported(baseRecords, items)
+                            items.map { item ->
+                                val old = reused[item.record.id] ?: return@map item
+                                item.copy(
+                                    record = item.record.copy(
+                                        id = old.id,
+                                        fuelCounted = old.fuelCounted ?: item.record.fuelCounted,
+                                        importedKeys = old.importedKeys ?: item.record.importedKeys,
+                                        sourceId = old.sourceId ?: item.record.sourceId,
+                                        reportedRate = old.reportedRate ?: item.record.reportedRate,
+                                    ),
+                                )
+                            }
+                        }
+                        val result = if (fuelBasis != null) {
+                            mergeFuelBatch(baseRecords, preparedItems, fuelBasis)
+                        } else {
+                            mergeImported(baseRecords, preparedItems)
                         }
                         added = result.added
                         merged = result.merged
@@ -1299,6 +1332,7 @@ class MileNoteViewModel(
             skipped = skipped,
             overwritten = overwritten,
             completedServices = completedServices,
+            undoAvailable = undoAvailable,
         )
     }
 
@@ -1315,6 +1349,9 @@ class MileNoteViewModel(
     fun markBackupDone(nowMillis: Long = System.currentTimeMillis()) {
         viewModelScope.launch { settingsRepository.setLastBackupAt(nowMillis) }
     }
+
+    /** 撤销最近一次导入：回到导入前的本机快照（B23）。 */
+    suspend fun undoLastImport(): Boolean = repository.rollbackToLatestSnapshot()
 
     /** 刷新「最近一次损坏账本」状态；进入备份与还原页时调用。 */
     suspend fun refreshQuarantinedRaw() {

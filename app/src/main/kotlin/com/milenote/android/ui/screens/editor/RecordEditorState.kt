@@ -470,7 +470,7 @@ internal class RecordEditorState(
                 Units.distanceUnit,
             )
         }
-        return validateRecord(buildRecord(), customCategories, requireServiceOdometer = true).ifBlank { null }
+        return validateRecord(buildRecord(), customCategories, requireServiceOdometer = true, requirePlausibleDate = true).ifBlank { null }
     }
 
     /** 点「保存」时调用：打开错误提示并尝试构造记录；失败返回 null。 */

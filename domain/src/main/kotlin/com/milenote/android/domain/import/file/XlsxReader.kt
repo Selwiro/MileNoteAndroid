@@ -304,6 +304,7 @@ class XlsxReader(
         } else {
             LocalDate.of(1899, 12, 30).plusDays(days)
         }
+        if (date.year < 1970) return ""
         return date.toString()
     }
 

@@ -1287,6 +1287,19 @@ private fun ResultStep(wizard: ImportWizardState) {
                 }
             }
         }
+        if (wizard.canUndoImport) {
+            item {
+                OutlinedButton(
+                    onClick = { wizard.undoImport() },
+                    enabled = !wizard.busy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MileNoteDimens.ButtonMinHeight),
+                ) {
+                    Text(tr("撤销本次导入", "Undo this import"))
+                }
+            }
+        }
         item {
             MessageBar(
                 message = tr(

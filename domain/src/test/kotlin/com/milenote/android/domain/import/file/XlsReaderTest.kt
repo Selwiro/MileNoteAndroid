@@ -107,8 +107,8 @@ class XlsReaderTest {
         assertEquals(2, data.rows.size)
         assertEquals("2023-12-31", data.rows[0][0])
         assertEquals("2001-02-03", data.rows[0][1])
-        // jxl 把 1900-01-01 写成序列值 0（历史怪癖），这里固定住解析结果防止回归。
-        assertEquals("1899-12-31", data.rows[1][0])
+        // jxl 把 1900-01-01 写成序列值 0（历史怪癖）；早于 1970 的日期视为脏数据，不再输出 1899-12-31。
+        assertTrue(data.rows[1][0] is Number)
         assertNull(data.rows[1][1])
     }
 

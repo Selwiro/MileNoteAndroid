@@ -315,6 +315,7 @@ private class XlsWorkbook(
             days < 60 -> LocalDate.of(1899, 12, 31).plusDays(days)
             else -> LocalDate.of(1899, 12, 30).plusDays(days)
         }
+        if (date.year < 1970) return null
         return date.toString()
     }
 

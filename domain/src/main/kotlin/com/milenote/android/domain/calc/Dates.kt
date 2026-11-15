@@ -35,6 +35,12 @@ object Dates {
         return runCatching { LocalDate.parse(value, ISO) }.isSuccess
     }
 
+    /** 是否是可作为记录日期的年份（1970 起）；早于 1970 视为脏数据。 */
+    fun isPlausibleRecordDate(date: String?): Boolean {
+        val parsed = parse(date) ?: return false
+        return !parsed.isBefore(LocalDate.of(1970, 1, 1))
+    }
+
     /** 严格解析；非法返回 null。 */
     fun parse(value: String?): LocalDate? =
         if (isValid(value)) runCatching { LocalDate.parse(value, ISO) }.getOrNull() else null
@@ -54,6 +60,9 @@ object Dates {
             is Number -> {
                 val serial = value.toDouble()
                 if (!serial.isFinite()) return ""
+                // Excel 的 0 / 纯时间值会落到 1899-12-31；早于 1970 的序列值一律视为无效，
+                // 不让它伪装成正常记录日期（B15）。
+                if (serial < 25569.0) return ""
                 val millis = Math.round((serial - 25569.0) * 86_400_000.0)
                 val epochDay = Math.floorDiv(millis, 86_400_000L)
                 return runCatching { iso(LocalDate.ofEpochDay(epochDay)) }.getOrDefault("")

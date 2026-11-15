@@ -222,6 +222,17 @@ class GarageRepositorySafetyTest {
     }
 
     @Test
+    fun `snapshot for undo copies the current ledger without writing`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson).apply { snapshotOnWrite = true }
+        val repo = GarageRepository(store)
+        repo.load()
+
+        assertTrue(repo.snapshotForUndo())
+        assertNotNull(store.latestSnapshot())
+        assertTrue("只复制快照，不应写账本：${store.writes}", store.writes.isEmpty())
+    }
+
+    @Test
     fun `replace snapshots the current ledger before overwriting`() = runBlocking {
         val store = FakeStore(emptyLedgerJson).apply { snapshotOnWrite = true }
         val repo = GarageRepository(store)

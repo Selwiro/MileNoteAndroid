@@ -41,6 +41,18 @@ class DatesTest {
     }
 
     @Test
+    fun `time-only excel serials and pre-1970 dates are invalid`() {
+        assertEquals("", Dates.dateValue(0))
+        assertEquals("", Dates.dateValue(0.5))
+        assertEquals("", Dates.dateValue(25568))
+        assertEquals("1970-01-01", Dates.dateValue(25569))
+        assertFalse(Dates.isPlausibleRecordDate("1899-12-31"))
+        assertFalse(Dates.isPlausibleRecordDate("1969-12-31"))
+        assertTrue(Dates.isPlausibleRecordDate("1970-01-01"))
+        assertTrue(Dates.isPlausibleRecordDate("2026-11-15"))
+    }
+
+    @Test
     fun `strict validation`() {
         assertTrue(Dates.isValid("2026-11-04"))
         assertTrue(Dates.isValid("2024-02-29"))
