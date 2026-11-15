@@ -165,6 +165,7 @@ internal enum class SettingsPage {
     IMPORT,
     HEALTH,
     BACKUP,
+    GARAGE,
     WEBDAV,
     ABOUT,
     PRIVACY,
@@ -185,6 +186,7 @@ internal enum class SettingsPage {
             IMPORT -> tr("外部导入", "Import")
             HEALTH -> tr("数据体检", "Data check")
             BACKUP -> tr("备份与还原", "Backup & restore")
+            GARAGE -> tr("车库总览", "Garage overview")
             WEBDAV -> tr("WebDAV 同步", "WebDAV sync")
             ABOUT -> tr("关于", "About")
             PRIVACY -> tr("隐私与数据", "Privacy & data")
@@ -228,6 +230,7 @@ fun SettingsScreen(
     initialPage: String,
     onBack: () -> Unit,
     onOpenImporter: (String?) -> Unit = {},
+    onOpenDashboard: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -659,6 +662,25 @@ fun SettingsScreen(
                             }
                         }
 
+                        if (cars.size > 1) {
+                            item("garage-overview-entry") {
+                                SectionCard(
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                                ) {
+                                    SettingsActionRow(
+                                        icon = MileNoteIcons.Car,
+                                        title = tr("车库总览", "Garage overview"),
+                                        subtitle = tr(
+                                            "%d 辆车并列对比支出、里程与能耗（不合并）",
+                                            "Compare spend, distance and energy across %d vehicles (never merged)",
+                                            cars.size,
+                                        ),
+                                        onClick = { pageName = SettingsPage.GARAGE.name },
+                                    )
+                                }
+                            }
+                        }
+
                         item("vehicles-header") {
                             SectionHeader(
                                 title = tr("车辆列表", "Vehicles"),
@@ -806,6 +828,15 @@ fun SettingsScreen(
                             )
                         }
                     }
+
+                    SettingsPage.GARAGE -> GarageOverviewPage(
+                        cars = cars,
+                        activeId = activeId,
+                        onSelect = { id ->
+                            vm.selectVehicle(id)
+                            onOpenDashboard()
+                        },
+                    )
 
                     SettingsPage.BACKUP -> BackupRestorePage(
                         carsCount = cars.size,

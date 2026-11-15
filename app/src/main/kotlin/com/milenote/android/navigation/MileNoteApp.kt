@@ -337,6 +337,12 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     initialPage = entry.arguments?.getString("page") ?: "vehicles",
                     onBack = { navController.popBackStack() },
                     onOpenImporter = { source -> navController.navigate(Routes.importerRoute(source)) },
+                    onOpenDashboard = {
+                        // 车库总览点一行：切车后回总览（dashboard 是起始页，一定在栈里）；
+                        // 同时把 pager 拨回第一页，否则会停在「我的」tab。
+                        scope.launch { pagerState.animateScrollToPage(0) }
+                        navController.popBackStack(Routes.DASHBOARD, inclusive = false)
+                    },
                     modifier = Modifier.padding(inner),
                 )
             }
