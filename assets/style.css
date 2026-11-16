@@ -392,8 +392,10 @@ button { font: inherit; color: inherit; }
 .phone {
   position: relative;
   margin: 0;
-  padding: 8px;
-  border-radius: 36px;
+  /* 边框尽量薄：1080px 源图缩到 200–320px 显示时，粗边框会先把状态栏/导航栏边缘吃掉 */
+  padding: 5px;
+  /* 百分比圆角随手机尺寸缩放，截图四角不会被过分裁掉 */
+  border-radius: 4.6% / 2.07%;
   background: var(--bezel);
   box-shadow: var(--shadow-phone);
   aspect-ratio: 720 / 1600;
@@ -402,7 +404,7 @@ button { font: inherit; color: inherit; }
 .phone img {
   width: 100%;
   height: 100%;
-  border-radius: 29px;
+  border-radius: 3.2% / 1.44%;
   object-fit: cover;
 }
 
@@ -412,6 +414,7 @@ button { font: inherit; color: inherit; }
   height: auto;
   min-height: 0;
   max-height: 100%;
+  max-width: 100%;
   margin-bottom: 2px;
 }
 
@@ -540,6 +543,8 @@ button { font: inherit; color: inherit; }
 .screen-figure {
   margin: 0;
   height: 100%;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -551,6 +556,42 @@ button { font: inherit; color: inherit; }
   margin-top: 12px;
   font-size: 12.5px;
   color: var(--muted);
+}
+
+/* 桌面 / 平板：文案与 tab 收进左列，手机放大占满右列（2026-11-16 反馈「预览截图太小」） */
+@media (min-width: 721px) {
+  #screens .slide-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: clamp(24px, 4vw, 64px);
+    align-items: center;
+  }
+  #screens .screen-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+  }
+  #screens .slide-head {
+    max-width: none;
+    margin: 0;
+    text-align: left;
+  }
+  #screens .slide-head h2 { font-size: clamp(1.7rem, 2.6vw, 2.4rem); }
+  #screens .screen-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    max-width: 360px;
+    margin-top: clamp(18px, 2.4vw, 30px);
+    justify-content: stretch;
+  }
+  #screens .screen-tab { text-align: left; }
+  #screens .screen-stage { height: 100%; margin-top: 0; }
+  /* 竖屏平板等窄高视口：手机高度再受右列宽度约束，避免把左右箭头压到手机底下 */
+  #screens .phone-screen { max-height: min(100%, calc((57vw - 130px) * 2.222)); }
 }
 
 /* ---------- 隐私与数据 ---------- */
@@ -737,7 +778,7 @@ button { font: inherit; color: inherit; }
   .hero-meta { margin-top: 16px; font-size: 12.5px; }
 
   /* 手机上功能改成单列「图标 + 标题 + 说明」的行式，中英文案长度不同也装得下 */
-  .feature-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
+  .feature-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; gap: 6px; margin-top: 10px; }
   .feature {
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr);
@@ -757,6 +798,7 @@ button { font: inherit; color: inherit; }
   .slide-head h2 { margin-top: 6px; font-size: clamp(1.35rem, 6vw, 1.65rem); }
   .slide-head .lede { font-size: 0.9rem; }
 
+  #screens .screen-copy { display: flex; flex-direction: column; align-items: center; }
   .screen-tabs { gap: 6px; margin-top: 14px; }
   .screen-tab { padding: 6px 13px; font-size: 12.5px; }
   .screen-stage { margin-top: 14px; gap: 8px; }
