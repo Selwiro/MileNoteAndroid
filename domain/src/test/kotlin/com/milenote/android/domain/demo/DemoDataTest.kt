@@ -262,6 +262,32 @@ class DemoDataTest {
     }
 
     @Test
+    fun `demo fuel prices move like real retail prices`() {
+        // 2026-11-16 用户反馈「演示的油价太稳定了」：真实油价十个工作日一调，
+        // 两年里应出现多个价位、有 0.3 元以上的极差，但单次调价不会断崖。
+        for (car in DemoData.createDemoGarage(d("2026-11-14")).cars) {
+            val fuel = car.records
+                .filter { it.liters != null && it.unitPrice != null && it.unitPrice!! > 0 }
+                .sortedBy { it.date }
+            if (fuel.isEmpty()) continue
+            val prices = fuel.map { it.unitPrice!! }
+            assertTrue("${car.id} 油价只有 ${prices.distinct().size} 个价位", prices.distinct().size >= 5)
+            assertTrue("${car.id} 油价极差 ${prices.max() - prices.min()}", prices.max() - prices.min() >= 0.3)
+            assertTrue("${car.id} 油价 ${prices.min()}", prices.min() in 6.8..9.0)
+            assertTrue("${car.id} 油价 ${prices.max()}", prices.max() in 6.8..9.0)
+            prices.zipWithNext().forEach { (previous, next) ->
+                assertTrue("${car.id} 相邻两次油价 $previous → $next 跳得太大", abs(next - previous) <= 0.45)
+            }
+            // 一个月加两次油的车：两次不该永远同一个价（旧版同月同价，正是「太稳定」的观感来源）。
+            val months = fuel.groupBy { it.date.take(7) }.filterValues { it.size >= 2 }
+            if (months.isNotEmpty()) {
+                val varied = months.count { (_, rows) -> rows.mapNotNull { it.unitPrice }.distinct().size >= 2 }
+                assertTrue("${car.id} 同月油价几乎不变（$varied/${months.size}）", varied * 2 >= months.size)
+            }
+        }
+    }
+
+    @Test
     fun `demo odometer readings never go backwards`() {
         for (car in DemoData.createDemoGarage(d("2026-11-14")).cars) {
             val byDate = car.records.filter { it.odometer != null }.groupBy { it.date }.toSortedMap()

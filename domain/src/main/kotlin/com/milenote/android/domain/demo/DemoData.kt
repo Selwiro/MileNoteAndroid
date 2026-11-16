@@ -85,7 +85,6 @@ object DemoData {
         val days: List<Int>,
         val homePrice: Double?,
         val basePrice: Double,
-        val priceStep: Double,
         val source: String,
         val idPrefix: String,
         val partialAt: Int = -1,
@@ -169,13 +168,58 @@ object DemoData {
         }
     }
 
-    /** 油价 / 电价：按月份小幅波动，2025 年油价整体高约 0.16 元。 */
-    private fun priceOf(stream: Stream, month: YearMonth, home: Boolean): Double {
+    /**
+     * 国内成品油「十个工作日一调」的确定性模拟（2026-11-16 用户反馈：演示油价太稳定）。
+     *
+     * 旧版按 `month % 4` 只做 ±0.09 的月度波动，整月每次加油同一个价，看起来像油价永远不变。
+     * 现在改成「调价窗口均值回归 + 站点差异」：
+     * - 每 10 天一个调价窗口，稳态波动约 ±0.37 元（95# 两年跨度约 7.0–8.2 元）；
+     * - 2025 年整体高 0.16 元（与旧版一致，年报仍有跨年价差）；
+     * - 同一窗口内不同站点差 ±0.02 元（燃油）/ ±0.05 元（公共充电），保留会员价 / 优惠的感觉；
+     * - 家充仍固定 0.62 元/度（谷电价格本来就长期不变）。
+     *
+     * 随机步长由整数哈希生成（不用平台随机源），**同一天永远得到同一个价**，演示账本可重复、可断言。
+     */
+    private fun priceOf(stream: Stream, date: LocalDate, home: Boolean, stationIndex: Int): Double {
         val homePrice = stream.homePrice
         if (home && homePrice != null) return homePrice
-        val yearBump = if (!stream.electric && month.year <= 2025) 0.16 else 0.0
-        return stream.basePrice + yearBump + stream.priceStep * ((month.monthValue % 4) - 1.5)
+        val walk = priceWalk(date.year * 36 + date.dayOfYear / 10) * if (stream.electric) 0.5 else 1.0
+        val yearBump = if (!stream.electric && date.year <= 2025) 0.16 else 0.0
+        val stationDelta = if (stream.electric) {
+            0.05 * ((stationIndex % 3) - 1)
+        } else {
+            0.02 * ((stationIndex % 3) - 1)
+        }
+        return stream.basePrice + yearBump + walk + stationDelta
     }
+
+    /**
+     * 调价窗口的均值回归游走：`walk = 0.90 × walk + 0.16 × noise`。
+     *
+     * 纯累加随机游走会很快撞到上限并一直贴边（又是一条水平线）；均值回归的稳态波动约 ±0.37 元，
+     * 偶尔到 ±0.7，接近真实油价「涨两周、跌一个月」的形态（95# 两年跨度约 7.0–8.4 元）。
+     */
+    private fun priceWalk(period: Int): Double {
+        var walk = 0.0
+        for (index in PriceWalkEpochPeriod until period) {
+            walk = (walk * 0.90 + 0.16 * priceNoise(index)).coerceIn(-0.90, 0.90)
+        }
+        return walk
+    }
+
+    /** 整数 → [-1, 1] 的确定性伪随机（整数哈希，纯函数，不依赖平台随机源）。 */
+    private fun priceNoise(index: Int): Double {
+        var mixed = index * -0x61c88647
+        mixed = mixed xor (mixed ushr 16)
+        mixed *= 0x7feb352d
+        mixed = mixed xor (mixed ushr 15)
+        mixed *= 0x846ca68b.toInt()
+        mixed = mixed xor (mixed ushr 16)
+        return (mixed and 0xFFFF) / 65535.0 * 2.0 - 1.0
+    }
+
+    /** 游走起点：2024-01，演示账本最多回溯两年，循环次数可控。 */
+    private const val PriceWalkEpochPeriod = 2024 * 36
 
     // ------------------------------------------------------------------ 三台车
 
@@ -219,7 +263,6 @@ object DemoData {
                 days = listOf(5, 20),
                 homePrice = null,
                 basePrice = 7.62,
-                priceStep = 0.06,
                 source = "小熊油耗",
                 idPrefix = "demo-bear-demo-weekend",
                 partialAt = 9,
@@ -258,7 +301,6 @@ object DemoData {
                 days = listOf(4, 13, 24),
                 homePrice = 0.62,
                 basePrice = 1.28,
-                priceStep = 0.05,
                 source = "手动记录",
                 idPrefix = "demo-ev-demo-city",
                 partialAt = 5,
@@ -296,7 +338,6 @@ object DemoData {
                 days = listOf(9),
                 homePrice = null,
                 basePrice = 7.46,
-                priceStep = 0.05,
                 source = "小熊油耗",
                 idPrefix = "demo-phev-fuel",
                 partialAt = 7,
@@ -308,7 +349,6 @@ object DemoData {
                 days = listOf(3, 20),
                 homePrice = 0.62,
                 basePrice = 1.22,
-                priceStep = 0.05,
                 source = "手动记录",
                 idPrefix = "demo-phev-charge",
                 partialAt = 10,
@@ -482,7 +522,8 @@ object DemoData {
                     val odometer = if (mode == Fill.NO_ODOMETER) null else odo(i, dayOfMonth)
                     val fallback = monthly[i] / stream.days.size * stream.per100 / 100.0
                     val quantity = feeders[index].take(odometer, fallback, mode)
-                    val price = priceOf(stream, month, home)
+                    val stationIndex = turn % stations.size
+                    val price = priceOf(stream, month.atDay(dayOfMonth), home, stationIndex)
                     add(
                         category = "油费",
                         amount = money(quantity * price),
@@ -500,7 +541,7 @@ object DemoData {
                         location = if (stream.electric && home) {
                             tr("小区地库充电桩", "Home garage charger")
                         } else {
-                            stations[turn % stations.size]
+                            stations[stationIndex]
                         },
                         note = energyNote(spec, stream, mode, home),
                     )
