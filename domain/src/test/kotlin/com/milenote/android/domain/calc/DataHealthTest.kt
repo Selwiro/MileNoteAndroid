@@ -7,6 +7,7 @@ import com.milenote.android.domain.model.Vehicle
 import com.milenote.android.domain.model.blankLedger
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -137,6 +138,34 @@ class DataHealthTest {
         val issues = dataHealth(dirty, today).issues
         assertTrue(issues.any { it.code == HealthCodes.ODOMETER_BACKWARDS })
         assertTrue(issues.any { it.code == HealthCodes.ODOMETER_BELOW_START })
+    }
+
+    @Test
+    fun `two refuels on the same day do not look like a backwards reading`() {
+        // 同一天两笔（两次加油各记一次里程），录入顺序 / id 顺序与读数顺序故意相反：
+        // 以前按 (date, id) 排序会把 43,200 当成先发生，再报 43,000「比之前小」。
+        val car = ledger(
+            records = listOf(
+                Record(id = "zz", date = "2026-11-01", category = "油费", amount = 100.0, odometer = 43_200.0),
+                Record(id = "aa", date = "2026-11-01", category = "油费", amount = 100.0, odometer = 43_000.0),
+                Record(id = "prev", date = "2026-10-20", category = "油费", amount = 100.0, odometer = 42_000.0),
+            ),
+        )
+
+        assertFalse(codes(car).contains(HealthCodes.ODOMETER_BACKWARDS))
+    }
+
+    @Test
+    fun `a lower reading on a later day is still reported`() {
+        val car = ledger(
+            records = listOf(
+                Record(id = "a", date = "2026-10-01", category = "油费", amount = 100.0, odometer = 43_200.0),
+                Record(id = "b", date = "2026-11-01", category = "油费", amount = 100.0, odometer = 43_000.0),
+            ),
+        )
+
+        val issue = dataHealth(car, today).issues.first { it.code == HealthCodes.ODOMETER_BACKWARDS }
+        assertTrue(issue.detail.contains("43,200") || issue.detail.contains("43200"))
     }
 
     @Test

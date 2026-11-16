@@ -203,12 +203,17 @@ fun dataHealth(ledger: Ledger, today: LocalDate = Dates.today()): HealthReport {
         }
     }
 
-    // 7. 里程读数倒挂（按日期排序后读数下降 / 低于起始里程）。
+    // 7. 里程读数倒挂（跨日期下降 / 低于起始里程）。
+    //
+    // 同一天可能加两次油、记两次里程，读数本来就可以有两条；按「日期 + id」排序会把
+    // id 较小的那条当成先发生，于是同一天两笔也会被报成「读数比之前小」（用户实测）。
+    // 同一天内没有可靠的先后（记录只有日期），所以同一天按读数升序处理、只和**更早日期**
+    // 的最高读数比较——一天两笔即便录反也不会误报，跨天下降仍然会报。
     val startKm = ledger.vehicle.startKm
     var maxOdometer = Double.NEGATIVE_INFINITY
     records
         .filter { it.odometer != null }
-        .sortedWith(compareBy({ it.date }, { it.id }))
+        .sortedWith(compareBy({ it.date }, { it.odometer ?: 0.0 }))
         .forEach { record ->
             val odometer = record.odometer ?: return@forEach
             if (odometer < maxOdometer) {
@@ -217,8 +222,8 @@ fun dataHealth(ledger: Ledger, today: LocalDate = Dates.today()): HealthReport {
                     severity = HealthSeverity.WARN,
                     title = tr("里程读数比之前小", "Odometer lower than an earlier record"),
                     detail = tr(
-                        "%s：%s 小于之前的 %s",
-                        "%s: %s is lower than the earlier %s",
+                        "%s：%s 小于更早日期的最大读数 %s",
+                        "%s: %s is lower than the highest reading on an earlier day (%s)",
                         Format.dateDots(record.date),
                         Format.fmt(odometer),
                         Format.fmt(maxOdometer),

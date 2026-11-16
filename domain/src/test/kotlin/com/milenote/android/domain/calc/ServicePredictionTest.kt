@@ -52,6 +52,21 @@ class ServicePredictionTest {
     }
 
     @Test
+    fun `two readings on the same day use the higher one`() {
+        // 同一天两次加油：后录入的读数反而更小，不能把当天末条当成「最后读数」。
+        val car = ledger(
+            "2026-09-01" to 42_000.0,
+            "2026-11-01" to 45_000.0,
+            "2026-11-01" to 44_000.0,
+        )
+
+        val daily = averageDailyKm(car, today)
+
+        // 09-01 → 11-01 = 61 天，取当天最大读数 45,000 → 3,000 km。
+        assertEquals(3_000.0 / 61, daily!!, 1e-9)
+    }
+
+    @Test
     fun `readings outside the window are ignored`() {
         // 旧读数在 90 天窗口外，窗口内只剩一条 → 不预测。
         assertNull(averageDailyKm(ledger("2026-01-01" to 30_000.0, "2026-11-01" to 45_000.0), today))

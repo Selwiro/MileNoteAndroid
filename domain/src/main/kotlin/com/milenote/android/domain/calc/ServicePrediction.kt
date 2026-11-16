@@ -31,13 +31,17 @@ fun averageDailyKm(
     windowDays: Int = PREDICTION_WINDOW_DAYS,
 ): Double? {
     val from = today.minusDays(windowDays.toLong())
+    // 同一天可能加两次油、记两次里程：按当天**最大**读数算，避免「当天最后一笔恰好录得小」
+    // 把首末位移算小（甚至算成负的）。
     val readings = ledger.records.mapNotNull { record ->
         val odometer = record.odometer ?: return@mapNotNull null
         if (!odometer.isFinite() || odometer < 0) return@mapNotNull null
         val date = Dates.parse(record.date) ?: return@mapNotNull null
         if (date.isBefore(from) || date.isAfter(today)) return@mapNotNull null
         date to odometer
-    }.sortedBy { it.first }
+    }.groupBy { it.first }
+        .map { (date, sameDay) -> date to sameDay.maxOf { it.second } }
+        .sortedBy { it.first }
     if (readings.size < 2) return null
     val first = readings.first()
     val last = readings.last()
