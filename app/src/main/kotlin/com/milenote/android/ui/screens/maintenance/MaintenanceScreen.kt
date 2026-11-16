@@ -129,8 +129,6 @@ fun MaintenanceScreen(
         todoCandidates.take(maxOf(overdueCount, TODO_MAX_ITEMS))
     }
 
-    val exportCalendar = rememberCalendarExportAction()
-    val exportCalendarAll = rememberCalendarBatchExportAction()
     var completeTarget by remember { mutableStateOf<Reminder?>(null) }
     var addReminder by remember { mutableStateOf(false) }
     var editReminder by remember { mutableStateOf<Reminder?>(null) }
@@ -182,19 +180,10 @@ fun MaintenanceScreen(
             SectionCard(
                 title = tr("保养计划", "Service plan"),
                 action = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        // 一次性把未来所有未完成、有到期日期的提醒导出成一个 ICS（原来只能逐条导）。
-                        if (ledger.reminders.any { !it.done && Dates.isValid(it.dueDate) }) {
-                            TextButton(onClick = { exportCalendarAll(ledger.reminders) }) {
-                                Text(tr("导出日历", "Export calendar"))
-                            }
-                        }
-                        TextButton(onClick = { vm.openServicePlanEditor() }) {
-                            Text(tr("编辑计划", "Edit plan"))
-                        }
+                    // 「导出日历」（批量 / 逐条 ICS）2026-11-16 暂时下架，入口不显示；
+                    // 实现保留在 CalendarExport.kt，恢复时把按钮与 ReminderEditorDialog 的 onExportCalendar 接回来即可。
+                    TextButton(onClick = { vm.openServicePlanEditor() }) {
+                        Text(tr("编辑计划", "Edit plan"))
                     }
                 },
             ) {
@@ -283,7 +272,6 @@ fun MaintenanceScreen(
     if (addReminder || editReminder != null) {
         ReminderEditorDialog(
             reminder = editReminder,
-            onExportCalendar = exportCalendar,
             onDismiss = {
                 addReminder = false
                 editReminder = null

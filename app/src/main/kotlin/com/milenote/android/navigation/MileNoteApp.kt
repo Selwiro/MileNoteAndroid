@@ -141,13 +141,15 @@ private fun vehicleTypeIcon(profile: EnergyProfile): ImageVector = when (profile
 
 /** 顶栏标题：油耗分析 / 能耗分析按当前车能量档位切换（其余路由与语言无关逻辑不变）。 */
 private fun topBarCopy(route: String?, profile: EnergyProfile): TopBarCopy? = when (route) {
-    Routes.DASHBOARD -> TopBarCopy(tr("用车总览", "Overview"), "")
+    // 四个 tab 标题统一两字，与底栏 tab 文案逐字一致（2026-11-16 用户定：方案 A）。
+    // 英文保持短词，避免 2.0× 字号下长标题挤占车辆胶囊。
+    Routes.DASHBOARD -> TopBarCopy(tr("总览", "Overview"), "")
     Routes.FUEL -> if (profile != EnergyProfile.FUEL_ONLY) {
-        TopBarCopy(tr("能耗分析", "Energy"), "")
+        TopBarCopy(tr("能耗", "Energy"), "")
     } else {
-        TopBarCopy(tr("油耗分析", "Fuel"), "")
+        TopBarCopy(tr("油耗", "Fuel"), "")
     }
-    Routes.MAINTENANCE -> TopBarCopy(tr("维修保养", "Service"), "")
+    Routes.MAINTENANCE -> TopBarCopy(tr("保养", "Service"), "")
     Routes.MINE -> TopBarCopy(tr("我的", "Me"), "")
     else -> null
 }

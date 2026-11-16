@@ -175,12 +175,7 @@ fun MineScreen(
                         onClick = { onOpenPage(SettingsPage.APPEARANCE.key) },
                     )
                     SectionDivider()
-                    MineValueRow(
-                        icon = MileNoteIcons.Ruler,
-                        title = tr("单位", "Units"),
-                        onClick = { onOpenPage(SettingsPage.UNITS.key) },
-                    )
-                    SectionDivider()
+                    // 「单位」入口已移除（2026-11-16）：单位页只剩「固定元/公里/升」说明，没有可配置项。
                     MineValueRow(
                         icon = MileNoteIcons.Tag,
                         title = tr("费用分类与项目", "Categories & items"),

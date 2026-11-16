@@ -83,15 +83,13 @@ object MileNoteIcons {
         )
     }
 
-    /** 保养（选中：实心扳手）。 */
+    /** 保养（选中：实心扳手，与描边版同一条路径，方向不翻转）。 */
     val MaintenanceFilled: ImageVector by lazy {
-        // 选中态：**同一条扳手路径 + 加粗描边**，而不是换成另一套几何。
-        // 之前用 Material 实心 build 图标，方向和描边版相反（点前朝右、点后朝左），
-        // 切 tab 时扳手会「翻个面」，看起来像两个图标（2026-11-15 用户反馈）。
-        strokeIcon(
+        // 选中态要真的「变深」：与总览 / 我的 的 filledIcon 一致，直接填充同一条扳手路径。
+        // 2026-11-16 之前用加粗描边，视觉上仍是描边，用户反馈「保养点了还是空心」。
+        filledIcon(
             name = "MileNote.MaintenanceFilled",
-            pathData = arrayOf("M14 6a5 5 0 0 0-6 6l-5 5a2 2 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-3 3-4-4z"),
-            strokeWidth = ICON_STROKE_WIDTH * 1.7f,
+            "M14 6a5 5 0 0 0-6 6l-5 5a2 2 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-3 3-4-4z",
         )
     }
 

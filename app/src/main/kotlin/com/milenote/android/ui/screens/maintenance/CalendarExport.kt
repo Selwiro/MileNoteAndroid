@@ -1,5 +1,8 @@
 package com.milenote.android.ui.screens.maintenance
 
+// 2026-11-16 暂时下架：保养页「导出日历」（批量 / 编辑提醒里的逐条导出）入口已移除。
+// 本文件的 ICS 生成与 SAF 导出逻辑保留，恢复时在 MaintenanceScreen / MaintenanceDialogs 重新接回即可。
+
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
