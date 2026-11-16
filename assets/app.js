@@ -194,12 +194,12 @@
     /* 资源前缀由页面给出（中文页 assets/screens/，英文页 ../assets/screens-en/） */
     var base = stageImg.getAttribute('data-screen-base') || '';
     var shots = EN ? [
-      { file: 'dashboard.webp?v=20261116', cap: 'Overview' },
+      { file: 'fuel.webp?v=20261116', cap: 'Fuel & energy' },
       { file: 'editor.webp?v=20261116', cap: 'Quick entry' },
       { file: 'report.webp?v=20261116', cap: 'Vehicle report' },
       { file: 'maintenance.webp?v=20261116', cap: 'Maintenance' }
     ] : [
-      { file: 'dashboard.webp?v=20261116', cap: '用车总览' },
+      { file: 'fuel.webp?v=20261116', cap: '油耗·能耗' },
       { file: 'editor.webp?v=20261116', cap: '快速记账' },
       { file: 'report.webp?v=20261116', cap: '用车报告' },
       { file: 'maintenance.webp?v=20261116', cap: '维修保养' }
