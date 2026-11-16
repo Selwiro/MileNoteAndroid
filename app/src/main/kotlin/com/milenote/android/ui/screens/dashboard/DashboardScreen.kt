@@ -598,14 +598,17 @@ private fun VehicleHeroCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = heroModelLine(vehicle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
+            // 没填车牌 / 车型就不占这一行（2026-11-16 用户要求）：不再显示「点击完善车辆信息」。
+            heroModelLine(vehicle)?.let { modelLine ->
+                Text(
+                    text = modelLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             if (footer != null) {
                 if (fixedHeight) {
                     Spacer(modifier = Modifier.weight(1f))
@@ -764,12 +767,12 @@ private fun isCutoutArt(bitmap: ImageBitmap): Boolean {
     return sampled > 0 && transparent * 100 / sampled >= 15
 }
 
-/** 车牌 · 车型；都为空时给「点击完善车辆信息」引导。与「我的车辆」列表保持同一顺序。 */
-private fun heroModelLine(vehicle: Vehicle): String =
+/** 车牌 · 车型；都为空时返回 null（这一行整体不渲染，留白由卡片布局自然吸收）。 */
+private fun heroModelLine(vehicle: Vehicle): String? =
     listOf(vehicle.plate, vehicle.model)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
-        .ifBlank { tr("点击完善车辆信息", "Tap to complete vehicle info") }
+        .ifBlank { null }
 
 /** 页脚文案：已陪伴天数 · 记录笔数；两者都没有时返回 null（空账本状态）。 */
 private fun heroFooterText(ledger: Ledger, days: Int?): String? {
