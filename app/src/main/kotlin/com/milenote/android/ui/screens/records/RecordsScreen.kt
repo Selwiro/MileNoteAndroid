@@ -948,13 +948,17 @@ internal fun filterRecords(
         .map { Categories.normalize(it) }
         .filter { it.isNotEmpty() }
         .toSet()
+    // T008 ④：报告「费用构成」的「未分类」桶用内部 key（`__uncategorized__`），
+    // 它不在 9 类 options 里，按普通集合匹配会一条都查不到，这里单独认空分类。
+    val wantsUncategorized = Categories.UNCATEGORIZED in selectedCategories
     return ledger.records
         .filter { record ->
             val inPeriod = (range.from.isEmpty() || record.date >= range.from) &&
                 record.date <= range.to
             val normalizedCategory = Categories.normalize(record.category)
             val matchCategory = selectedCategories.isEmpty() ||
-                normalizedCategory in selectedCategories
+                normalizedCategory in selectedCategories ||
+                (wantsUncategorized && normalizedCategory.isEmpty())
             val matchSearch = keyword.isEmpty() || buildString {
                 append(record.note).append(' ')
                 append(record.source).append(' ')

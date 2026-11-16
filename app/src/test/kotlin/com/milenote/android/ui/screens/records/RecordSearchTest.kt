@@ -1,5 +1,6 @@
 package com.milenote.android.ui.screens.records
 
+import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Period
 import com.milenote.android.domain.model.Record
@@ -60,6 +61,31 @@ class RecordSearchTest {
             today = today,
         ).map { it.id }
         assertEquals(listOf("r3", "r1"), ids)
+    }
+
+    @Test
+    fun `uncategorized bucket matches records with empty category`() {
+        // T008 ④：报告「费用构成」的未分类行用内部 key 预置筛选，必须能查到空分类记录。
+        val withBlank = ledger.copy(
+            records = ledger.records + Record(id = "r4", date = "2026-11-04", category = "", amount = 90.0),
+        )
+        val ids = filterRecords(
+            withBlank,
+            query = "",
+            categories = setOf(Categories.UNCATEGORIZED),
+            period = Period.ALL,
+            today = today,
+        ).map { it.id }
+        assertEquals(listOf("r4"), ids)
+        // 普通分类不受这条兜底影响。
+        val parking = filterRecords(
+            withBlank,
+            query = "",
+            categories = setOf("停车费"),
+            period = Period.ALL,
+            today = today,
+        ).map { it.id }
+        assertEquals(listOf("r1"), parking)
     }
 
     @Test
