@@ -38,6 +38,31 @@ class CsvReaderTest {
     }
 
     @Test
+    fun `allows leading spaces before an opening quote`() {
+        // 手工 / 第三方工具导出的 CSV 常见 `, "备注,带逗号"`：引号前有空格也要按引用解析，
+        // 否则逗号会把字段切成两半（B13 收紧后的回归）。
+        val rows = reader.readRows("a, \"b,c\", d".toByteArray(Charsets.UTF_8))
+
+        assertEquals(listOf("a", "b,c", " d"), rows[0])
+    }
+
+    @Test
+    fun `keeps spaces in unquoted fields`() {
+        val rows = reader.readRows("a,  b".toByteArray(Charsets.UTF_8))
+
+        assertEquals(listOf("a", "  b"), rows[0])
+    }
+
+    @Test
+    fun `a mid field quote stays literal`() {
+        // 备注里的 12"屏 不能把后面的逗号当成引用内容（审计 B13 的原始目标）。
+        val rows = reader.readRows("备注,金额\n12\"屏,99".toByteArray(Charsets.UTF_8))
+
+        assertEquals(listOf("备注", "金额"), rows[0])
+        assertEquals(listOf("12\"屏", "99"), rows[1])
+    }
+
+    @Test
     fun `detects semicolon delimiter when more semicolons than commas`() {
         val text = "日期;金额;备注\n2024-01-01;12,5;早餐"
         val data = reader.read(text.toByteArray(Charsets.UTF_8), "导出.csv")

@@ -133,9 +133,9 @@ object SyncMerge {
         return Result(garage, stats.toSummary())
     }
 
-    /** 车辆内最后一次修改时刻（记录 / 提醒的 `updatedAt` 最大值）；用于「删除 vs 修改」裁决。 */
+    /** 车辆内最后一次修改时刻（记录 / 提醒的 `updatedAt` 最大值 + 恢复备份加回的时刻）；用于「删除 vs 修改」裁决。 */
     private fun carLastTouched(car: Ledger): Long {
-        var latest = 0L
+        var latest = car.restoredAt ?: 0L
         car.records.forEach { record -> latest = maxOf(latest, record.updatedAt ?: 0L) }
         car.reminders.forEach { reminder -> latest = maxOf(latest, reminder.updatedAt ?: 0L) }
         return latest
@@ -412,6 +412,8 @@ object SyncMerge {
         }
         return local.copy(
             vehicle = vehicle,
+            // 恢复备份加回整车的时刻要跟着车走：另一台设备靠它判断「这辆车被刻意恢复过」。
+            restoredAt = listOfNotNull(local.restoredAt, remote.restoredAt).maxOrNull(),
             customCategories = orNullIfEmpty(
                 (local.customCategories.orEmpty() + remote.customCategories.orEmpty()).distinct(),
                 local.customCategories,

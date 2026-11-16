@@ -24,25 +24,39 @@ internal data class EditorDraft(
     /** 表单按当前规则构造出的记录（反填时逐字段回写）。 */
     val record: Record,
     val savedAt: Long,
-)
+) {
+    /** 这份草稿是否属于「这辆车的这条记录」（新建记录 [editingId] 为 null）。 */
+    fun matchesTarget(carId: String, editingId: String?): Boolean =
+        this.carId == carId && this.editingId == editingId
+}
 
 /** 草稿的序列化与存储（纯 JVM 可测的编解码 + SharedPreferences 落盘）。 */
 internal class EditorDraftStore(private val context: Context?) {
-
     private val prefs = context?.applicationContext
         ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** 读出草稿；超过 [MAX_AGE_MILLIS] 或属于别的车就丢弃返回 null。 */
-    fun load(carId: String, now: Long = System.currentTimeMillis()): EditorDraft? {
+    /**
+     * 读出草稿；超过 [MAX_AGE_MILLIS] 或属于别的车就丢弃返回 null。
+     *
+     * @param editingId 当前编辑器对应的记录 id（新建为 null）。草稿必须与它一致才提示：
+     *   否则编辑记录 A 时留下的草稿会在打开记录 B（或新建）时被灌进 B 的表单，
+     *   保存后就把 B 覆盖成 A 的内容了。不一致时**不清理**，等用户打开原记录再提示。
+     */
+    fun load(carId: String, editingId: String?, now: Long = System.currentTimeMillis()): EditorDraft? {
         val raw = prefs?.getString(KEY_DRAFT, null) ?: return null
         val draft = decodeDraft(raw) ?: run {
             clear()
             return null
         }
-        if (draft.carId != carId || now - draft.savedAt > MAX_AGE_MILLIS) {
+        if (now - draft.savedAt > MAX_AGE_MILLIS) {
             clear()
             return null
         }
+        if (draft.carId != carId) {
+            clear()
+            return null
+        }
+        if (!draft.matchesTarget(carId, editingId)) return null
         return draft
     }
 
@@ -54,6 +68,20 @@ internal class EditorDraftStore(private val context: Context?) {
 
     fun clear() {
         runCatching { prefs?.edit()?.remove(KEY_DRAFT)?.commit() }
+    }
+
+    /**
+     * 只清理「当前这条记录」的草稿，别把另一条记录的未完成草稿一起删掉。
+     *
+     * 用在保存成功 / 删除记录之后；用户明确点「丢弃草稿」时仍走 [clear]。
+     */
+    fun clearFor(carId: String, editingId: String?) {
+        val raw = prefs?.getString(KEY_DRAFT, null) ?: return
+        val draft = decodeDraft(raw) ?: run {
+            clear()
+            return
+        }
+        if (draft.matchesTarget(carId, editingId)) clear()
     }
 
     companion object {

@@ -57,15 +57,53 @@ object BackupFolder {
         wrapUnavailable {
             val rootId = rootDocumentId(context, treeUri, subdir)
             val existing = list(context, treeUri, rootId).firstOrNull { !it.isDir && it.name == name }
-            val docUri = existing?.uri ?: run {
-                DocumentsContract.createDocument(context.contentResolver, documentUri(treeUri, rootId), MIME_JSON, name)
-            } ?: error(tr("无法创建备份文件", "Could not create the backup file"))
-            // "wt" = write + truncate：覆盖旧文件时不能留下上一次更长的尾部；个别 provider 不支持 "wt" 时退回 "w"。
-            val stream = runCatching { context.contentResolver.openOutputStream(docUri, "wt") }.getOrNull()
-                ?: context.contentResolver.openOutputStream(docUri, "w")
-            stream?.use { it.write(bytes) } ?: error(tr("无法写入备份文件", "Could not write the backup file"))
-            docUri
+            if (existing != null) {
+                // 优先 "wt"（写入 + 截断）：覆盖旧文件时不能留下上一次更长的尾部。
+                val truncating = runCatching {
+                    context.contentResolver.openOutputStream(existing.uri, "wt")
+                }.getOrNull()
+                if (truncating != null) {
+                    truncating.use { it.write(bytes) }
+                    return@wrapUnavailable existing.uri
+                }
+                // 个别 provider 不支持 "wt"，用 "w" 覆盖可能不截断 → 旧文件更长的尾部会让 JSON 变成
+                // 「有效前缀 + 垃圾」。这里删掉旧文档再新建同名文件，从 0 开始写。
+                val deleted = runCatching {
+                    DocumentsContract.deleteDocument(context.contentResolver, existing.uri)
+                }.getOrDefault(false)
+                if (deleted) {
+                    val recreated = DocumentsContract.createDocument(
+                        context.contentResolver,
+                        documentUri(treeUri, rootId),
+                        MIME_JSON,
+                        name,
+                    ) ?: error(tr("无法创建备份文件", "Could not create the backup file"))
+                    writeBytes(context, recreated, bytes)
+                    return@wrapUnavailable recreated
+                }
+                // 删除也失败（只读 / 被占用）：最后退化为 "w"，最坏情况是多留几份旧文件。
+                val fallback = runCatching {
+                    context.contentResolver.openOutputStream(existing.uri, "w")
+                }.getOrNull() ?: error(tr("无法写入备份文件", "Could not write the backup file"))
+                fallback.use { it.write(bytes) }
+                return@wrapUnavailable existing.uri
+            }
+            val created = DocumentsContract.createDocument(
+                context.contentResolver,
+                documentUri(treeUri, rootId),
+                MIME_JSON,
+                name,
+            ) ?: error(tr("无法创建备份文件", "Could not create the backup file"))
+            writeBytes(context, created, bytes)
+            created
         }
+
+    /** 写入字节；流打不开就报成可展示的「无法写入」。 */
+    private fun writeBytes(context: Context, uri: Uri, bytes: ByteArray) {
+        val stream = runCatching { context.contentResolver.openOutputStream(uri, "w") }.getOrNull()
+            ?: error(tr("无法写入备份文件", "Could not write the backup file"))
+        stream.use { it.write(bytes) }
+    }
 
     /**
      * 删除超出保留份数的旧备份，返回实际删除个数。

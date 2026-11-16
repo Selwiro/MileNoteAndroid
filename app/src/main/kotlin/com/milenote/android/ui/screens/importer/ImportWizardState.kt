@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 导入向导的状态机与全部业务动作。
@@ -116,9 +117,18 @@ internal class ImportWizardState(
     var result by mutableStateOf<WizardResult?>(null)
         private set
 
-    /** 本次导入前是否留下了快照；结果页据此显示「撤销本次导入」（B23）。 */
-    var canUndoImport by mutableStateOf(false)
+    /**
+     * 本次导入前的快照文件（B23）。
+     *
+     * 存具体文件而不是「有快照」的布尔值：导入后自动同步会再写快照，
+     * 撤销必须回到导入前那一份，不能用目录里的最新一份。
+     */
+    var undoSnapshot by mutableStateOf<File?>(null)
         private set
+
+    /** 结果页据此显示「撤销本次导入」。 */
+    val canUndoImport: Boolean
+        get() = undoSnapshot != null
 
     private var previewGeneration = 0
 
@@ -643,7 +653,7 @@ internal class ImportWizardState(
                         val withFuelTank = hasFuelTank && src != ImportSource.CSV
                         // 等待真实写库结果再展示成功：修复「先报成功、后写库失败」。
                         val written = vm.applyImportAwait(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
-                        canUndoImport = written.undoAvailable
+                        undoSnapshot = written.undoSnapshot
                         result = WizardResult(
                             title = if (overwriteDuplicates) {
                                 tr("导入完成（已覆盖重复）", "Import complete (duplicates overwritten)")
@@ -701,12 +711,13 @@ internal class ImportWizardState(
             busyMessage = tr("正在撤销导入…", "Undoing the import…")
             error = null
             try {
-                if (!vm.undoLastImport()) {
+                val snapshot = undoSnapshot
+                if (snapshot == null || !vm.undoLastImport(snapshot)) {
                     throw ImportFileException(
-                        tr("撤销失败：没有可用的导入前快照", "Undo failed: no usable pre-import snapshot"),
+                        tr("撤销失败：导入前的快照已不可用", "Undo failed: the pre-import snapshot is no longer available"),
                     )
                 }
-                canUndoImport = false
+                undoSnapshot = null
                 result = WizardResult(
                     title = tr("已撤销本次导入", "Import undone"),
                     lines = listOf(tr("已恢复导入前的数据。", "The data from before the import was restored.")),

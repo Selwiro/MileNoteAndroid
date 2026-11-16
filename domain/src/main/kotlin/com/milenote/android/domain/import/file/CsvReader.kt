@@ -8,7 +8,7 @@ import com.milenote.android.domain.i18n.tr
  * 规则与 Web 端 `parseDelimited` 保持一致：
  * - 自动探测分隔符：首行含 tab 用 tab；否则比较 `;` 与 `,`，分号更多时用分号；
  * - 双引号包裹字段，字段内 `""` 表示一个引号，引号内允许分隔符和换行；
- * - 只有**字段开头**的引号才开启引用；字段中间的引号按普通字符处理；
+ * - 只有**字段开头**的引号才开启引用（字段开头允许有空格 / tab）；字段中间的引号按普通字符处理；
  * - 引号一直没闭合时抛 [SpreadsheetReadException]（带行号），不把后面所有行吞成一行；
  * - 兼容 CRLF / LF / CR 换行与 UTF-8 BOM；
  * - 完全空白的行会被忽略；
@@ -83,8 +83,16 @@ class CsvReader {
                 }
 
                 char == '"' && atFieldStart -> {
+                    // 字段开头允许有空格 / tab（如 `, "备注,带逗号"`）：这些空白不属于内容，
+                    // 引号才开启引用。否则逗号会把引号字段切坏（B13 收紧后漏掉的旧兼容）。
+                    cell.clear()
                     quoted = true
                     atFieldStart = false
+                }
+
+                (char == ' ' || char == '\t') && atFieldStart && !quoted -> {
+                    // 先攒着前导空白：随后若遇到引号就整段丢弃；否则原样保留（不改变未加引号字段的内容）。
+                    cell.append(char)
                 }
 
                 char == '"' -> {

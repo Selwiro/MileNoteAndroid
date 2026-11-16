@@ -50,6 +50,15 @@ data class Ledger(
      * 墓碑超过 180 天在同步合并时修剪（见 `SyncMerge.TOMBSTONE_RETENTION_MS`）。
      */
     val tombstones: List<Tombstone>? = null,
+    /**
+     * 「整车被恢复备份加回本机」的时刻（epoch 毫秒）。
+     *
+     * 用户在新装 / 丢车后用旧备份把整辆车恢复回来，是一次**显式修改**：不能因为另一台设备
+     * 上还有这辆车的删除墓碑（180 天内）就在下一次同步时又把它删掉。车辆级「删除 vs 修改」
+     * 裁决（[com.milenote.android.domain.backup.SyncMerge]）会把该值算进「最后修改时刻」。
+     * null 表示这辆车不是通过恢复备份加回来的（老备份缺省）。
+     */
+    val restoredAt: Long? = null,
 )
 
 /**

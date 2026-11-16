@@ -298,15 +298,15 @@ class GarageRepository(
      * 与 [deleteData] / [replace] 的快照共用同一个目录与保留份数。
      * 空账本首次导入时还没有 `garage.json`，先把当前（空）账本落盘，快照才有东西可复制——
      * 否则「装好 App 第一次导入」这种最常见的情况反而没有撤销入口（B23）。
-     * @return 是否留下了快照。
+     * @return 快照文件；演示模式 / 写入暂停 / 复制失败返回 null。
      */
-    suspend fun snapshotForUndo(): Boolean = mutex.withLock {
-        if (_demoMode.value || writeBlocked) return@withLock false
+    suspend fun snapshotForUndo(): File? = mutex.withLock {
+        if (_demoMode.value || writeBlocked) return@withLock null
         withContext(io) {
             runCatching {
                 if (!store.exists()) store.write(BackupCodec.encode(_garage.value ?: loadLocked()))
-                store.snapshot() != null
-            }.getOrDefault(false)
+                store.snapshot()
+            }.getOrNull()
         }
     }
 
@@ -323,8 +323,26 @@ class GarageRepository(
     suspend fun rollbackToLatestSnapshot(): Boolean = mutex.withLock {
         if (_demoMode.value) return@withLock false
         val snapshot = withContext(io) { store.latestSnapshot() } ?: return@withLock false
-        val text = withContext(io) { runCatching { snapshot.readText() }.getOrNull() } ?: return@withLock false
-        val restored = runCatching { BackupCodec.decode(text) }.getOrNull() ?: return@withLock false
+        restoreSnapshotLocked(snapshot)
+    }
+
+    /**
+     * 回滚到**指定**快照。
+     *
+     * 「撤销本次导入」必须用导入前那一份：快照目录与覆盖 / 删除 / 自动同步共用，
+     * 「最新一份」在导入后 2.5 秒自动同步时就会被顶掉，撤销会恢复成同步后的状态（假成功）。
+     *
+     * @param snapshot [snapshotForUndo] 返回的文件；文件已不存在 / 不可解析时返回 false。
+     */
+    suspend fun rollbackToSnapshot(snapshot: File): Boolean = mutex.withLock {
+        if (_demoMode.value) return@withLock false
+        restoreSnapshotLocked(snapshot)
+    }
+
+    /** 用快照整体替换当前账本；成功与否都不关掉写保护（失败时恢复原状）。 */
+    private suspend fun restoreSnapshotLocked(snapshot: File): Boolean {
+        val text = withContext(io) { runCatching { snapshot.readText() }.getOrNull() } ?: return false
+        val restored = runCatching { BackupCodec.decode(text) }.getOrNull() ?: return false
         // 回滚本身就是在修数据：先允许写入；失败则恢复原来的保护状态，不能借回滚把保护关掉。
         val wasBlocked = writeBlocked
         writeBlocked = false
@@ -336,7 +354,7 @@ class GarageRepository(
             writeBlocked = wasBlocked
             _persistenceBlocked.value = wasBlocked
         }
-        ok
+        return ok
     }
 
     /**
@@ -362,7 +380,10 @@ class GarageRepository(
         val restored = withContext(io) { BackupCodec.restore(current, text) }
         // UX3：新装时当前车是刚建的空白车，恢复后自动切到第一辆有内容的车，
         // 否则首页/报告全 0，用户会以为恢复失败。
-        val merged = GarageOps.activeCarWithRecords(restored)
+        val withActive = GarageOps.activeCarWithRecords(restored)
+        // 恢复是显式修改：本次新加回来的整车打上 restoredAt，避免下次同步被另一台设备的
+        // 删除墓碑（180 天内）又删掉；同时清掉本机残留的车辆墓碑。
+        val merged = GarageOps.markRestoredCars(withActive, current, clock())
         val switchedTo = merged.activeCar
             ?.takeIf { it.id != restored.activeId }
             ?.vehicle?.name

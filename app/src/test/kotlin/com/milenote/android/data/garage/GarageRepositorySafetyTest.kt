@@ -227,8 +227,9 @@ class GarageRepositorySafetyTest {
         val repo = GarageRepository(store)
         repo.load()
 
-        assertTrue(repo.snapshotForUndo())
-        assertNotNull(store.latestSnapshot())
+        val snapshot = repo.snapshotForUndo()
+        assertNotNull(snapshot)
+        assertEquals(store.latestSnapshot(), snapshot)
         assertTrue("只复制快照，不应写账本：${store.writes}", store.writes.isEmpty())
     }
 
@@ -239,7 +240,7 @@ class GarageRepositorySafetyTest {
         repo.load()
 
         // 空账本首次导入：没有 garage.json，也要能留快照，否则结果页没有「撤销本次导入」。
-        assertTrue(repo.snapshotForUndo())
+        assertNotNull(repo.snapshotForUndo())
         assertNotNull(store.latestSnapshot())
         assertEquals("应先落一份空账本，快照才有东西可复制", 1, store.writes.size)
         assertNotNull(BackupCodec.decode(store.writes.single()))
@@ -269,6 +270,39 @@ class GarageRepositorySafetyTest {
 
         assertTrue(repo.rollbackToLatestSnapshot())
         assertEquals(originalTheme, repo.garage.value!!.theme)
+    }
+
+    @Test
+    fun `undo uses the exact snapshot even when a newer snapshot exists`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson).apply { snapshotOnWrite = true }
+        val repo = GarageRepository(store)
+        repo.load()
+        val originalTheme = repo.garage.value!!.theme
+
+        // 导入前留的快照。
+        val importSnapshot = repo.snapshotForUndo()!!
+        // 模拟导入写入，再模拟导入后自动同步又写了一份更新的快照（同一目录）。
+        repo.update { it.copy(theme = "forest") }
+        val newerSnapshot = store.snapshot()!!
+        repo.update { it.copy(theme = "purple") }
+        assertEquals(newerSnapshot, store.latestSnapshot())
+
+        // 撤销必须回到导入前那份，而不是「最新一份」。
+        assertTrue(repo.rollbackToSnapshot(importSnapshot))
+        assertEquals(originalTheme, repo.garage.value!!.theme)
+    }
+
+    @Test
+    fun `rollback to a missing snapshot fails without touching the ledger`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson).apply { snapshotOnWrite = true }
+        val repo = GarageRepository(store)
+        repo.load()
+        val before = repo.garage.value!!
+
+        val missing = File.createTempFile("mn-missing-snapshot", ".json").apply { delete() }
+
+        assertFalse(repo.rollbackToSnapshot(missing))
+        assertEquals(before, repo.garage.value)
     }
 
     @Test

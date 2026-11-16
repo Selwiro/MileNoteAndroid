@@ -120,7 +120,10 @@ fun RecordEditorScreen(
     // 每次改动防抖 600ms 落一份本机草稿（只有一条、不含图片），重进时提示继续编辑。
     val context = LocalContext.current
     val draftStore = remember { EditorDraftStore(context) }
-    var pendingDraft by remember(form) { mutableStateOf(draftStore.load(ledger.id)) }
+    var pendingDraft by remember(form) {
+        // 只认「这条记录」的草稿：编辑 A 时留下的草稿不能灌进 B 的表单（B22 之后的回归）。
+        mutableStateOf(draftStore.load(ledger.id, form.original?.id))
+    }
     LaunchedEffect(form) {
         snapshotFlow {
             if (!form.isDirty) return@snapshotFlow ""
@@ -188,8 +191,11 @@ fun RecordEditorScreen(
             if (record != null) {
                 // 真正写入（或重复确认）后由 VM 关闭编辑器；这里不提前关，
                 // 否则重复确认点「取消」时整份表单已经没了（B21）。
-                draftStore.clear()
-                vm.saveRecord(record)
+                // 草稿等**写入成功**后由 VM 回调清理：提前清会让「保存失败 / 确认取消 +
+                // 进程被杀」重新变成白填（B22 的目标）。
+                vm.saveRecord(record) {
+                    draftStore.clearFor(ledger.id, form.original?.id)
+                }
             }
         },
         onRequestDelete = { confirmDelete = true },
@@ -208,6 +214,8 @@ fun RecordEditorScreen(
                     onClick = {
                         confirmDelete = false
                         form.original?.let(vm::deleteRecord)
+                        // 删掉的记录不该再以草稿形式回来。
+                        draftStore.clearFor(ledger.id, form.original?.id)
                         onDismiss()
                     },
                 ) {
@@ -251,7 +259,7 @@ fun RecordEditorScreen(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        draftStore.clear()
+                        draftStore.clearFor(ledger.id, form.original?.id)
                         pendingDraft = null
                     },
                 ) {
@@ -270,7 +278,7 @@ fun RecordEditorScreen(
                 TextButton(
                     onClick = {
                         confirmDiscard = false
-                        draftStore.clear()
+                        draftStore.clearFor(ledger.id, form.original?.id)
                         onDismiss()
                     },
                 ) {

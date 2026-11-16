@@ -67,6 +67,26 @@ class DataHealthTest {
     }
 
     @Test
+    fun `undo restores two identical duplicate rows`() {
+        // 两条完全相同的重复（导入 / 手工复制同名记录）：撤销不能只回来一条。
+        val same = Record(id = "same", date = "2026-11-01", category = "停车费", amount = 10.0, updatedAt = 1L)
+        val dup = ledger(
+            records = listOf(
+                same, same.copy(), same.copy(),
+                Record(id = "other", date = "2026-11-03", category = "停车费", amount = 30.0),
+            ),
+        )
+
+        val fixed = removeDuplicateRecords(dup, "same")
+        assertEquals(2, fixed.ledger.records.size)
+        assertEquals(2, fixed.undo.records.size)
+
+        val undone = restoreRemovedRecords(fixed.ledger, fixed.undo, allowDuplicateIds = true)
+        assertEquals(4, undone.records.size)
+        assertEquals(3, undone.records.count { it.id == "same" })
+    }
+
+    @Test
     fun `dates invalid before 1970 and future are reported`() {
         val dirty = ledger(
             records = listOf(

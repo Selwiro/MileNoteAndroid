@@ -96,21 +96,19 @@ fun restoreRemovedRecords(
     ledger: Ledger,
     undo: DeletedRecords,
     /**
-     * 是否允许恢复出同 id 的记录。
+     * 是否原样恢复（允许同 id 的多条记录）。
      *
-     * 数据体检删除「同 id 重复」时，撤销必须把原样（含重复 id）还回来；普通删除的 id 唯一，
-     * 传 true 也不会有额外影响。
+     * 数据体检删除「同 id 重复」时，撤销必须把当时删掉的几行**原样**还回来（含重复 id）：
+     * 这时不能按「账本里已有同 id / 同内容」去重，否则完全相同的重复只会回来一条。
+     * 普通删除传 false：同步期间记录被拉回来时不重复插入。
      */
     allowDuplicateIds: Boolean = false,
 ): Ledger {
     if (undo.isEmpty) return ledger
     val records = ledger.records.toMutableList()
     undo.records.forEachIndexed { i, record ->
-        val exists = if (allowDuplicateIds) {
-            records.any { it == record }
-        } else {
-            records.any { it.id == record.id }
-        }
+        // 体检的「删重复」撤销：原样插回每一行（同一份重复记录删了几条就回来几条）。
+        val exists = !allowDuplicateIds && records.any { it.id == record.id }
         if (!exists) {
             val at = undo.indices.getOrElse(i) { records.size }.coerceIn(0, records.size)
             records.add(at, record)

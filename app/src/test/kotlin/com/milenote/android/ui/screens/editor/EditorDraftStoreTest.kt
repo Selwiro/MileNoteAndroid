@@ -2,6 +2,8 @@ package com.milenote.android.ui.screens.editor
 
 import com.milenote.android.domain.model.Record
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -51,6 +53,18 @@ class EditorDraftStoreTest {
     fun `garbage draft decodes to null instead of crashing`() {
         assertNull(EditorDraftStore.decodeDraft("not json"))
         assertNull(EditorDraftStore.decodeDraft("{}"))
+    }
+
+
+    @Test
+    fun `draft only matches its own car and record`() {
+        val draft = EditorDraft(carId = "car-1", editingId = "r1", record = record(), savedAt = 1L)
+
+        assertTrue(draft.matchesTarget("car-1", "r1"))
+        assertTrue("新建记录的草稿只匹配新建", EditorDraft(carId = "car-1", record = record(), savedAt = 1L).matchesTarget("car-1", null))
+        assertFalse("编辑 A 的草稿不能灌进记录 B", draft.matchesTarget("car-1", "r2"))
+        assertFalse("编辑 A 的草稿不能灌进新建", draft.matchesTarget("car-1", null))
+        assertFalse(draft.matchesTarget("car-2", "r1"))
     }
 
     @Test

@@ -34,6 +34,24 @@ import androidx.compose.material3.HorizontalDivider
 import com.milenote.android.ui.components.SectionCard
 import com.milenote.android.ui.theme.MileNoteDimens
 
+/** 体检清单每块最多渲染多少条（避免一次组合上万行）。 */
+internal const val HealthIssueChunkSize: Int = 40
+
+/** 体检清单最多展示多少条；超出的只提示数量。 */
+internal const val HealthIssueShownMax: Int = 400
+
+/** 最多展示多少条（给界面算「还有 N 项未列出」用）。 */
+internal fun healthIssuesShown(total: Int): Int = total.coerceAtMost(HealthIssueShownMax)
+
+/**
+ * 把一类问题切成小块（每块不超过 [HealthIssueChunkSize]、总量不超过 [HealthIssueShownMax]）。
+ *
+ * 纯函数便于单测：批量脏数据（整批未来日期 / 里程倒挂）可能一次产生上万条，
+ * 必须保证界面每次只组合有限行。
+ */
+internal fun healthIssueChunks(issues: List<HealthIssue>): List<List<HealthIssue>> =
+    issues.take(HealthIssueShownMax).chunked(HealthIssueChunkSize)
+
 /**
  * 数据体检页（F1）：列出 `dataHealth()` 的问题清单。
  *
@@ -93,8 +111,8 @@ internal fun HealthPage(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = tr(
-                            "共检查 %d 条记录、%d 条提醒；修复前会保留可撤销的快照。",
-                            "Checked %d records and %d reminders; fixes keep an undo snapshot.",
+                            "共检查 %d 条记录、%d 条提醒；只有「删除重复」可以撤销，其他修复会立即写入。",
+                            "Checked %d records and %d reminders; only duplicate deletion can be undone — other fixes are applied immediately.",
                             ledger.records.size,
                             ledger.reminders.size,
                         ),
@@ -116,6 +134,18 @@ internal fun HealthPage(
         }
 
         if (!report.isEmpty) {
+            // 每条问题一个动作；抽出来给分块渲染复用。
+            val onIssueAction: (HealthIssue) -> Unit = { issue ->
+                when (issue.fix) {
+                    HealthFix.OPEN_EDITOR -> issue.recordId?.let(onOpenRecord)
+                    HealthFix.OPEN_VEHICLE -> onOpenVehicle()
+                    HealthFix.DELETE_DUPLICATE -> confirmDuplicate = issue
+                    HealthFix.RECOMPUTE_REMINDER,
+                    HealthFix.MARK_FUEL_COUNTED,
+                    -> onFix(issue)
+                    null -> Unit
+                }
+            }
             listOf(
                 HealthSeverity.ERROR to tr("错误（会让统计出错）", "Errors (affect totals)"),
                 HealthSeverity.WARN to tr("可疑（建议核对）", "Warnings (please check)"),
@@ -131,25 +161,32 @@ internal fun HealthPage(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
-                item("issues-$severity") {
-                    SectionCard {
-                        issues.forEachIndexed { index, issue ->
-                            if (index > 0) HorizontalDivider()
-                            IssueRow(
-                                issue = issue,
-                                onAction = {
-                                    when (issue.fix) {
-                                        HealthFix.OPEN_EDITOR -> issue.recordId?.let(onOpenRecord)
-                                        HealthFix.OPEN_VEHICLE -> onOpenVehicle()
-                                        HealthFix.DELETE_DUPLICATE -> confirmDuplicate = issue
-                                        HealthFix.RECOMPUTE_REMINDER,
-                                        HealthFix.MARK_FUEL_COUNTED,
-                                        -> onFix(issue)
-                                        null -> Unit
-                                    }
-                                },
-                            )
+                // 分块渲染：体检规则是「每条记录最多一条」，一次批量脏数据导入可能产生上万条。
+                // 全塞进一个 Lazy 项会一次组合上万行（卡死 / ANR），这里每块最多 40 条、
+                // 总共最多展示 400 条，其余只提示数量（先修复或导出核对）。
+                healthIssueChunks(issues).forEachIndexed { chunkIndex, chunk ->
+                    item("issues-$severity-$chunkIndex") {
+                        SectionCard {
+                            chunk.forEachIndexed { index, issue ->
+                                if (index > 0) HorizontalDivider()
+                                IssueRow(issue = issue, onAction = { onIssueAction(issue) })
+                            }
                         }
+                    }
+                }
+                val hidden = issues.size - healthIssuesShown(issues.size)
+                if (hidden > 0) {
+                    item("issues-$severity-more") {
+                        Text(
+                            text = tr(
+                                "还有 %d 项未列出：先修复上面这些（或导出备份后核对），再重新体检。",
+                                "%d more issues are not listed — fix the ones above (or export a backup and check), then run the check again.",
+                                hidden,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
                     }
                 }
             }

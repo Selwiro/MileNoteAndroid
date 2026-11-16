@@ -86,6 +86,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** 记一笔/编辑记录的目标。 */
 data class EditorTarget(
@@ -116,6 +117,8 @@ data class DeleteUndo(
     /** 删除发生在哪辆车：期间切换车辆后不再把记录插回另一辆车。 */
     val carId: String,
     val deleted: DeletedRecords,
+    /** 体检「删重复」的撤销：原样插回（两条完全相同的重复都要回来），不按 id 去重。 */
+    val allowDuplicateIds: Boolean = false,
 )
 
 /**
@@ -226,8 +229,8 @@ data class ImportWriteResult(
     val skipped: Int,
     val overwritten: Int,
     val completedServices: Int,
-    /** 导入前是否留下了可回滚快照（结果页据此显示「撤销本次导入」）。 */
-    val undoAvailable: Boolean = false,
+    /** 导入前快照（结果页「撤销本次导入」必须回到这一份，不能用「最新快照」）。 */
+    val undoSnapshot: File? = null,
 )
 
 /** 全局 UI 状态。 */
@@ -477,7 +480,13 @@ class MileNoteViewModel(
         )
     }
 
-    fun saveRecord(record: Record) {
+    /**
+     * 保存一条记录。
+     *
+     * @param onSaved 真正写入成功后的回调（编辑器用它清掉草稿：撤掉草稿的时机不能早于写盘，
+     *   否则写失败 / 重复确认取消期间进程被杀，这次输入就丢了）。
+     */
+    fun saveRecord(record: Record, onSaved: (() -> Unit)? = null) {
         val active = _state.value.activeCar
         // 手动记账疑似重复提醒：仅新增记录、且同日同分类同金额时确认一次。
         val isNew = active?.records?.none { it.id == record.id } ?: true
@@ -511,16 +520,16 @@ class MileNoteViewModel(
                         tail,
                     ),
                     confirmLabel = tr("仍要保存", "Save anyway"),
-                    action = { persistRecord(record) },
+                    action = { persistRecord(record, onSaved) },
                 ),
             )
             return
         }
         _state.value = _state.value.copy(editorError = null)
-        persistRecord(record)
+        persistRecord(record, onSaved)
     }
 
-    private fun persistRecord(record: Record) {
+    private fun persistRecord(record: Record, onSaved: (() -> Unit)? = null) {
         // 能源费分类显示名随能量档位：纯电「电费」、插混「能源」；燃油车保持原提示文案不变。
         val active = _state.value.activeCar
         val profile = active?.vehicle?.energyProfile ?: EnergyProfile.FUEL_ONLY
@@ -563,6 +572,7 @@ class MileNoteViewModel(
                 editorError = failure,
                 message = failure ?: savedMessage(saved),
             )
+            if (failure == null) onSaved?.invoke()
         }
     }
 
@@ -679,7 +689,7 @@ class MileNoteViewModel(
         val count = undo.deleted.records.size
         viewModelScope.launch {
             repository.update(syncHistory = true) { garage ->
-                updateActive(garage) { restoreRemovedRecords(it, undo.deleted, allowDuplicateIds = true) }
+                updateActive(garage) { restoreRemovedRecords(it, undo.deleted, allowDuplicateIds = undo.allowDuplicateIds) }
             }
             _state.value = _state.value.copy(
                 deleteUndo = null,
@@ -757,7 +767,9 @@ class MileNoteViewModel(
                 tr("已删除 %d 条重复记录", "Deleted %d duplicate records", deleted.records.size),
             )
             _state.value = _state.value.copy(
-                deleteUndo = carId?.let { DeleteUndo(message = message, carId = it, deleted = deleted) },
+                deleteUndo = carId?.let {
+                    DeleteUndo(message = message, carId = it, deleted = deleted, allowDuplicateIds = true)
+                },
                 message = message,
             )
         }
@@ -1467,9 +1479,10 @@ class MileNoteViewModel(
         var skipped = 0
         var overwritten = 0
         var completedServices = 0
-        // 导入前留快照：结果页可一键撤销本次导入（B23）。
-        val undoAvailable = repository.snapshotForUndo()
-        repository.update(syncHistory = true) { garage ->
+        // 导入前留快照：结果页可一键撤销本次导入（B23）。必须记住具体文件：
+        // 导入后自动同步会再写快照，「最新一份」可能已经不是导入前的状态。
+        val undoSnapshot = repository.snapshotForUndo()
+        val written = repository.update(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
                         // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据写回。
                         // 复用旧 id / 口径字段，保住「提醒 → 记录」的关联（B17）。
@@ -1527,6 +1540,14 @@ class MileNoteViewModel(
                     }
                 }
         // update() 不再抛写盘异常（避免崩溃），但导入必须把失败传给向导，不能显示「导入完成」。
+        if (written == null) {
+            throw IllegalStateException(
+                tr(
+                    "导入失败：本机数据尚未加载完成，请稍后重试",
+                    "Import failed: the local data has not loaded yet. Try again in a moment.",
+                ),
+            )
+        }
         repository.writeError.value?.let { throw IllegalStateException(it) }
         return ImportWriteResult(
             added = added,
@@ -1534,7 +1555,7 @@ class MileNoteViewModel(
             skipped = skipped,
             overwritten = overwritten,
             completedServices = completedServices,
-            undoAvailable = undoAvailable,
+            undoSnapshot = undoSnapshot,
         )
     }
 
@@ -1562,8 +1583,9 @@ class MileNoteViewModel(
         viewModelScope.launch { settingsRepository.setBackupKeepCount(count) }
     }
 
-    /** 撤销最近一次导入：回到导入前的本机快照（B23）。 */
-    suspend fun undoLastImport(): Boolean = repository.rollbackToLatestSnapshot()
+    /** 撤销本次导入：回到 [snapshot] 这份导入前快照（B23）。 */
+    suspend fun undoLastImport(snapshot: File?): Boolean =
+        snapshot?.let { repository.rollbackToSnapshot(it) } ?: false
 
     /** 刷新「最近一次损坏账本」状态；进入备份与还原页时调用。 */
     suspend fun refreshQuarantinedRaw() {

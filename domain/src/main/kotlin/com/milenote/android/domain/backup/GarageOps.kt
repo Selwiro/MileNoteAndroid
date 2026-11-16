@@ -230,6 +230,34 @@ object GarageOps {
     /** 这辆车是否有内容（有记录或提醒）：用于恢复后自动选车，空车不抢焦点。 */
     private fun Ledger.hasContent(): Boolean = records.isNotEmpty() || reminders.isNotEmpty()
 
+    /**
+     * 把「本次恢复备份新加回本机的整车」标记为 `restoredAt = at`，并清掉它们的删除墓碑。
+     *
+     * 背景：A 设备删了车 X 并同步；B 设备也从同步里删掉了 X（本地留下车辆墓碑），之后用户
+     * 用旧备份恢复，X 被加回来。下一次同步时 A（或 B 自己）的墓碑会比 X 里所有记录都新，
+     * 按「删除 vs 修改」又把车删一次——恢复等于白做。
+     *
+     * 恢复是显式动作，应算一次修改：这里只标记**相对 [previous] 新增的**车辆，不动其它车。
+     * 已经在本机存在的车不会被标记，避免把普通合并变成「全量覆盖远端」。
+     *
+     * @param previous 恢复前的车库（用来判断哪些车是这次新加回来的）
+     * @param at 恢复时刻（epoch 毫秒）
+     */
+    fun markRestoredCars(garage: Garage, previous: Garage, at: Long): Garage {
+        val existed = previous.cars.mapTo(HashSet()) { it.id }
+        val restored = garage.cars.filter { it.id.isNotEmpty() && it.id !in existed }.mapTo(HashSet()) { it.id }
+        if (restored.isEmpty()) return garage
+        return garage.copy(
+            cars = garage.cars.map { car ->
+                if (car.id in restored) car.copy(restoredAt = at) else car
+            },
+            // 本机若还留着这辆车的墓碑（之前同步过来的删除），一并清掉：车已经回来了。
+            vehicleTombstones = garage.vehicleTombstones.orEmpty()
+                .filterNot { it.id in restored }
+                .takeIf { it.isNotEmpty() },
+        )
+    }
+
     /** 恢复 v1 单车备份：只合并到当前车辆（Web `mergeGarage` 的 version===1 分支）。 */
     fun mergeLegacyBackup(current: Garage, legacy: Ledger): Garage {
         validateLedger(legacy)
