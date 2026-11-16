@@ -24,6 +24,7 @@ class SettingsRepository(private val context: Context) {
         val volumeUnit = stringPreferencesKey("volume_unit")
         val lastBackupAt = longPreferencesKey("last_backup_at")
         val backupFolderUri = stringPreferencesKey("backup_folder_uri")
+        val backupFolderSubdir = stringPreferencesKey("backup_folder_subdir")
         val backupKeepCount = intPreferencesKey("backup_keep_count")
     }
 
@@ -45,6 +46,7 @@ class SettingsRepository(private val context: Context) {
                 ?: com.milenote.android.i18n.VolumeUnit.LITER,
             lastBackupAt = prefs[Keys.lastBackupAt],
             backupFolderUri = prefs[Keys.backupFolderUri],
+            backupFolderSubdir = prefs[Keys.backupFolderSubdir],
             backupKeepCount = prefs[Keys.backupKeepCount]
                 ?: com.milenote.android.domain.backup.BACKUP_FILE_KEEP_DEFAULT,
         )
@@ -71,9 +73,20 @@ class SettingsRepository(private val context: Context) {
     /** 记录最近一次 JSON 完整备份写出成功的时刻（epoch millis）。 */
     suspend fun setLastBackupAt(epochMillis: Long) = edit { it[Keys.lastBackupAt] = epochMillis }
 
-    /** 固定目录备份：保存 / 清空用户选过的 SAF 目录树 Uri。 */
-    suspend fun setBackupFolder(uri: String?) = edit { prefs ->
-        if (uri == null) prefs.remove(Keys.backupFolderUri) else prefs[Keys.backupFolderUri] = uri
+    /**
+     * 固定目录备份：保存 / 清空用户选过的 SAF 目录树 Uri。
+     *
+     * [subdir] 非空表示真正写的是该目录下的同名子目录（默认流程 `Documents/milenote`）；
+     * 清空目录时一并清空。
+     */
+    suspend fun setBackupFolder(uri: String?, subdir: String? = null) = edit { prefs ->
+        if (uri == null) {
+            prefs.remove(Keys.backupFolderUri)
+            prefs.remove(Keys.backupFolderSubdir)
+        } else {
+            prefs[Keys.backupFolderUri] = uri
+            if (subdir.isNullOrBlank()) prefs.remove(Keys.backupFolderSubdir) else prefs[Keys.backupFolderSubdir] = subdir
+        }
     }
 
     /** 固定目录备份：保留份数（至少 1）。 */

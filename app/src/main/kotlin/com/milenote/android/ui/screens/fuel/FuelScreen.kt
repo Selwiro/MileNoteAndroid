@@ -296,28 +296,32 @@ fun FuelScreen(
         // 英文界面不显示「今日油价」：数据源是中文油价站点，对英文用户没有意义；
         // 纯电车辆没有油价，整卡不显示（也不发起抓取 / 不请求定位）。
         if (!I18n.english && !ev) {
+        val cityName = DataLabels.region(fuelLocation.displayName)
         item(key = "fuel-price") {
             FuelPriceCard(
                 info = priceInfo,
                 loading = priceLoading,
                 fuelGrade = ledger.vehicle.fuelGrade,
-                locationLabel = if (locationRemembered) {
-                    DataLabels.region(fuelLocation.displayName)
-                } else {
-                    tr("获取当前城市油价", "Get local fuel price")
+                // 城市 / 定位状态只在右上角说一次（卡内不再重复「当前城市」一行）。
+                locationLabel = when {
+                    locationIssue == FuelLocationIssue.PERMISSION_DENIED -> tr(
+                        "%s · 定位未开启",
+                        "%s · location off",
+                        cityName,
+                    )
+                    locationIssue == FuelLocationIssue.NO_FIX -> tr("%s · 未定位", "%s · no fix", cityName)
+                    locationRemembered -> cityName
+                    else -> tr("%s · 未定位", "%s · not located", cityName)
                 },
                 lastUpdatedMillis = priceFetchedAt,
                 stale = priceStale,
-                locationIssue = locationIssue,
-                onOpenLocationSettings = { openAppSettings(context) },
-                cityLabel = DataLabels.region(fuelLocation.displayName),
-                located = locationRemembered,
                 onRefresh = { refreshPrice(reLocate = false, force = true) },
                 onGetCurrentCityPrice = {
-                    if (LocationResolver.hasPermission(context)) {
-                        refreshPrice(reLocate = true, force = true)
-                    } else {
-                        locationPermissionLauncher?.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    when {
+                        // 权限被拒后点右上角 = 去系统设置恢复；其余情况重新定位或申请权限。
+                        locationIssue == FuelLocationIssue.PERMISSION_DENIED -> openAppSettings(context)
+                        LocationResolver.hasPermission(context) -> refreshPrice(reLocate = true, force = true)
+                        else -> locationPermissionLauncher?.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                     }
                 },
             )
@@ -446,16 +450,20 @@ fun FuelScreen(
  */
 internal enum class FuelLocationIssue { PERMISSION_DENIED, NO_FIX }
 
-/** 定位问题的提示文案（中英同源，[FuelLocationIssue] 为空时不显示提示）。 */
-internal fun fuelLocationIssueText(issue: FuelLocationIssue): String = when (issue) {
-    FuelLocationIssue.PERMISSION_DENIED -> tr(
-        "未获得定位权限，正在显示默认城市的参考油价",
-        "Location permission denied — showing the default city's reference prices",
-    )
-    FuelLocationIssue.NO_FIX -> tr(
-        "未获取到当前位置，正在显示默认城市的参考油价",
-        "Couldn't get your current location — showing the default city's reference prices",
-    )
+/** 油价调价方向（UI 与测试共用；`UNKNOWN` = 数据源没给方向，界面显示「待公布」）。 */
+internal enum class FuelTrend { UP, DOWN, UNCHANGED, UNKNOWN }
+
+/** 把数据源的调价文案归一成方向，避免各来源用词不同（"预计下调" / "下调" / "下跌"）。 */
+internal fun fuelTrendOf(trend: String?): FuelTrend {
+    val text = trend?.trim().orEmpty()
+    if (text.isEmpty()) return FuelTrend.UNKNOWN
+    return when {
+        text.contains("上") -> FuelTrend.UP
+        text.contains("下") -> FuelTrend.DOWN
+        text.contains("搁浅") || text.contains("不调") || text.contains("不作调整") ||
+            text.contains("维持") -> FuelTrend.UNCHANGED
+        else -> FuelTrend.UNKNOWN
+    }
 }
 
 /**
@@ -487,12 +495,6 @@ private fun FuelPriceCard(
     stale: Boolean,
     onRefresh: () -> Unit,
     onGetCurrentCityPrice: () -> Unit,
-    locationIssue: FuelLocationIssue? = null,
-    onOpenLocationSettings: () -> Unit = {},
-    /** 当前显示的价格属于哪座城市（UX11，如「北京」）。 */
-    cityLabel: String = "",
-    /** 这座城市是定位得到的（true）还是默认城市参考价（false）。 */
-    located: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     SectionCard(
@@ -518,29 +520,6 @@ private fun FuelPriceCard(
             }
         },
     ) {
-        // B40：定位失败的就地提示（默认城市取价），带「去设置」入口；成功定位后自动消失。
-        locationIssue?.let { issue ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = fuelLocationIssueText(issue),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.error,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    onClick = onOpenLocationSettings,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(tr("去设置", "Settings"), style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
         when {
             loading && info == null -> {
                 Row(
@@ -657,26 +636,6 @@ private fun FuelPriceCard(
                                 .padding(top = 2.dp),
                         )
                     }
-                    // UX11：说清价格来自哪座城市、是定位到的还是默认城市参考价 ——
-                    // 之前只有一个数字，用户不知道这是本市的还是「北京的参考价」。
-                    if (cityLabel.isNotBlank()) {
-                        Text(
-                            text = if (located) {
-                                tr("当前城市：%s（定位）", "Current city: %s (located)", cityLabel)
-                            } else {
-                                tr(
-                                    "当前城市：%s（默认城市参考价）",
-                                    "Current city: %s (default reference)",
-                                    cityLabel,
-                                )
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 2.dp),
-                        )
-                    }
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 6.dp),
                         thickness = 1.dp,
@@ -703,26 +662,32 @@ private fun FuelPriceCard(
                             )
                         }
                         Spacer(modifier = Modifier.weight(1f))
-                        info.trend?.let { trend ->
-                            val up = trend.contains("上")
-                            val trendColor = if (up) scheme.error else Color(0xFF2E7D32)
-                            val trendLabel = when {
-                                trend.contains("上") -> tr("上调", "up")
-                                trend.contains("下") -> tr("下调", "down")
-                                else -> tr("搁浅", "unchanged")
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(trendColor, CircleShape),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = tr("预计%s", "Expected: %s", trendLabel),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = trendColor,
-                            )
+                        // 方向永远占位：拿不到数据时提示「待公布」，不再整块消失
+                        // （之前只看 info.trend != null，取数失败时看起来像功能被删了）。
+                        val trend = fuelTrendOf(info.trend)
+                        val trendColor = when (trend) {
+                            FuelTrend.UP -> scheme.error
+                            FuelTrend.DOWN -> Color(0xFF2E7D32)
+                            FuelTrend.UNCHANGED -> scheme.onSurfaceVariant
+                            FuelTrend.UNKNOWN -> scheme.onSurfaceVariant
                         }
+                        val trendLabel = when (trend) {
+                            FuelTrend.UP -> tr("上调", "up")
+                            FuelTrend.DOWN -> tr("下调", "down")
+                            FuelTrend.UNCHANGED -> tr("搁浅", "unchanged")
+                            FuelTrend.UNKNOWN -> tr("待公布", "to be announced")
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(trendColor, CircleShape),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = tr("预计%s", "Expected: %s", trendLabel),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = trendColor,
+                        )
                     }
                 }
             }

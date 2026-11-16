@@ -139,9 +139,6 @@ internal fun VehicleEditorDialog(
         mutableStateOf(initial.companionDate?.takeIf { Dates.isValid(it) })
     }
     var image by remember(initial) { mutableStateOf(initial.image) }
-    var imageFit by remember(initial) {
-        mutableStateOf(if (initial.imageFit == "cover") "cover" else "contain")
-    }
     var imageBusy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
@@ -205,7 +202,7 @@ internal fun VehicleEditorDialog(
             startKm = startKm,
             companionDate = companionDate,
             image = image,
-            imageFit = imageFit,
+            imageFit = "contain",
             powertrain = normalizePowertrain(powertrainKey),
             // 插混 / 纯电不保留旧版油费成本口径（否则钱迹来源的加油/充电记录会被判成 0）；燃油保持原值。
             fuelCostSource = if (powertrainKey != POWERTRAIN_FUEL) null else initial.fuelCostSource,
@@ -299,7 +296,6 @@ internal fun VehicleEditorDialog(
                     item("image") {
                         ImageEditor(
                             image = image,
-                            imageFit = imageFit,
                             imageBusy = imageBusy,
                             onPick = {
                                 pickImage.launch(
@@ -453,43 +449,6 @@ internal fun VehicleEditorDialog(
                             )
                         }
                     }
-                    if (image != null) {
-                        item("fit") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(tr("图片显示方式", "Image fit"), style = MaterialTheme.typography.titleSmall)
-                                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                    listOf("contain" to tr("完整展示", "Fit"), "cover" to tr("铺满画框", "Fill"))
-                                        .forEachIndexed { index, (value, label) ->
-                                            SegmentedButton(
-                                                selected = imageFit == value,
-                                                onClick = { imageFit = value },
-                                                shape = SegmentedButtonDefaults.itemShape(
-                                                    index = index,
-                                                    count = 2,
-                                                ),
-                                                label = {
-                                                    Text(
-                                                        text = label,
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                        maxLines = 1,
-                                                    )
-                                                },
-                                            )
-                                        }
-                                }
-                                Text(
-                                    text = if (imageFit == "cover") {
-                                        tr("铺满画框：图片裁切填满车辆位，适合照片。", "Fill: the image is cropped to fill the vehicle slot; good for photos.")
-                                    } else {
-                                        tr("完整展示：保留整张图片，适合透明底或抠图车辆图。", "Fit: keeps the whole image; good for cut-outs on transparent backgrounds.")
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-
                     item("actions") {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Button(
@@ -662,7 +621,6 @@ internal fun VehicleEditorDialog(
 @Composable
 private fun ImageEditor(
     image: String?,
-    imageFit: String,
     imageBusy: Boolean,
     onPick: () -> Unit,
     onUrl: () -> Unit,
@@ -680,7 +638,7 @@ private fun ImageEditor(
             VehicleImage(
                 image = image,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = if (imageFit == "cover") ContentScale.Crop else ContentScale.Fit,
+                contentScale = ContentScale.Fit,
             )
             if (imageBusy) {
                 Box(

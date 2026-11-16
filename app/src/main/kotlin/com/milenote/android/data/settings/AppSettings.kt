@@ -31,6 +31,11 @@ data class AppSettings(
      * 失效时清空并让用户重选。
      */
     val backupFolderUri: String? = null,
+    /**
+     * 备份实际写入的子目录名（默认目录走 `milenote`）；`null` = 直接写授权目录本身。
+     * 只存名字、不存子目录 Uri：重启后父目录授权仍然有效，子目录每次按名字解析。
+     */
+    val backupFolderSubdir: String? = null,
     /** 固定目录备份保留份数（默认 7；只清理本应用命名规则的文件）。 */
     val backupKeepCount: Int = com.milenote.android.domain.backup.BACKUP_FILE_KEEP_DEFAULT,
 )

@@ -1553,8 +1553,8 @@ class MileNoteViewModel(
     }
 
     /** 固定目录备份：记住 / 清空用户选过的 SAF 目录树 Uri（授权失效时传 null）。 */
-    fun setBackupFolder(uri: String?) {
-        viewModelScope.launch { settingsRepository.setBackupFolder(uri) }
+    fun setBackupFolder(uri: String?, subdir: String? = null) {
+        viewModelScope.launch { settingsRepository.setBackupFolder(uri, subdir) }
     }
 
     /** 固定目录备份：保留份数。 */

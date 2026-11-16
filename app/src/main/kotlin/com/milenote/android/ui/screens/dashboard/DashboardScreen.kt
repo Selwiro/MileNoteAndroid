@@ -158,7 +158,7 @@ fun DashboardScreen(
             backupBusy = true
             try {
                 val text = vm.exportBackup()
-                BackupFolder.backupNow(context, Uri.parse(raw), settings.backupKeepCount, text)
+                BackupFolder.backupNow(context, Uri.parse(raw), settings.backupFolderSubdir, settings.backupKeepCount, text)
                 vm.markBackupDone()
                 vm.notifyMessage(tr("完整备份已写入固定目录", "Full backup written to the folder"))
             } catch (t: BackupFolder.BackupFolderUnavailableException) {
@@ -764,9 +764,9 @@ private fun isCutoutArt(bitmap: ImageBitmap): Boolean {
     return sampled > 0 && transparent * 100 / sampled >= 15
 }
 
-/** 车型 · 车牌；都为空时给「点击完善车辆信息」引导。 */
+/** 车牌 · 车型；都为空时给「点击完善车辆信息」引导。与「我的车辆」列表保持同一顺序。 */
 private fun heroModelLine(vehicle: Vehicle): String =
-    listOf(vehicle.model, vehicle.plate)
+    listOf(vehicle.plate, vehicle.model)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
         .ifBlank { tr("点击完善车辆信息", "Tap to complete vehicle info") }

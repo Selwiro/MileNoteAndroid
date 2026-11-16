@@ -144,6 +144,14 @@ private data class LicenseDialogState(
     val text: String,
 )
 
+/** 固定目录备份的结果对话框（成功 / 失败都走这里，不再只用顶部消息条）。 */
+private data class BackupDialogState(
+    val title: String,
+    val body: String,
+    /** 成功时可分享这次写出的 JSON。 */
+    val shareText: String? = null,
+)
+
 /** 正在编辑的车辆：`id == null` 表示新增。 */
 private data class VehicleEditTarget(
     val id: String?,
@@ -204,9 +212,9 @@ internal enum class SettingsPage {
  * 设置子页（底栏 v4 起设置首页已抽成「我的」菜单页 [MineScreen]，本页只渲染单个子页）。
  *
  * 从「我的」菜单推入，路由参数 `page` 决定初始子页（[SettingsPage.fromKey]）；顶栏返回箭头 =
- * `onBack()`（导航层 pop 回「我的」）。子页之间只有「关于 → 隐私与数据 / 开源许可」一层内部切换；
- * 从「关于」切进去的两页，返回（顶栏与系统返回键）先回「关于」，再返回才回「我的」，
- * 与页面层级一致；用路由直接打开这两页时仍 pop 回「我的」。
+ * `onBack()`（导航层 pop 回「我的」）。页内切换不压导航栈，但返回要按层级走：
+ * 「车库总览」先回「我的车辆」，从「关于」切进去的页先回「关于」，再返回才回「我的」；
+ * 用路由直接打开这些页时仍 pop 回「我的」。
  *
  * - 我的车辆：横向车辆卡片，点卡片切换当前车辆，卡片右上角编辑；添加车辆打开全屏编辑对话框。
  * - 外观：5 套皮肤、深浅色三态。
@@ -260,15 +268,21 @@ fun SettingsScreen(
     var pendingXlsx by remember { mutableStateOf<ByteArray?>(null) }
     var pendingRaw by remember { mutableStateOf<ByteArray?>(null) }
     var backupFolderName by remember { mutableStateOf<String?>(null) }
+    // 备份结果对话框：成功 / 失败都放到用户眼前，不依赖可能被内容盖住的顶部消息条。
+    var backupDialog by remember { mutableStateOf<BackupDialogState?>(null) }
+    // 首次点「立即备份到此处」：先拉一次目录选择器，选完自动建 milenote 并立刻备份。
+    var backupAfterPick by remember { mutableStateOf(false) }
 
     // 固定目录备份：目录显示名（SAF 查询放 IO，避免组合期读 ContentResolver）。
-    LaunchedEffect(settings.backupFolderUri) {
+    LaunchedEffect(settings.backupFolderUri, settings.backupFolderSubdir) {
         val raw = settings.backupFolderUri
         backupFolderName = if (raw == null) {
             null
         } else {
             withContext(Dispatchers.IO) {
-                runCatching { BackupFolder.displayName(context, Uri.parse(raw)) }.getOrNull()
+                runCatching {
+                    BackupFolder.displayName(context, Uri.parse(raw), settings.backupFolderSubdir)
+                }.getOrNull()
             }
         }
     }
@@ -278,18 +292,20 @@ fun SettingsScreen(
     var categoryTab by rememberSaveable { mutableIntStateOf(0) }
     val page = SettingsPage.entries.firstOrNull { it.name == pageName } ?: SettingsPage.fromKey(initialPage)
 
-    /** 顶栏 / 系统返回：从「关于」切进来的子页先回「关于」，其余照旧 pop 回「我的」。 */
+    /** 顶栏 / 系统返回：车库总览先回「我的车辆」，关于子页先回「关于」，其余 pop 回「我的」。 */
     fun goBack() {
-        if (cameFromAbout) {
-            pageName = SettingsPage.ABOUT.name
-            cameFromAbout = false
-        } else {
-            onBack()
+        when {
+            pageName == SettingsPage.GARAGE.name -> pageName = SettingsPage.VEHICLES.name
+            cameFromAbout -> {
+                pageName = SettingsPage.ABOUT.name
+                cameFromAbout = false
+            }
+            else -> onBack()
         }
     }
 
-    // 页内切换不压导航栈，系统返回键也走同一套「先回关于」的规则。
-    BackHandler(enabled = cameFromAbout) { goBack() }
+    // 页内切换不压导航栈，系统返回键也走同一套规则（车库总览 → 我的车辆、关于子页 → 关于）。
+    BackHandler(enabled = cameFromAbout || pageName == SettingsPage.GARAGE.name) { goBack() }
 
     fun notify(
         text: String,
@@ -418,18 +434,89 @@ fun SettingsScreen(
         }
     }
 
+    /**
+     * 执行一次固定目录备份，并把结果放进对话框——顶部消息条在部分页面会被内容盖住，用户看不到。
+     * [subdir] 非空表示写到授权目录下的 `milenote` 子目录（默认流程）。
+     */
+    fun runBackupTo(raw: String, subdir: String?, folderLabel: String?) {
+        scope.launch {
+            busy = true
+            try {
+                val text = vm.exportBackup()
+                val (name, pruned) = BackupFolder.backupNow(
+                    context = context,
+                    treeUri = Uri.parse(raw),
+                    subdir = subdir,
+                    keep = settings.backupKeepCount,
+                    text = text,
+                )
+                vm.markBackupDone()
+                backupDialog = BackupDialogState(
+                    title = tr("备份完成", "Backup complete"),
+                    body = if (pruned > 0) {
+                        tr("已备份 %s，并清理 %d 份旧备份", "Backed up %s and removed %d old backups", name, pruned)
+                    } else {
+                        tr(
+                            "已备份到「%s」：%s",
+                            "Backed up to %s: %s",
+                            folderLabel ?: tr("备份文件夹", "backup folder"),
+                            name,
+                        )
+                    },
+                    shareText = text,
+                )
+            } catch (t: BackupFolder.BackupFolderUnavailableException) {
+                vm.setBackupFolder(null)
+                backupDialog = BackupDialogState(
+                    title = tr("备份文件夹不可用", "Backup folder unavailable"),
+                    body = tr(
+                        "备份文件夹授权已失效，请重新选择",
+                        "The backup folder permission is no longer valid — choose it again",
+                    ),
+                )
+            } catch (t: Throwable) {
+                backupDialog = BackupDialogState(
+                    title = tr("备份失败", "Backup failed"),
+                    body = tr(
+                        "备份失败：%s",
+                        "Backup failed: %s",
+                        t.message ?: tr("无法写入备份文件夹", "Could not write to the backup folder"),
+                    ),
+                )
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     val chooseBackupFolder = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        if (uri == null) {
+            backupAfterPick = false
+            return@rememberLauncherForActivityResult
+        }
         // 持久授权：重启 / 升级后仍可写；个别 provider 不支持，失败就提示换一个。
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
             .onSuccess {
-                vm.setBackupFolder(uri.toString())
-                notify(tr("已选择备份文件夹", "Backup folder selected"), MessageKind.SUCCESS)
+                // 默认目录 = 所选目录 / milenote：选中的正好叫 milenote 就直接用，否则自动建子目录。
+                val pickedName = BackupFolder.displayName(context, uri)
+                val subdir = if (pickedName.equals(BackupFolder.DEFAULT_SUBDIR, ignoreCase = true)) {
+                    null
+                } else {
+                    BackupFolder.DEFAULT_SUBDIR
+                }
+                vm.setBackupFolder(uri.toString(), subdir)
+                if (backupAfterPick) {
+                    backupAfterPick = false
+                    runBackupTo(uri.toString(), subdir, subdir ?: pickedName)
+                } else {
+                    notify(tr("已选择备份文件夹", "Backup folder selected"), MessageKind.SUCCESS)
+                }
             }
             .onFailure {
+                backupAfterPick = false
                 notify(
                     tr(
                         "这个文件夹不支持长期授权，请换一个（例如「文档」里的子文件夹）",
@@ -443,45 +530,12 @@ fun SettingsScreen(
     fun backupToFolder() {
         val raw = settings.backupFolderUri
         if (raw == null) {
-            notify(tr("先选择备份文件夹", "Choose a backup folder first"), MessageKind.WARNING)
+            // 还没选过目录：先弹系统选择器（起始位置「文档」），选完自动创建/复用 milenote 并立即备份。
+            backupAfterPick = true
+            chooseBackupFolder.launch(defaultBackupPickerUri())
             return
         }
-        scope.launch {
-            busy = true
-            try {
-                val text = vm.exportBackup()
-                val (name, pruned) = BackupFolder.backupNow(
-                    context = context,
-                    treeUri = Uri.parse(raw),
-                    keep = settings.backupKeepCount,
-                    text = text,
-                )
-                vm.markBackupDone()
-                notify(
-                    text = if (pruned > 0) {
-                        tr("已备份 %s，并清理 %d 份旧备份", "Backed up %s and removed %d old backups", name, pruned)
-                    } else {
-                        tr("已备份到「%s」：%s", "Backed up to %s: %s", backupFolderName ?: tr("备份文件夹", "backup folder"), name)
-                    },
-                    kind = MessageKind.SUCCESS,
-                    actionLabel = tr("分享", "Share"),
-                    onAction = { shareBackup(text) },
-                )
-            } catch (t: BackupFolder.BackupFolderUnavailableException) {
-                vm.setBackupFolder(null)
-                notify(
-                    tr("备份文件夹授权已失效，请重新选择", "The backup folder permission is no longer valid — choose it again"),
-                    MessageKind.WARNING,
-                )
-            } catch (t: Throwable) {
-                notify(
-                    tr("备份失败：%s", "Backup failed: %s", t.message ?: tr("无法写入备份文件夹", "Could not write to the backup folder")),
-                    MessageKind.ERROR,
-                )
-            } finally {
-                busy = false
-            }
-        }
+        runBackupTo(raw, settings.backupFolderSubdir, backupFolderName)
     }
 
     val openBackup = rememberLauncherForActivityResult(
@@ -957,7 +1011,36 @@ fun SettingsScreen(
             onDelete = target.id?.let { id -> { vm.deleteVehicle(id, confirmFirst = false) } },
         )
     }
+
+    backupDialog?.let { dialog ->
+        AlertDialog(
+            onDismissRequest = { backupDialog = null },
+            title = { Text(dialog.title) },
+            text = { Text(dialog.body) },
+            confirmButton = {
+                TextButton(onClick = { backupDialog = null }) { Text(tr("关闭", "Close")) }
+            },
+            dismissButton = dialog.shareText?.let { text ->
+                {
+                    TextButton(
+                        onClick = {
+                            backupDialog = null
+                            shareBackup(text)
+                        },
+                    ) { Text(tr("分享", "Share")) }
+                }
+            },
+        )
+    }
 }
+
+/** 目录选择器的起始位置：优先「文档」（默认备份目录 Documents/milenote 在它下面）。 */
+private fun defaultBackupPickerUri(): Uri? = runCatching {
+    android.provider.DocumentsContract.buildDocumentUri(
+        "com.android.externalstorage.documents",
+        "primary:Documents",
+    )
+}.getOrNull()
 
 /** 设置子页统一的滚动容器：16/24dp 页边距、内容 max 840dp、底部 96dp 预留。 */
 @Composable
@@ -1616,7 +1699,10 @@ private fun BackupRestorePage(
                     subtitle = when {
                         demo -> tr("演示模式下不可用", "Unavailable in demo mode")
                         backupFolderName != null -> backupFolderName
-                        else -> tr("未选择 · 选一次后即可一键备份", "Not set — choose once, then back up in one tap")
+                        else -> tr(
+                            "未设置 · 默认「文档/milenote」，首次备份时确认一次",
+                            "Not set — defaults to Documents/milenote after one confirmation",
+                        )
                     },
                     enabled = !busy && !demo,
                     onClick = onChooseBackupFolder,
@@ -1626,7 +1712,10 @@ private fun BackupRestorePage(
                     icon = MileNoteIcons.Export,
                     title = tr("立即备份到此处", "Back up to this folder now"),
                     subtitle = if (backupFolderName == null) {
-                        tr("先选择文件夹", "Choose a folder first")
+                        tr(
+                            "首次点击会打开目录选择器，自动建好「文档/milenote」",
+                            "First tap opens the folder picker and creates Documents/milenote",
+                        )
                     } else {
                         tr(
                             "写入 %s · 保留最近 %d 份",
@@ -1635,7 +1724,7 @@ private fun BackupRestorePage(
                             backupKeepCount,
                         )
                     },
-                    enabled = !busy && !demo && backupFolderName != null,
+                    enabled = !busy && !demo,
                     onClick = onBackupToFolder,
                 )
                 SectionDivider()
@@ -1655,7 +1744,8 @@ private fun BackupRestorePage(
                     text = tr(
                         "只清理本应用写出的备份文件；同一文件夹里的其他文件不会被删除。" +
                             "Android 11+ 不能选择存储根目录或「下载」根目录。",
-                        "Only files written by this app are cleaned up; other files in the folder are left untouched. " +
+                        "Backups go into a milenote subfolder of the selected folder (or the folder itself if it is already named milenote). " +
+                            "Only files written by this app are cleaned up; other files are left untouched. " +
                             "On Android 11+ the storage root and the Download root cannot be selected.",
                     ),
                     style = MaterialTheme.typography.bodySmall,

@@ -222,12 +222,55 @@ class FuelPriceRepository(
     /**
      * 补齐主源缺失的字段。
      *
-     * fanzbus 的价格最轻（4 KB）但「下次调价」经常是 JSON null，而 oil-price 数据集的
-     * `next.date` 是有的。这里只在主源没给日期时补一次查询，且按「今天」在进程内缓存：
-     * 同一天切城市 / 换车不会重复请求。
+     * 两个兜底源各有缺口：
+     * - fanzbus 的「下次调价」经常是 JSON null，但 oil-price 数据集的 `next.date` 有日期；
+     * - oilpulse 只有价格、完全没有方向，而 fanzbus 的 `forecast.json` 有「预计下调/上调」。
+     *
+     * 所以日期缺失查一次 oil-price、方向缺失查一次 forecast（都在「今天」的进程内缓存），
+     * 同一天切城市 / 换车不会重复请求。源自报过期（[FuelPriceInfo.dataStale]）时不补方向：
+     * 那时的预测属于上一轮调价，补上去反而误导。
      */
-    private fun complete(info: FuelPriceInfo): FuelPriceInfo =
-        if (info.nextAdjustmentText != null) info else info.copy(nextAdjustmentText = nextAdjustmentFromCalendar())
+    private fun complete(info: FuelPriceInfo): FuelPriceInfo = info.copy(
+        nextAdjustmentText = info.nextAdjustmentText ?: nextAdjustmentFromCalendar(),
+        trend = info.trend ?: trendFromForecast().takeIf { !info.dataStale },
+    )
+
+    /** 调价方向兜底（fanzbus `forecast.json`）的进程内日缓存。 */
+    @Volatile
+    private var trendCache: Pair<LocalDate, String?>? = null
+
+    private fun trendFromForecast(): String? {
+        val today = LocalDate.now(SHANGHAI)
+        trendCache?.takeIf { it.first == today }?.let { return it.second }
+        val label = runCatching {
+            val request = Request.Builder()
+                .url(FORECAST_URL)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                parseForecastDirection(response.body?.string())
+            }
+        }.getOrNull()
+        if (label != null) trendCache = today to label
+        return label
+    }
+
+    /** 把 `forecast.json` 的 `direction` 归一成界面的「下调 / 上调 / 搁浅」；解析不出返回 null。 */
+    internal fun parseForecastDirection(body: String?): String? {
+        if (body.isNullOrBlank()) return null
+        val direction = runCatching {
+            val element = (Json.parseToJsonElement(body) as? JsonObject)?.get("direction")
+            (element as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.trim()
+        }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return null
+        return when {
+            direction.contains("下") -> "下调"
+            direction.contains("上") -> "上调"
+            direction.contains("搁浅") || direction.contains("不调") -> "搁浅"
+            else -> null
+        }
+    }
 
     /** 进程内缓存（按上海时区的「今天」）：日期只在调价窗口那一天变，同一天不必反复取。 */
     @Volatile

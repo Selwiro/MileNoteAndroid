@@ -68,7 +68,7 @@ internal fun VehicleImage(
     }
 }
 
-/** 车辆缩略图：固定方形圆角容器 + 居中裁切/适配的图片。 */
+/** 车辆缩略图：固定圆角容器 + 完整展示（Fit，不裁切）的自定义图片。 */
 @Composable
 internal fun VehicleThumb(
     image: String?,
@@ -83,7 +83,8 @@ internal fun VehicleThumb(
         VehicleImage(
             image = image,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
+            // 列表缩略图也完整显示：横图 / 竖图都留边，不裁掉车头车尾。
+            contentScale = ContentScale.Fit,
         )
     }
 }

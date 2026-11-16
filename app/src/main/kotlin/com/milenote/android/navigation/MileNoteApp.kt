@@ -380,7 +380,14 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                // 主页面有底栏（约 56dp）：消息条抬到底栏之上，避免「已切换到…」被 tab 栏遮住。
+                // 推入页没有底栏，保持原来的 12dp 间距，不悬空。
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = if (currentRoute == Routes.DASHBOARD) 80.dp else 12.dp,
+                ),
         ) {
             MessageBar(
                 // 中性色：state.message 里既有成功也有失败（如「恢复失败：…」），
@@ -793,7 +800,8 @@ private fun MileNoteBottomBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    // 2026-11-16：底栏再矮一档（上下 8→4dp，整栏 64→56dp）；tab 自身仍保 48dp 触控区。
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

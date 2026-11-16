@@ -37,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -600,10 +602,26 @@ private fun EnableDefaultPlanGuide(
     }
 }
 
-/** 计划表列宽：周期 / 日期里程两列定宽，项目列自适应。 */
-private val PlanCycleColumnWidth = 84.dp
-private val PlanDateColumnWidth = 96.dp
-private val PlanTableRowHeight = 48.dp
+/** 计划表列宽：周期 / 日期里程两列定宽，项目列自适应；字号放大时按比例加宽，避免两列贴在一起。 */
+private val PlanCycleColumnBaseWidth = 84.dp
+private val PlanDateColumnBaseWidth = 96.dp
+private val PlanTableRowBaseHeight = 48.dp
+
+/** 列宽跟随字号（最大 1.45×）：1.3× / 2.0× 下「20,000 公里」不会挤进日期列。 */
+@Composable
+private fun planColumnWidth(base: Dp): Dp =
+    (base.value * LocalDensity.current.fontScale.coerceIn(1f, 1.45f)).dp
+
+@Composable
+private fun PlanCycleColumnWidth(): Dp = planColumnWidth(PlanCycleColumnBaseWidth)
+
+@Composable
+private fun PlanDateColumnWidth(): Dp = planColumnWidth(PlanDateColumnBaseWidth)
+
+/** 行高同样跟随字号：两行 bodySmall 在 2.0× 下也能完整显示。 */
+@Composable
+private fun PlanTableRowHeight(): Dp =
+    (PlanTableRowBaseHeight.value * LocalDensity.current.fontScale.coerceIn(1f, 1.45f)).dp
 
 @Composable
 private fun PlanTableHeader() {
@@ -623,13 +641,13 @@ private fun PlanTableHeader() {
             )
             Text(
                 text = tr("周期", "Interval"),
-                modifier = Modifier.width(PlanCycleColumnWidth),
+                modifier = Modifier.width(PlanCycleColumnWidth()),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
             )
             Text(
                 text = tr("日期 / 里程", "Date / mileage"),
-                modifier = Modifier.width(PlanDateColumnWidth),
+                modifier = Modifier.width(PlanDateColumnWidth()),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
             )
@@ -640,8 +658,9 @@ private fun PlanTableHeader() {
 }
 
 /**
- * 计划表一行：不按状态分组，统一「日期在上、公里在下」。
- * 没有日期时公里在单元格内垂直居中；左侧色点 + 细进度条保留状态含义。
+ * 计划表一行：不按状态分组，两列统一「时间在上、数值在下」——
+ * 周期列「月数在上、公里在下」，日期/里程列「日期在上、里程在下」。
+ * 列表行不再画进度条（进度只留在待办/进度卡），只用左侧色点表示状态。
  */
 @Composable
 private fun PlanTableRow(
@@ -654,7 +673,6 @@ private fun PlanTableRow(
     val scheme = MaterialTheme.colorScheme
     val semantic = LocalMileNoteSemanticColors.current
     val current = row.current
-    val progress = current?.let { serviceProgress(it, km, today) }
     val level = current?.let { reminderState(it, km, today).level }
     val accent = when {
         row.status == "overdue" -> scheme.error
@@ -685,7 +703,7 @@ private fun PlanTableRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(PlanTableRowHeight)
+            .height(PlanTableRowHeight())
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -712,47 +730,29 @@ private fun PlanTableRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .clip(CircleShape)
-                    .background(scheme.surfaceContainerHighest),
-            ) {
-                val fraction = when {
-                    progress != null -> (progress.percent / 100.0).toFloat().coerceIn(0f, 1f)
-                    row.status == "done" -> 1f
-                    else -> 0f
-                }
-                if (fraction > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(fraction)
-                            .height(2.dp)
-                            .background(accent),
-                    )
-                }
-            }
         }
         Column(
-            modifier = Modifier.width(PlanCycleColumnWidth),
+            modifier = Modifier.width(PlanCycleColumnWidth()),
             verticalArrangement = Arrangement.Center,
         ) {
-            if (cycleKmText != null) {
-                Text(
-                    text = cycleKmText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
             if (cycleMonthText != null) {
                 Text(
                     text = cycleMonthText,
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (cycleKmText != null) {
+                Text(
+                    text = cycleKmText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (cycleKmText == null && cycleMonthText == null) {
@@ -761,12 +761,14 @@ private fun PlanTableRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         Box(
             modifier = Modifier
-                .width(PlanDateColumnWidth)
+                .width(PlanDateColumnWidth())
                 .fillMaxHeight(),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -777,6 +779,8 @@ private fun PlanTableRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = if (row.status == "overdue") scheme.error else scheme.onSurface,
                         maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (kmText != null) {
@@ -785,6 +789,8 @@ private fun PlanTableRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (dateText == null && kmText == null) {
@@ -797,6 +803,8 @@ private fun PlanTableRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
