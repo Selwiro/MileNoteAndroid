@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,25 +13,25 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,8 +46,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -98,6 +100,13 @@ private val ShareBgEnd = Color(0xFF1A414D)
 private val ShareInk = Color(0xFFF4F8FA)
 private val ShareAccent = Color(0xFF9CC7E4)
 
+/** 分享页的页面底色；Route 用它把状态栏 / 导航栏区域一起染深，避免页面上下出现浅色条。 */
+internal val ReportShareBackdrop = Color(0xFF0B1620)
+
+/** 分享页浮层的深色底：比海报略暗，海报才有「浮起来」的层次。 */
+private val ShareSheetTop = Color(0xFF17323C)
+private val ShareSheetBottom = Color(0xFF0A141B)
+
 /**
  * 分享报告的页内浮层。
  *
@@ -108,7 +117,6 @@ private val ShareAccent = Color(0xFF9CC7E4)
  * PNG 写到 `cacheDir/exports/`，`file_paths.xml` 已配该目录，FileProvider 直接分享 / SAF 保存。
  * 录制失败时提示并退回文本分享。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ReportShareOverlay(
     data: ReportData,
@@ -116,9 +124,26 @@ internal fun ReportShareOverlay(
     onDismiss: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    // T008：预览高度随屏幕高度收缩（320×480dp 上 240dp 预览会把底部顶出屏幕）。
-    val previewMaxHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.38f)
-        .coerceIn(140.dp, 240.dp)
+    // 全屏分享页：海报按屏幕取 3:4 尺寸（大屏约 295×393dp，320×480dp 上约 150×200dp）。
+    val previewHeight = minOf(
+        LocalConfiguration.current.screenHeightDp.dp * 0.43f,
+        420.dp,
+        (LocalConfiguration.current.screenWidthDp.dp - 56.dp) * 4f / 3f,
+    ).coerceAtLeast(150.dp)
+    val previewWidth = previewHeight * 3f / 4f
+    // 离屏卡固定 1080×1440 px；窗口比它窄时（320dp 小屏）绘制会被窗口裁掉，
+    // 按窗口尺寸等比缩小录制，导出时再放回 1080×1440，避免分享图右边被切。
+    val windowWidthPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenWidthDp.dp.toPx()
+    }
+    val windowHeightPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenHeightDp.dp.toPx()
+    }
+    val captureScale = minOf(
+        1f,
+        windowWidthPx / (ShareWidth.value * ShareDensity),
+        windowHeightPx / (ShareHeight.value * ShareDensity),
+    ).coerceAtLeast(0.1f)
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -136,8 +161,15 @@ internal fun ReportShareOverlay(
     }
 
     fun pngBytes(image: ImageBitmap): ByteArray {
+        val source = image.asAndroidBitmap()
+        // 小屏录到的是缩小版，导出统一放回 1080×1440（尺寸契约不变）。
+        val bitmap = if (source.width == 1080 && source.height == 1440) {
+            source
+        } else {
+            Bitmap.createScaledBitmap(source, 1080, 1440, true)
+        }
         val out = ByteArrayOutputStream()
-        image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, out)
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         return out.toByteArray()
     }
 
@@ -173,14 +205,57 @@ internal fun ReportShareOverlay(
         pendingFile.delete()
     }
 
+    fun saveImage() {
+        val image = imageOrFallback() ?: return
+        busy = true
+        scope.launch {
+            runCatching {
+                pendingFile.parentFile?.mkdirs()
+                pendingFile.writeBytes(pngBytes(image))
+            }.onFailure {
+                busy = false
+                error = tr(
+                    "图片生成失败，已改为分享文本",
+                    "Image could not be generated; sharing text instead",
+                )
+                shareText()
+                return@launch
+            }
+            busy = false
+            saveLauncher.launch("$fileName.png")
+        }
+    }
+
+    fun shareImage() {
+        val image = imageOrFallback() ?: return
+        busy = true
+        scope.launch {
+            runCatching {
+                FileExporter.shareText(
+                    context,
+                    "$fileName.png",
+                    "image/png",
+                    pngBytes(image),
+                )
+            }.onFailure {
+                error = tr(
+                    "图片生成失败，已改为分享文本",
+                    "Image could not be generated; sharing text instead",
+                )
+                shareText()
+            }
+            busy = false
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.62f))
-            .clickable(onClick = onDismiss),
+            // 吞掉页面上的点击，避免透到下面的报告页。
+            .clickable(onClick = {}),
     ) {
         // 离屏导出卡：alpha 0.01 不可见，但仍参与绘制，GraphicsLayer 才能录到内容。
-        CompositionLocalProvider(LocalDensity provides Density(ShareDensity, 1f)) {
+        CompositionLocalProvider(LocalDensity provides Density(ShareDensity * captureScale, 1f)) {
             Box(
                 modifier = Modifier
                     .size(ShareWidth, ShareHeight)
@@ -199,107 +274,63 @@ internal fun ReportShareOverlay(
             }
         }
 
-        Surface(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            tonalElevation = 3.dp,
+        // 不透明底盖在离屏卡之上：深色页上 1% 的隐藏卡仍会透出淡淡的海报影子。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(listOf(ShareSheetTop, ReportShareBackdrop, ShareSheetBottom)),
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // 整页渐变盖住系统栏；内容再让出状态栏 / 导航栏，标题和按钮不会压到图标上。
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // T008：320×480dp 这类小屏上，标题 + 按钮 + 预览会超过一屏，允许上下滚动。
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    // 吞掉卡片区域的点击，避免点在卡上把遮罩关掉。
-                    .clickable(onClick = {}),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = tr("分享报告", "Share report"),
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
+                        color = ShareInk,
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = MileNoteIcons.Close,
-                            contentDescription = tr("关闭分享", "Close share"),
-                        )
-                    }
+                    Text(
+                        text = sharePeriodLabel(data),
+                        fontSize = 12.sp,
+                        color = ShareInk.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
                 }
-                // T008：320dp 宽时三个文字按钮挤在一行会把文案裁成一条；改成能换行的 FlowRow。
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        onClick = {
-                            val image = imageOrFallback() ?: return@TextButton
-                            busy = true
-                            scope.launch {
-                                runCatching {
-                                    pendingFile.parentFile?.mkdirs()
-                                    pendingFile.writeBytes(pngBytes(image))
-                                }.onFailure {
-                                    busy = false
-                                    error = tr(
-                                        "图片生成失败，已改为分享文本",
-                                        "Image could not be generated; sharing text instead",
-                                    )
-                                    shareText()
-                                    return@launch
-                                }
-                                busy = false
-                                saveLauncher.launch("$fileName.png")
-                            }
-                        },
-                        enabled = !busy,
-                    ) { Text(tr("保存图片", "Save image")) }
-                    TextButton(
-                        onClick = {
-                            val image = imageOrFallback() ?: return@TextButton
-                            busy = true
-                            scope.launch {
-                                runCatching {
-                                    FileExporter.shareText(
-                                        context,
-                                        "$fileName.png",
-                                        "image/png",
-                                        pngBytes(image),
-                                    )
-                                }.onFailure {
-                                    error = tr(
-                                        "图片生成失败，已改为分享文本",
-                                        "Image could not be generated; sharing text instead",
-                                    )
-                                    shareText()
-                                }
-                                busy = false
-                            }
-                        },
-                        enabled = !busy,
-                    ) { Text(tr("分享图片", "Share image")) }
-                    TextButton(onClick = { shareText() }, enabled = !busy) {
-                        Text(tr("分享文本", "Share text"))
-                    }
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = MileNoteIcons.Close,
+                        contentDescription = tr("关闭分享", "Close share"),
+                        tint = ShareInk.copy(alpha = 0.75f),
+                    )
                 }
-                error?.let { message ->
-                    MessageBar(message = message, kind = MessageKind.WARNING)
-                }
-                Text(
-                    text = tr(
-                        "1080 × 1440 · PNG · 固定 3:4",
-                        "1080 × 1440 · PNG · fixed 3:4",
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Box(contentAlignment = Alignment.Center) {
+                // 柔光把海报从深色底上托起来；不描边、不套框。
+                Box(
+                    modifier = Modifier
+                        .size(previewWidth * 1.18f, previewHeight * 1.06f)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(ShareAccent.copy(alpha = 0.20f), Color.Transparent),
+                            ),
+                        ),
                 )
                 val image = preview
                 if (image != null) {
@@ -308,38 +339,71 @@ internal fun ReportShareOverlay(
                         contentDescription = tr("分享图预览", "Share image preview"),
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .widthIn(max = 300.dp)
-                            .fillMaxWidth(0.86f)
-                            // T008：小屏上 3:4 预览会把整张分享卡顶出屏幕，限制最大高度（ContentScale.Fit 保持比例）。
-                            .heightIn(max = previewMaxHeight)
-                            .clip(RoundedCornerShape(18.dp))
-                            .border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(18.dp),
-                            )
-                            .padding(bottom = 10.dp),
+                            .size(previewWidth, previewHeight)
+                            .shadow(24.dp, RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(20.dp)),
                     )
                 } else {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .widthIn(max = 300.dp)
-                            .fillMaxWidth(0.86f)
-                            .heightIn(max = previewMaxHeight)
-                            .aspectRatio(3f / 4f)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainer),
+                            .size(previewWidth, previewHeight)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(ShareBgMid),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = tr("正在生成…", "Rendering…"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            color = ShareInk.copy(alpha = 0.6f),
                         )
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            error?.let { message ->
+                MessageBar(message = message, kind = MessageKind.WARNING)
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Button(
+                    onClick = { saveImage() },
+                    enabled = !busy,
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ShareInk,
+                        contentColor = ReportShareBackdrop,
+                        disabledContainerColor = ShareInk.copy(alpha = 0.4f),
+                        disabledContentColor = ReportShareBackdrop.copy(alpha = 0.6f),
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
+                ) {
+                    Text(tr("保存图片", "Save image"), fontWeight = FontWeight.SemiBold)
+                }
+                OutlinedButton(
+                    onClick = { shareImage() },
+                    enabled = !busy,
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, ShareInk.copy(alpha = 0.32f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ShareInk),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
+                ) {
+                    Text(tr("分享图片", "Share image"))
+                }
+            }
+            TextButton(onClick = { shareText() }, enabled = !busy) {
+                Text(
+                    text = tr("分享文本", "Share text"),
+                    color = ShareInk.copy(alpha = 0.7f),
+                )
             }
         }
     }

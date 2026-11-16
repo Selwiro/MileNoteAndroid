@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -33,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.SnackbarDuration
@@ -41,7 +43,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +73,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.milenote.android.domain.calc.DateRange
@@ -94,6 +100,7 @@ import com.milenote.android.ui.screens.maintenance.MaintenanceScreen
 import com.milenote.android.ui.screens.maintenance.ServiceHistoryScreen
 import com.milenote.android.ui.screens.records.RecordsScreen
 import com.milenote.android.ui.screens.report.ReportScreen
+import com.milenote.android.ui.screens.report.ReportShareBackdrop
 import com.milenote.android.ui.screens.settings.MineScreen
 import com.milenote.android.ui.screens.settings.SettingsScreen
 
@@ -296,6 +303,9 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                 title = tr("用车报告", "Vehicle report"),
                 snackbarHostState = snackbarHostState,
                 onBack = { navController.popBackStack() },
+                // 分享页是全屏深色页：收起顶栏、连系统栏一起染深。
+                topBarVisible = !shareOpen,
+                darkSurface = shareOpen,
                 actions = if (canShare) {
                     {
                         IconButton(onClick = { shareOpen = true }) {
@@ -715,31 +725,61 @@ private fun DetailScaffold(
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     actions: (@Composable () -> Unit)? = null,
+    /** 全屏浮层（分享页）打开时收起顶栏，让浮层是一整页而不是「顶栏 + 半页」。 */
+    topBarVisible: Boolean = true,
+    /** 深色页面：连状态栏 / 导航栏底色一起染深，并切到浅色系统栏图标。 */
+    darkSurface: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val background = if (darkSurface) ReportShareBackdrop else MaterialTheme.colorScheme.background
+    val activity = LocalActivity.current
+    val view = LocalView.current
+    DisposableEffect(darkSurface, activity) {
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (controller == null) {
+            onDispose { }
+        } else {
+            val previousStatus = controller.isAppearanceLightStatusBars
+            val previousNavigation = controller.isAppearanceLightNavigationBars
+            if (darkSurface) {
+                controller.isAppearanceLightStatusBars = false
+                controller.isAppearanceLightNavigationBars = false
+            }
+            onDispose {
+                controller.isAppearanceLightStatusBars = previousStatus
+                controller.isAppearanceLightNavigationBars = previousNavigation
+            }
+        }
+    }
     Scaffold(
+        containerColor = background,
+        // 深色分享页要盖住状态栏 / 导航栏（整页渐变），否则上下会各留一条浅色或错色的边。
+        contentWindowInsets = if (darkSurface) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
-                    .padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(MileNoteIcons.Back, contentDescription = tr("返回", "Back"))
+            if (topBarVisible) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(background)
+                        .statusBarsPadding()
+                        .padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(MileNoteIcons.Back, contentDescription = tr("返回", "Back"))
+                    }
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    actions?.invoke()
                 }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                actions?.invoke()
             }
         },
     ) { innerPadding ->
@@ -747,7 +787,7 @@ private fun DetailScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            color = MaterialTheme.colorScheme.background,
+            color = background,
         ) {
             content()
         }
