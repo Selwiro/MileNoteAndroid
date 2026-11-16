@@ -219,7 +219,8 @@ fun MaintenanceScreen(
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 13.dp),
                                 thickness = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                                // 2026-11-16：计划表行线再浅一档，别压过项目名；仍保留行边界。
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
                     }
@@ -641,7 +642,7 @@ private fun PlanTableHeader() {
             )
             Spacer(modifier = Modifier.width(18.dp))
         }
-        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.6f))
+        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
     }
 }
 
