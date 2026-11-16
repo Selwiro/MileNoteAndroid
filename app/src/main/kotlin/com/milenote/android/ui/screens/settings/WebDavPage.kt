@@ -75,7 +75,7 @@ private enum class WebDavOverwrite { UPLOAD, DOWNLOAD }
  *    「保存并测试」/「清除连接」。
  * 3. **同步**（仅已配置时显示）：立即同步（智能比较）+ 上传覆盖 / 下载覆盖（均二次确认）；
  *    busy 时进度条 + 禁用按钮；错误/结果用 [MessageBar] 展示。
- * 4. **说明**：HTTPS、坚果云应用密码、远端目录需先创建、明文/加密格式与 Web 版互通等。
+ * 4. **说明**：HTTPS、坚果云应用密码、远端目录需先创建、加密上传需另一台设备用同一密码读取等。
  *
  * 冲突时由 VM 设置 `conflict`，本页弹 AlertDialog 提供「用本地覆盖远端 / 用远端覆盖本地 /
  * 合并（只新增远端记录）」；「取消」只关闭弹层、保持现状（不调用 resolve）。
@@ -671,7 +671,7 @@ internal fun WebDavPage(
             WebDavNote(tr("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。", "Jianguoyun: Account security → Add app → generate an app password; use the app password, not your login password."))
             WebDavNote(tr("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。", "Create the target folder in your WebDAV service first; the app only reads and writes the JSON file you entered."))
             WebDavNote(tr("未开启加密时数据以明文 JSON 保存在远端，传输由 HTTPS 保护；建议开启加密上传。", "Without encryption the data is stored remotely as plain JSON, protected in transit by HTTPS; enabling encrypted uploads is recommended."))
-            WebDavNote(tr("与 Web 版互通：本应用加密上传的文件与 Web 版「加密同步」格式相同，可直接互读；Web 的明文同步文件也能读取。", "Interoperable with the web version: files uploaded with encryption use the same format as the web version's encrypted sync and can be read by both; the web version's plain-sync files can also be read."))
+            WebDavNote(tr("加密上传的文件可由另一台安装了本应用的设备用同一密码读取；加密密码只在本机 Keystore，换设备需重新输入。", "Encrypted files can be read on another device with the same password; the password stays in this device's Keystore and must be re-entered on a new device."))
             WebDavNote(tr("加密格式：AES-256-GCM（PBKDF2-SHA256 派生密钥，600000 次迭代）；加密密码只保存在本机 Android Keystore，不写入数据或备份。", "Encryption format: AES-256-GCM (PBKDF2-SHA256 key derivation, 600,000 iterations); the encryption password is stored only in the Android Keystore on this device and is never written into the data or backups."))
             WebDavNote(tr("自动同步开启后：只在应用打开期间，打开时或本地修改后自动同步；退出应用后不会保留后台任务。两边都有修改时会暂停并提示手动处理。", "With auto sync on: syncs only while the app is open, on launch or after local changes; no background task survives after you leave. It pauses and asks you to resolve when both sides changed."))
         }
