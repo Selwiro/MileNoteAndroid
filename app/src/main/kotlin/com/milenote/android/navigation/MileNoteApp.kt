@@ -70,6 +70,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.model.EnergyProfile
 import com.milenote.android.domain.model.Vehicle
@@ -78,6 +79,8 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.format.Format
 import com.milenote.android.ui.DeleteUndo
+import com.milenote.android.ui.ListFilterPages
+import com.milenote.android.ui.ListFilterState
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.MessageBar
 import com.milenote.android.ui.components.MessageKind
@@ -311,6 +314,15 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     shareOpen = shareOpen,
                     onDismissShare = { shareOpen = false },
                     onShareAvailableChange = { canShare = it },
+                    // T008 ④：构成卡分类行 → 费用明细。分类 + 报告期区间写进列表筛选，
+                    // 返回报告页时报告自己的周期状态由 rememberSaveable 保留，不受列表筛选影响。
+                    onOpenRecords = { categories, range: DateRange ->
+                        vm.setListFilter(
+                            ListFilterPages.RECORDS,
+                            ListFilterState(customRange = range, categories = categories),
+                        )
+                        navController.navigate(Routes.RECORDS)
+                    },
                 )
             }
         }

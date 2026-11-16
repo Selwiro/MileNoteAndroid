@@ -62,12 +62,13 @@ class ReportHeaderLayoutTest {
     }
 
     @Test
-    fun period_label_width_grows_with_font_scale_and_is_clamped() {
-        assertEquals(132f, periodLabelMaxWidthDp(1f), 0.01f)
-        assertEquals(171.6f, periodLabelMaxWidthDp(1.3f), 0.01f)
-        assertEquals(264f, periodLabelMaxWidthDp(2f), 0.01f)
-        assertEquals(264f, periodLabelMaxWidthDp(3f), 0.01f)
-        assertEquals(132f, periodLabelMaxWidthDp(Float.NaN), 0.01f)
+    fun period_label_width_is_fixed_and_grows_only_with_font_scale() {
+        // 固定宽度：9 月 / 11 月只差数字位数，胶囊与两侧箭头的位置不能跟着变。
+        assertEquals(96f, periodLabelWidthDp(1f), 0.01f)
+        assertEquals(124.8f, periodLabelWidthDp(1.3f), 0.01f)
+        assertEquals(192f, periodLabelWidthDp(2f), 0.01f)
+        assertEquals(192f, periodLabelWidthDp(3f), 0.01f)
+        assertEquals(96f, periodLabelWidthDp(Float.NaN), 0.01f)
     }
 
     // ---------------------------------------------------------------- 空态出口

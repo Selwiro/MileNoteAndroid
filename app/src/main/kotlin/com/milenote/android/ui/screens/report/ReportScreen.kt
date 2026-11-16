@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -54,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.milenote.android.domain.calc.Companion
+import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
 import com.milenote.android.domain.calc.ReportData
 import com.milenote.android.domain.calc.ReportDelta
@@ -109,6 +113,7 @@ private const val ReportCategoryRows = 4
  * @param shareOpen 顶栏分享按钮是否已按下
  * @param onDismissShare 关闭分享浮层
  * @param onShareAvailableChange 本期是否有数据可分享（无数据时顶栏按钮不出现）
+ * @param onOpenRecords 构成卡分类行 → 费用明细（T008 ④）：带上该行分类与报告期区间
  */
 @Composable
 fun ReportScreen(
@@ -116,6 +121,7 @@ fun ReportScreen(
     shareOpen: Boolean,
     onDismissShare: () -> Unit,
     onShareAvailableChange: (Boolean) -> Unit,
+    onOpenRecords: (categories: Set<String>, range: DateRange) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -139,6 +145,7 @@ fun ReportScreen(
         shareOpen = shareOpen,
         onDismissShare = onDismissShare,
         onShareAvailableChange = onShareAvailableChange,
+        onOpenRecords = onOpenRecords,
         modifier = modifier,
     )
 }
@@ -152,6 +159,7 @@ private fun ReportContent(
     shareOpen: Boolean,
     onDismissShare: () -> Unit,
     onShareAvailableChange: (Boolean) -> Unit,
+    onOpenRecords: (categories: Set<String>, range: DateRange) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = Today.current
@@ -300,7 +308,7 @@ private fun ReportContent(
                     }
                 }
                 item(key = "categories") {
-                    BreakdownCard(ledger = ledger, data = data)
+                    BreakdownCard(ledger = ledger, data = data, onOpenRecords = onOpenRecords)
                 }
                 if (data.fuel != null || data.electric != null) {
                     item(key = "energy") {
@@ -380,11 +388,21 @@ internal fun periodHeaderStacks(fontScale: Float, widthDp: Float): Boolean {
     return scale >= 1.3f || (widthDp.isFinite() && widthDp > 0f && widthDp < 340f)
 }
 
-/** T008：周期胶囊里日期文字的宽度上限；字号放大后同步放宽，避免「2026 年 11 月」被裁。 */
-internal fun periodLabelMaxWidthDp(fontScale: Float): Float {
+/**
+ * 周期胶囊里日期格的**固定**宽度（2026-11-16 用户反馈）。
+ *
+ * 以前用的是 `widthIn(max = …)`：`2026 年 11 月` 比 `2026 年 9 月` 宽，左右箭头跟着整颗胶囊
+ * 左右跳，点「上一期 / 下一期」时手指下面的按钮会跑。改成固定宽度后，日期格按最长文案留够，
+ * 所有月份 / 年份宽度一致，箭头位置不动。
+ */
+internal fun periodLabelWidthDp(fontScale: Float): Float {
     val scale = if (fontScale.isFinite()) fontScale.coerceIn(1f, 2f) else 1f
-    return 132f * scale
+    // 96dp = 14sp 的「2026 年 11 月」实测约 86dp，再留 10dp 呼吸；英文「Nov 2026」更短。
+    return 96f * scale
 }
+
+/** 周期胶囊高度 = 左右箭头的最小触控区（IconButton 自带 40dp 视觉 + 48dp 触控）。 */
+private val PeriodStepperHeight = 48.dp
 
 @Composable
 private fun PeriodHeader(
@@ -403,7 +421,7 @@ private fun PeriodHeader(
         tr("年报", "Year"),
         tr("累计", "All time"),
     )
-    val labelMaxWidthDp = periodLabelMaxWidthDp(fontScale)
+    val labelWidthDp = periodLabelWidthDp(fontScale)
     val tail: @Composable () -> Unit = {
         PeriodTail(
             data = data,
@@ -413,7 +431,7 @@ private fun PeriodHeader(
             onPrev = onPrev,
             onNext = onNext,
             onPick = onPick,
-            labelMaxWidthDp = labelMaxWidthDp,
+            labelWidthDp = labelWidthDp,
         )
     }
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -453,7 +471,7 @@ private fun PeriodTail(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onPick: () -> Unit,
-    labelMaxWidthDp: Float,
+    labelWidthDp: Float,
 ) {
     if (kind == ReportKind.ALL) {
         Text(
@@ -470,7 +488,7 @@ private fun PeriodTail(
             onPrev = onPrev,
             onNext = onNext,
             onPick = onPick,
-            labelMaxWidthDp = labelMaxWidthDp,
+            labelWidthDp = labelWidthDp,
         )
     }
 }
@@ -525,39 +543,46 @@ private fun PeriodStepper(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onPick: () -> Unit,
-    labelMaxWidthDp: Float = 132f,
+    labelWidthDp: Float = 96f,
 ) {
     Row(
         modifier = Modifier
-            // T008：原来固定 32dp 高，2.0× 字号会把年月文字裁掉；改成最小高度，让胶囊随字号长高。
-            .heightIn(min = 32.dp)
+            // 2.0× 字号下年月文字仍有 40sp 行高，48dp 同时是箭头的最小触控区。
+            .heightIn(min = PeriodStepperHeight)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onPrev, enabled = canPrev, modifier = Modifier.size(32.dp)) {
+        // 箭头原来被 Modifier.size(32.dp) 卡成 32dp，低于 48dp 触控下限；不传 size 时
+        // IconButton 自带 40dp 视觉 + 48dp 触控（minimumInteractiveComponentSize）。
+        IconButton(onClick = onPrev, enabled = canPrev) {
             Icon(
                 MileNoteIcons.Back,
                 contentDescription = tr("上一期", "Previous period"),
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .widthIn(max = labelMaxWidthDp.dp)
+                // 固定宽度：月份位数变了箭头不跟着跑；点击区也一起固定，手指不用重新瞄。
+                .width(labelWidthDp.dp)
                 .clip(CircleShape)
-                .clickable(onClick = onPick)
+                .clickable(
+                    onClickLabel = tr("选择月份或年份", "Pick month or year"),
+                    onClick = onPick,
+                )
                 .padding(horizontal = 2.dp),
         )
-        IconButton(onClick = onNext, enabled = canNext, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onNext, enabled = canNext) {
             Icon(
                 MileNoteIcons.Forward,
                 contentDescription = tr("下一期", "Next period"),
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -713,19 +738,20 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(content.copy(alpha = 0.13f)))
         Spacer(modifier = Modifier.height(12.dp))
 
-        Row(modifier = Modifier.fillMaxWidth()) {
-            stats.forEachIndexed { index, stat ->
-                if (index > 0) {
-                    Box(
+        if (LocalDensity.current.fontScale >= 1.3f) {
+            // T008 剩余项：2.0× 字号下三列各只有约 100dp，「1.64 CNY」会被裁成「CN」。
+            // 大字号改成竖排三行：数值 + 单位同行占满宽度，标签放右侧，不裁字也不折成三行。
+            Column {
+                stats.forEachIndexed { index, stat ->
+                    if (index > 0) {
+                        HorizontalDivider(color = content.copy(alpha = 0.12f))
+                    }
+                    Row(
                         modifier = Modifier
-                            .padding(horizontal = 14.dp)
-                            .height(38.dp)
-                            .width(1.dp)
-                            .background(content.copy(alpha = 0.12f)),
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
                         Text(
                             text = stat.value,
                             fontSize = 20.sp,
@@ -744,14 +770,58 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                                 softWrap = false,
                             )
                         }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = stat.label,
+                            fontSize = 10.sp,
+                            color = content.copy(alpha = 0.55f),
+                            modifier = Modifier.padding(bottom = 2.dp),
+                            maxLines = 1,
+                        )
                     }
-                    Text(
-                        text = stat.label,
-                        fontSize = 10.sp,
-                        color = content.copy(alpha = 0.55f),
-                        modifier = Modifier.padding(top = 3.dp),
-                        maxLines = 1,
-                    )
+                }
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                stats.forEachIndexed { index, stat ->
+                    if (index > 0) {
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 14.dp)
+                                .height(38.dp)
+                                .width(1.dp)
+                                .background(content.copy(alpha = 0.12f)),
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = stat.value,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = content,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            if (stat.unit != null) {
+                                Text(
+                                    text = stat.unit,
+                                    fontSize = 10.sp,
+                                    color = content.copy(alpha = 0.62f),
+                                    modifier = Modifier.padding(start = 3.dp, bottom = 2.dp),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
+                        }
+                        Text(
+                            text = stat.label,
+                            fontSize = 10.sp,
+                            color = content.copy(alpha = 0.55f),
+                            modifier = Modifier.padding(top = 3.dp),
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
@@ -1073,7 +1143,11 @@ private data class BreakdownRow(
 )
 
 @Composable
-private fun BreakdownCard(ledger: Ledger, data: ReportData) {
+private fun BreakdownCard(
+    ledger: Ledger,
+    data: ReportData,
+    onOpenRecords: (categories: Set<String>, range: DateRange) -> Unit,
+) {
     val palette = LocalMileNoteCategoryColors.current
     val dark = LocalMileNoteDarkTheme.current
     val profile = ledger.energyProfile
@@ -1129,60 +1203,121 @@ private fun BreakdownCard(ledger: Ledger, data: ReportData) {
             )
             return@SectionCard
         }
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            CategoryBreakdown(
-                slices = slices,
+        val rowsBlock: @Composable (Modifier) -> Unit = { rowModifier ->
+            BreakdownRows(
+                rows = rows,
                 total = total,
-                modifier = Modifier.width(150.dp),
-                showLegend = false,
-                showCount = false,
+                data = data,
+                onOpenRecords = onOpenRecords,
+                modifier = rowModifier,
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                rows.forEachIndexed { index, row ->
-                    if (index > 0) {
-                        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(33.dp)
-                            .semantics(mergeDescendants = true) {
-                                contentDescription = "${row.label} ${percentText(row.value, total)} ${moneyText(row.value)}"
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
+        }
+        // 1.3× / 2.0× 字号下横向空间不够：150dp 的环图会把分类名压成「停…」。
+        // 大字号改成「环图一行 + 明细整行铺满」，标签、金额、箭头都不裁。
+        if (LocalDensity.current.fontScale >= 1.3f) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                CategoryBreakdown(
+                    slices = slices,
+                    total = total,
+                    modifier = Modifier.fillMaxWidth(),
+                    showLegend = false,
+                    showCount = false,
+                )
+                rowsBlock(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                CategoryBreakdown(
+                    slices = slices,
+                    total = total,
+                    modifier = Modifier.width(150.dp),
+                    showLegend = false,
+                    showCount = false,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                rowsBlock(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * 构成卡右侧的分类行（T008 ④）：整行可点 → 费用明细，预置该行分类与报告期区间。
+ *
+ * 1.3× 以上字号时由 [BreakdownCard] 放到环图下方、整行铺满，避免分类名被裁成「停…」。
+ */
+@Composable
+private fun BreakdownRows(
+    rows: List<BreakdownRow>,
+    total: Double,
+    data: ReportData,
+    onOpenRecords: (categories: Set<String>, range: DateRange) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(modifier = modifier) {
+        rows.forEachIndexed { index, row ->
+            if (index > 0) {
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 行高 48dp：触控下限，也给右侧箭头留位置。
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = tr("查看 %s 的费用明细", "View %s records", row.label),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(row.color),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = row.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = scheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = percentText(row.value, total),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = scheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                        }
-                        Text(
-                            text = moneyText(row.value),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = scheme.onSurface,
-                            maxLines = 1,
-                            softWrap = false,
+                        onOpenRecords(
+                            row.names.toSet(),
+                            DateRange(data.range.from, data.range.to),
                         )
                     }
+                    .semantics(mergeDescendants = true) {
+                        contentDescription =
+                            "${row.label} ${percentText(row.value, total)} ${moneyText(row.value)}"
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(row.color),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = row.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = percentText(row.value, total),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
+                Text(
+                    text = moneyText(row.value),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Icon(
+                    imageVector = MileNoteIcons.Forward,
+                    contentDescription = null,
+                    tint = scheme.onSurfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .padding(start = 2.dp)
+                        .size(14.dp),
+                )
             }
         }
     }
@@ -1232,6 +1367,7 @@ private fun EnergyCard(ledger: Ledger, data: ReportData) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EnergyBlock(
     line: ReportEnergyLine,
@@ -1244,6 +1380,29 @@ private fun EnergyBlock(
 ) {
     val scheme = MaterialTheme.colorScheme
     val rate = line.rate ?: line.estimated
+    // 2.0× 时「6.6 L/100 km」+ 右侧对比胶囊放不进一行：对比胶囊换到下方，单位整词不裁。
+    val stacked = LocalDensity.current.fontScale >= 1.3f
+    val previousRate = line.previous?.rate
+    val deltaChip: @Composable (Modifier) -> Unit = { chipModifier ->
+        if (previousRate != null && rate != null) {
+            val diff = rate - previousRate
+            val chip = when {
+                abs(diff) < 0.05 -> tr("基本持平", "About the same")
+                diff > 0 -> tr("↑ %s 较上月", "↑ %s vs last month", Format.fmt(diff))
+                else -> tr("↓ %s 较上月", "↓ %s vs last month", Format.fmt(abs(diff)))
+            }
+            Text(
+                text = chip,
+                fontSize = 11.sp,
+                color = scheme.primary,
+                maxLines = 1,
+                modifier = chipModifier
+                    .clip(CircleShape)
+                    .background(scheme.primary.copy(alpha = 0.10f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             Box(
@@ -1271,7 +1430,10 @@ private fun EnergyBlock(
                     )
                 }
                 if (rate != null) {
-                    Row(verticalAlignment = Alignment.Bottom) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        itemVerticalAlignment = Alignment.Bottom,
+                    ) {
                         Text(
                             text = Format.fmt(rate),
                             fontSize = 28.sp,
@@ -1284,7 +1446,7 @@ private fun EnergyBlock(
                             text = rateUnit,
                             fontSize = 12.sp,
                             color = scheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 3.dp),
+                            modifier = Modifier.padding(bottom = 3.dp),
                             maxLines = 1,
                         )
                         if (line.rate == null && line.estimated != null) {
@@ -1292,33 +1454,16 @@ private fun EnergyBlock(
                                 text = tr("估算", "est."),
                                 fontSize = 10.sp,
                                 color = scheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 5.dp),
+                                modifier = Modifier.padding(bottom = 5.dp),
                                 maxLines = 1,
                             )
                         }
                     }
                 }
             }
-            val previousRate = line.previous?.rate
-            if (previousRate != null && rate != null) {
-                val diff = rate - previousRate
-                val chip = when {
-                    abs(diff) < 0.05 -> tr("基本持平", "About the same")
-                    diff > 0 -> tr("↑ %s 较上月", "↑ %s vs last month", Format.fmt(diff))
-                    else -> tr("↓ %s 较上月", "↓ %s vs last month", Format.fmt(abs(diff)))
-                }
-                Text(
-                    text = chip,
-                    fontSize = 11.sp,
-                    color = scheme.primary,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(scheme.primary.copy(alpha = 0.10f))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                )
-            }
+            if (!stacked) deltaChip(Modifier)
         }
+        if (stacked) deltaChip(Modifier)
         val parts = mutableListOf(energyCountText(line.count, electric))
         if (line.amount > 0.0) parts += "${Format.fmt(line.amount)} $volumeUnit"
         line.unitPrice?.let { parts += "${Format.money(it)} $priceUnit" }
@@ -1326,7 +1471,7 @@ private fun EnergyBlock(
             text = parts.joinToString(" · "),
             fontSize = 11.sp,
             color = scheme.onSurface,
-            maxLines = 1,
+            maxLines = if (stacked) 2 else 1,
             overflow = TextOverflow.Ellipsis,
         )
         if (line.intervals > 0) {
