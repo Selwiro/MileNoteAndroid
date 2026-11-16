@@ -141,6 +141,29 @@ class DataHealthTest {
     }
 
     @Test
+    fun `ignored warn and info are hidden but errors still show`() {
+        val car = ledger(
+            records = listOf(
+                Record(id = "prev", date = "2026-11-01", category = "油费", amount = 100.0, odometer = 42_000.0),
+                // 跨天读数变小 → WARN，可忽略。
+                Record(id = "back", date = "2026-11-02", category = "油费", amount = 100.0, odometer = 41_000.0),
+                // 分类无法识别 → ERROR，永远不能忽略。
+                Record(id = "bad", date = "2026-11-03", category = "不存在分类", amount = 100.0),
+            ),
+        )
+        val before = dataHealth(car, today)
+        val warn = before.issues.first { it.code == HealthCodes.ODOMETER_BACKWARDS }
+        val error = before.issues.first { it.code == HealthCodes.CATEGORY_UNKNOWN }
+        assertEquals("ODOMETER_BACKWARDS:back", warn.key)
+
+        val after = dataHealth(car.copy(ignoredHealthIssues = listOf(warn.key, error.key)), today)
+
+        assertFalse(after.issues.any { it.key == warn.key })
+        assertTrue("ERROR 不能被忽略", after.issues.any { it.key == error.key })
+        assertEquals(1, after.ignoredCount)
+    }
+
+    @Test
     fun `two refuels on the same day do not look like a backwards reading`() {
         // 同一天两笔（两次加油各记一次里程），录入顺序 / id 顺序与读数顺序故意相反：
         // 以前按 (date, id) 排序会把 43,200 当成先发生，再报 43,000「比之前小」。

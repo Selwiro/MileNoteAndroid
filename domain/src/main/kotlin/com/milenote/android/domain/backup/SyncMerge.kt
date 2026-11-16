@@ -414,6 +414,12 @@ object SyncMerge {
             vehicle = vehicle,
             // 恢复备份加回整车的时刻要跟着车走：另一台设备靠它判断「这辆车被刻意恢复过」。
             restoredAt = listOfNotNull(local.restoredAt, remote.restoredAt).maxOrNull(),
+            // 体检「忽略」是用户决定，两边任一忽略过都保留（并集），不会因同步被另一边覆盖回来。
+            ignoredHealthIssues = orNullIfEmpty(
+                (local.ignoredHealthIssues.orEmpty() + remote.ignoredHealthIssues.orEmpty()).distinct(),
+                local.ignoredHealthIssues,
+                remote.ignoredHealthIssues,
+            ),
             customCategories = orNullIfEmpty(
                 (local.customCategories.orEmpty() + remote.customCategories.orEmpty()).distinct(),
                 local.customCategories,

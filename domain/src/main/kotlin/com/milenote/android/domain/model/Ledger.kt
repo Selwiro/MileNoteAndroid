@@ -59,6 +59,13 @@ data class Ledger(
      * null 表示这辆车不是通过恢复备份加回来的（老备份缺省）。
      */
     val restoredAt: Long? = null,
+    /**
+     * 被用户「忽略」的数据体检条目 key（`code:recordId/reminderId`）。
+     *
+     * 只影响体检页要不要列出该提示，**不改任何数据**；ERROR 级别永远不隐藏（会让统计出错）。
+     * 可选字段：老备份 / 老版本没有该字段时为 null，`version:2` 不变。
+     */
+    val ignoredHealthIssues: List<String>? = null,
 )
 
 /**

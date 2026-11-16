@@ -175,6 +175,10 @@ object GarageOps {
         n = n.copy(
             hiddenServiceProjects = hiddenProjects,
             serviceProjectLabels = incoming.serviceProjectLabels.orEmpty() + n.serviceProjectLabels.orEmpty(),
+            // 恢复备份时把备份里「已忽略的体检项」也并进来，避免恢复后旧提示全冒出来。
+            ignoredHealthIssues = (n.ignoredHealthIssues.orEmpty() + incoming.ignoredHealthIssues.orEmpty())
+                .distinct()
+                .takeIf { it.isNotEmpty() },
         )
         n = n.copy(
             servicePlanConfigured = existing.servicePlanConfigured == true ||

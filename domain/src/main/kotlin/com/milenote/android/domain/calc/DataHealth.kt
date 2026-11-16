@@ -48,11 +48,20 @@ data class HealthIssue(
     val recordId: String? = null,
     val reminderId: String? = null,
     val fix: HealthFix? = null,
-)
+) {
+    /**
+     * 稳定 key：`code:记录/提醒 id`，用于「忽略」。
+     *
+     * 同一目标上的同类问题只算一项；车辆级问题没有 id，用 `vehicle` 占位（不同 code 仍可区分）。
+     */
+    val key: String get() = "$code:${recordId ?: reminderId ?: "vehicle"}"
+}
 
 /** 一次体检的结果。 */
 data class HealthReport(
     val issues: List<HealthIssue> = emptyList(),
+    /** 被用户忽略、因此没有列出的条目数（用于「已忽略 N 项 · 恢复」）。 */
+    val ignoredCount: Int = 0,
 ) {
     val errorCount: Int get() = issues.count { it.severity == HealthSeverity.ERROR }
     val warnCount: Int get() = issues.count { it.severity == HealthSeverity.WARN }
@@ -342,7 +351,13 @@ fun dataHealth(ledger: Ledger, today: LocalDate = Dates.today()): HealthReport {
         )
     }
 
-    return HealthReport(issues)
+    // 「忽略」只隐藏 WARN / INFO：ERROR 会让统计出错，必须继续显示。
+    val ignored = ledger.ignoredHealthIssues.orEmpty().toSet()
+    val hidden = issues.count { it.severity != HealthSeverity.ERROR && it.key in ignored }
+    return HealthReport(
+        issues = issues.filterNot { it.severity != HealthSeverity.ERROR && it.key in ignored },
+        ignoredCount = hidden,
+    )
 }
 
 /**

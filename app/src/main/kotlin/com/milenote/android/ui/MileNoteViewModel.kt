@@ -749,6 +749,39 @@ class MileNoteViewModel(
         }
     }
 
+    /**
+     * 忽略一条体检提示（只对 WARN / INFO 生效；ERROR 会被 domain 继续显示）。
+     *
+     * 只写账本里的 `ignoredHealthIssues`，不改数据；可在体检页「已忽略 N 项」里整体恢复。
+     */
+    fun ignoreHealthIssue(issue: HealthIssue) {
+        if (issue.severity == com.milenote.android.domain.calc.HealthSeverity.ERROR) return
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { ledger ->
+                    ledger.copy(
+                        ignoredHealthIssues = (ledger.ignoredHealthIssues.orEmpty() + issue.key).distinct(),
+                    )
+                }
+            }
+            _state.value = _state.value.copy(
+                message = savedMessage(tr("已忽略这条提示", "This note is now ignored")),
+            )
+        }
+    }
+
+    /** 恢复所有被忽略的体检提示。 */
+    fun restoreIgnoredHealthIssues() {
+        viewModelScope.launch {
+            repository.update(syncHistory = false) { garage ->
+                updateActive(garage) { it.copy(ignoredHealthIssues = null) }
+            }
+            _state.value = _state.value.copy(
+                message = savedMessage(tr("已恢复被忽略的体检项", "Ignored notes are shown again")),
+            )
+        }
+    }
+
     /** 同 id 只留一条（较新），其余删除并给撤销。 */
     private fun fixDuplicateRecords(id: String) {
         val carId = _state.value.activeCar?.id

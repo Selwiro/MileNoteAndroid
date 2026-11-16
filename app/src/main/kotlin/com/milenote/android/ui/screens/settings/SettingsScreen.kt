@@ -879,6 +879,8 @@ fun SettingsScreen(
                                 onOpenRecord = { recordId -> vm.openEditor(recordId) },
                                 onOpenVehicle = { openVehicleEditor(ledger.id) },
                                 onFix = { issue -> vm.fixHealthIssue(issue) },
+                                onIgnore = { issue -> vm.ignoreHealthIssue(issue) },
+                                onRestoreIgnored = { vm.restoreIgnoredHealthIssues() },
                             )
                         }
                     }

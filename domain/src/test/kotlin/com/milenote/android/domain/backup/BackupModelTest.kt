@@ -406,6 +406,24 @@ class BackupModelTest {
     }
 
     @Test
+    fun `ignored health keys survive backup round trip and merge`() {
+        val ignored = listOf("ODOMETER_BACKWARDS:r1", "FUEL_NOT_COUNTED:r1")
+        val garage = simpleGarage().let { g ->
+            g.copy(cars = listOf(g.cars[0].copy(ignoredHealthIssues = ignored)))
+        }
+        val text = BackupCodec.encode(garage)
+        assertTrue(text.contains("\"ignoredHealthIssues\""))
+        assertEquals(ignored, BackupCodec.decode(text).cars[0].ignoredHealthIssues)
+
+        // 恢复 / 同步合并取并集：两边任一忽略过都保留。
+        val merged = GarageOps.mergeLedger(
+            blankLedger().copy(id = "car-1", ignoredHealthIssues = listOf("A:1")),
+            blankLedger().copy(id = "car-1", ignoredHealthIssues = listOf("B:2")),
+        )
+        assertEquals(listOf("A:1", "B:2"), merged.ignoredHealthIssues)
+    }
+
+    @Test
     fun `custom categories survive backup restore`() {
         val incoming = """
             {"version":1,"vehicle":{"name":"测试车"},

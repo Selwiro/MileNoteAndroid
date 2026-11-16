@@ -64,6 +64,8 @@ internal fun HealthPage(
     onOpenRecord: (String) -> Unit,
     onOpenVehicle: () -> Unit,
     onFix: (HealthIssue) -> Unit,
+    onIgnore: (HealthIssue) -> Unit,
+    onRestoreIgnored: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val today = Today.current
@@ -130,6 +132,27 @@ internal fun HealthPage(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (report.ignoredCount > 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = tr(
+                                "已忽略 %d 项提示（错误不会被忽略）",
+                                "%d notes ignored (errors are never ignored)",
+                                report.ignoredCount,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onRestoreIgnored) {
+                            Text(tr("恢复", "Restore"))
+                        }
+                    }
+                }
             }
         }
 
@@ -169,7 +192,15 @@ internal fun HealthPage(
                         SectionCard {
                             chunk.forEachIndexed { index, issue ->
                                 if (index > 0) HorizontalDivider()
-                                IssueRow(issue = issue, onAction = { onIssueAction(issue) })
+                                IssueRow(
+                                    issue = issue,
+                                    onAction = { onIssueAction(issue) },
+                                    onIgnore = if (issue.severity == HealthSeverity.ERROR) {
+                                        null
+                                    } else {
+                                        { onIgnore(issue) }
+                                    },
+                                )
                             }
                         }
                     }
@@ -233,6 +264,8 @@ internal fun HealthPage(
 private fun IssueRow(
     issue: HealthIssue,
     onAction: () -> Unit,
+    /** 非 ERROR 的提示可忽略（写入账本的 ignoredHealthIssues），ERROR 传 null。 */
+    onIgnore: (() -> Unit)? = null,
 ) {
     val actionLabel = when (issue.fix) {
         HealthFix.OPEN_EDITOR -> tr("打开记录", "Open")
@@ -260,9 +293,25 @@ private fun IssueRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (actionLabel != null) {
-            TextButton(onClick = onAction) {
-                Text(actionLabel)
+        if (actionLabel != null || onIgnore != null) {
+            Column(horizontalAlignment = Alignment.End) {
+                if (actionLabel != null) {
+                    TextButton(onClick = onAction) {
+                        Text(actionLabel)
+                    }
+                }
+                if (onIgnore != null) {
+                    TextButton(
+                        onClick = onIgnore,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = tr("忽略", "Ignore"),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
