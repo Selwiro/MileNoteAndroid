@@ -71,6 +71,30 @@ class ReportHeaderLayoutTest {
         assertEquals(96f, periodLabelWidthDp(Float.NaN), 0.01f)
     }
 
+    @Test
+    fun period_pill_height_stays_tab_height_and_grows_with_font_capped() {
+        // 1.0× 视觉高度 36dp（和三个 tab 齐平），大字号最多长到 54dp；触控行仍是 48dp。
+        assertEquals(36f, periodStepperPillHeightDp(1f), 0.01f)
+        assertEquals(46.8f, periodStepperPillHeightDp(1.3f), 0.01f)
+        assertEquals(54f, periodStepperPillHeightDp(2f), 0.01f)
+        assertEquals(54f, periodStepperPillHeightDp(3f), 0.01f)
+        assertEquals(36f, periodStepperPillHeightDp(Float.NaN), 0.01f)
+        assertEquals(36f, periodStepperPillHeightDp(0f), 0.01f)
+    }
+
+    @Test
+    fun breakdown_stacks_on_large_font_or_narrow_screen() {
+        // 并排：1.0× 且宽度够（411dp）才成立；1.3× 与 320/390dp 都改成竖排。
+        assertFalse(breakdownStacks(1f, 411f))
+        assertTrue(breakdownStacks(1f, 390f))
+        assertTrue(breakdownStacks(1f, 320f))
+        assertTrue(breakdownStacks(1.3f, 411f))
+        // 异常值按正常字号 / 保持并排处理，避免测量阶段反复切换。
+        assertFalse(breakdownStacks(Float.NaN, 411f))
+        assertFalse(breakdownStacks(1f, 0f))
+        assertFalse(breakdownStacks(1f, Float.NaN))
+    }
+
     // ---------------------------------------------------------------- 空态出口
 
     @Test

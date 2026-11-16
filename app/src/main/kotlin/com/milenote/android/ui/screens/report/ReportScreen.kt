@@ -41,7 +41,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -315,22 +320,26 @@ private fun ReportContent(
                         EnergyCard(ledger = ledger, data = data)
                     }
                 }
-                item(key = "trend") {
-                    TrendCard(
-                        data = data,
-                        today = today,
-                        onPickKey = { key ->
-                            // `YYYY` = 年柱 → 切年报；`YYYY-MM` = 月柱 → 切月报并定位到该月。
-                            if (key.length == 4) {
-                                yearValue = key.toIntOrNull() ?: yearValue
-                                kindName = ReportKind.YEAR.name
-                            } else {
-                                key.substring(0, 4).toIntOrNull()?.let { monthYear = it }
-                                key.substring(5).toIntOrNull()?.let { monthMonth = it }
-                                kindName = ReportKind.MONTH.name
-                            }
-                        },
-                    )
+                // 2026-11-16 用户反馈：月报放「近 12 个月」必要性不大（月报已有环比 / 同比），
+                // 只在年报（12 个月）与累计（逐年）里保留趋势卡。
+                if (kind != ReportKind.MONTH) {
+                    item(key = "trend") {
+                        TrendCard(
+                            data = data,
+                            today = today,
+                            onPickKey = { key ->
+                                // `YYYY` = 年柱 → 切年报；`YYYY-MM` = 月柱 → 切月报并定位到该月。
+                                if (key.length == 4) {
+                                    yearValue = key.toIntOrNull() ?: yearValue
+                                    kindName = ReportKind.YEAR.name
+                                } else {
+                                    key.substring(0, 4).toIntOrNull()?.let { monthYear = it }
+                                    key.substring(5).toIntOrNull()?.let { monthMonth = it }
+                                    kindName = ReportKind.MONTH.name
+                                }
+                            },
+                        )
+                    }
                 }
                 if (data.highlights.let { it.topExpense != null || it.priciestEnergy != null }) {
                     item(key = "highlights") {
@@ -389,6 +398,17 @@ internal fun periodHeaderStacks(fontScale: Float, widthDp: Float): Boolean {
 }
 
 /**
+ * 费用构成是否改成「环图一行 + 明细整行铺满」。
+ *
+ * 环图固定 150dp，横向并排时明细只剩不到 180dp：大字号或窄屏会把分类名压成「停…」。
+ * 纯函数便于单测边界（1.3× / 400dp）。
+ */
+internal fun breakdownStacks(fontScale: Float, widthDp: Float): Boolean {
+    val scale = if (fontScale.isFinite()) fontScale else 1f
+    return scale >= 1.3f || (widthDp.isFinite() && widthDp > 0f && widthDp < 400f)
+}
+
+/**
  * 周期胶囊里日期格的**固定**宽度（2026-11-16 用户反馈）。
  *
  * 以前用的是 `widthIn(max = …)`：`2026 年 11 月` 比 `2026 年 9 月` 宽，左右箭头跟着整颗胶囊
@@ -401,8 +421,21 @@ internal fun periodLabelWidthDp(fontScale: Float): Float {
     return 96f * scale
 }
 
-/** 周期胶囊高度 = 左右箭头的最小触控区（IconButton 自带 40dp 视觉 + 48dp 触控）。 */
+/** 周期胶囊的触控行高（箭头 48dp 触控下限）。 */
 private val PeriodStepperHeight = 48.dp
+
+/**
+ * 周期胶囊的**视觉**高度（2026-11-16 用户反馈：48dp 太高，要和「月报 / 年报 / 累计」齐平）。
+ *
+ * 视觉胶囊 36dp，居中的画在 48dp 触控行里；箭头仍然有 48dp 命中区，页面观感却回到原来的紧凑高度。
+ */
+private val PeriodStepperPillHeight = 36.dp
+
+/** 胶囊视觉高度随字号增长（钳 1–1.5×），2.0× 时和三个 tab 一起变高、文字不裁。 */
+internal fun periodStepperPillHeightDp(fontScale: Float): Float {
+    val scale = if (fontScale.isFinite()) fontScale.coerceIn(1f, 1.5f) else 1f
+    return PeriodStepperPillHeight.value * scale
+}
 
 @Composable
 private fun PeriodHeader(
@@ -545,12 +578,21 @@ private fun PeriodStepper(
     onPick: () -> Unit,
     labelWidthDp: Float = 96f,
 ) {
+    val pillColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val pillHeight = periodStepperPillHeightDp(LocalDensity.current.fontScale).dp
     Row(
         modifier = Modifier
-            // 2.0× 字号下年月文字仍有 40sp 行高，48dp 同时是箭头的最小触控区。
-            .heightIn(min = PeriodStepperHeight)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            .heightIn(min = maxOf(PeriodStepperHeight, pillHeight))
+            // 背景只画胶囊高度（上下留透明触控区），和卡头三个 tab 的视觉高度一致。
+            .drawBehind {
+                val pill = pillHeight.toPx()
+                drawRoundRect(
+                    color = pillColor,
+                    topLeft = Offset(0f, (size.height - pill) / 2f),
+                    size = Size(size.width, pill),
+                    cornerRadius = CornerRadius(pill / 2f),
+                )
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 箭头原来被 Modifier.size(32.dp) 卡成 32dp，低于 48dp 触控下限；不传 size 时
@@ -562,22 +604,27 @@ private fun PeriodStepper(
                 modifier = Modifier.size(20.dp),
             )
         }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Box(
             modifier = Modifier
                 // 固定宽度：月份位数变了箭头不跟着跑；点击区也一起固定，手指不用重新瞄。
                 .width(labelWidthDp.dp)
+                .height(pillHeight)
                 .clip(CircleShape)
                 .clickable(
                     onClickLabel = tr("选择月份或年份", "Pick month or year"),
                     onClick = onPick,
-                )
-                .padding(horizontal = 2.dp),
-        )
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 2.dp),
+            )
+        }
         IconButton(onClick = onNext, enabled = canNext) {
             Icon(
                 MileNoteIcons.Forward,
@@ -660,7 +707,8 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(Brush.linearGradient(gradient.colors))
-            .padding(20.dp)
+            // 2026-11-16 用户反馈 hero 太宽松：内边距 20→16、纵向间距整体收紧。
+            .padding(horizontal = 18.dp, vertical = 16.dp)
             .semantics(mergeDescendants = true) { contentDescription = summary },
     ) {
         Row(
@@ -677,6 +725,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
             Text(
                 text = if (plate.isBlank()) vehicle else "$vehicle · $plate",
                 fontSize = 12.sp,
+                lineHeight = 16.sp,
                 color = content.copy(alpha = 0.68f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -686,6 +735,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                 Text(
                     text = tr("进行中", "In progress"),
                     fontSize = 10.sp,
+                    lineHeight = 13.sp,
                     color = content.copy(alpha = 0.9f),
                     modifier = Modifier
                         .clip(CircleShape)
@@ -695,10 +745,11 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
             }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = heroSpendLabel(data),
             fontSize = 12.sp,
+            lineHeight = 16.sp,
             color = content.copy(alpha = 0.62f),
         )
         Spacer(modifier = Modifier.height(2.dp))
@@ -706,14 +757,14 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
             text = buildAnnotatedString {
                 withStyle(
                     SpanStyle(
-                        fontSize = 22.sp,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.Medium,
                         color = content.copy(alpha = 0.88f),
                     ),
                 ) { append(Units.currencySymbol) }
                 withStyle(
                     SpanStyle(
-                        fontSize = 50.sp,
+                        fontSize = 44.sp,
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = (-1).sp,
                         color = content,
@@ -722,21 +773,21 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                 if (decPart.isNotEmpty()) {
                     withStyle(
                         SpanStyle(
-                            fontSize = 22.sp,
+                            fontSize = 19.sp,
                             fontWeight = FontWeight.Medium,
                             color = content.copy(alpha = 0.72f),
                         ),
                     ) { append(decPart) }
                 }
             },
-            style = MaterialTheme.typography.moneyLarge.copy(fontSize = 50.sp, lineHeight = 52.sp),
+            style = MaterialTheme.typography.moneyLarge.copy(fontSize = 44.sp, lineHeight = 46.sp),
             maxLines = 1,
             softWrap = false,
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(content.copy(alpha = 0.13f)))
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (LocalDensity.current.fontScale >= 1.3f) {
             // T008 剩余项：2.0× 字号下三列各只有约 100dp，「1.64 CNY」会被裁成「CN」。
@@ -754,7 +805,8 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                     ) {
                         Text(
                             text = stat.value,
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
+                            lineHeight = 21.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = content,
                             maxLines = 1,
@@ -764,6 +816,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                             Text(
                                 text = stat.unit,
                                 fontSize = 10.sp,
+                                lineHeight = 13.sp,
                                 color = content.copy(alpha = 0.62f),
                                 modifier = Modifier.padding(start = 3.dp, bottom = 2.dp),
                                 maxLines = 1,
@@ -774,6 +827,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                         Text(
                             text = stat.label,
                             fontSize = 10.sp,
+                            lineHeight = 13.sp,
                             color = content.copy(alpha = 0.55f),
                             modifier = Modifier.padding(bottom = 2.dp),
                             maxLines = 1,
@@ -787,8 +841,8 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                     if (index > 0) {
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 14.dp)
-                                .height(38.dp)
+                                .padding(horizontal = 12.dp)
+                                .height(32.dp)
                                 .width(1.dp)
                                 .background(content.copy(alpha = 0.12f)),
                         )
@@ -797,7 +851,8 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
                                 text = stat.value,
-                                fontSize = 20.sp,
+                                fontSize = 18.sp,
+                                lineHeight = 21.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = content,
                                 maxLines = 1,
@@ -807,6 +862,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                                 Text(
                                     text = stat.unit,
                                     fontSize = 10.sp,
+                                    lineHeight = 13.sp,
                                     color = content.copy(alpha = 0.62f),
                                     modifier = Modifier.padding(start = 3.dp, bottom = 2.dp),
                                     maxLines = 1,
@@ -817,6 +873,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                         Text(
                             text = stat.label,
                             fontSize = 10.sp,
+                            lineHeight = 13.sp,
                             color = content.copy(alpha = 0.55f),
                             modifier = Modifier.padding(top = 3.dp),
                             maxLines = 1,
@@ -827,17 +884,18 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
         }
 
         monthlyNote?.let { note ->
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = note,
                 fontSize = 10.sp,
+                lineHeight = 14.sp,
                 color = content.copy(alpha = 0.55f),
                 maxLines = 2,
             )
         }
 
         if (rangeText.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = tr(
                     "%s · %d 笔记录",
@@ -846,6 +904,7 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
                     data.recordCount,
                 ),
                 fontSize = 10.sp,
+                lineHeight = 13.sp,
                 color = content.copy(alpha = 0.42f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1023,14 +1082,14 @@ private fun CompareCard(data: ReportData, model: CompareModel) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier.padding(bottom = 2.dp),
         ) {
             LegendDot(color = scheme.primary, label = tr("本期", "This period"))
             LegendDot(color = scheme.outlineVariant, label = previousLabel)
         }
         rows.forEachIndexed { index, row ->
             if (index > 0) {
-                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.30f))
             }
             CompareRowView(row = row, previousLabel = previousLabel)
         }
@@ -1066,8 +1125,9 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp)
-            .padding(vertical = 4.dp)
+            // 2026-11-16 用户反馈对比卡太宽松：行高 44→38、上下留白 4→2。
+            .heightIn(min = 38.dp)
+            .padding(vertical = 2.dp)
             .semantics(mergeDescendants = true) {
                 contentDescription = tr(
                     "%s：本期 %s，%s %s",
@@ -1083,6 +1143,7 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
         Text(
             text = row.label,
             fontSize = 13.sp,
+            lineHeight = 18.sp,
             color = scheme.onSurfaceVariant,
             maxLines = 1,
             softWrap = false,
@@ -1093,17 +1154,17 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             BarTrack(
                 fraction = barFraction(row.current, max),
                 color = scheme.primary,
-                height = 6.dp,
+                height = 5.dp,
             )
             BarTrack(
                 fraction = barFraction(row.previous, max),
                 color = scheme.outlineVariant,
-                height = 6.dp,
+                height = 5.dp,
             )
         }
         Column(
@@ -1113,6 +1174,7 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
             Text(
                 text = row.currentText,
                 fontSize = 13.sp,
+                lineHeight = 17.sp,
                 fontWeight = FontWeight.Medium,
                 color = scheme.onSurface,
                 maxLines = 1,
@@ -1121,6 +1183,7 @@ private fun CompareRowView(row: CompareRow, previousLabel: String) {
             Text(
                 text = row.previousText,
                 fontSize = 10.sp,
+                lineHeight = 13.sp,
                 color = scheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1187,6 +1250,8 @@ private fun BreakdownCard(
 
     SectionCard(
         title = tr("费用构成", "Breakdown"),
+        // 2026-11-16 用户反馈构成卡太紧凑：内边距 16→20，行高 48→56，环图与明细之间留 12dp。
+        contentPadding = PaddingValues(20.dp),
         action = {
             Text(
                 text = tr("%d 个分类", "%d categories", data.categories.size),
@@ -1212,10 +1277,10 @@ private fun BreakdownCard(
                 modifier = rowModifier,
             )
         }
-        // 1.3× / 2.0× 字号下横向空间不够：150dp 的环图会把分类名压成「停…」。
-        // 大字号改成「环图一行 + 明细整行铺满」，标签、金额、箭头都不裁。
-        if (LocalDensity.current.fontScale >= 1.3f) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // 横向空间不够时环图会把分类名压成「停…」：1.3× 以上字号、或屏幕窄于 400dp
+        // 都改成「环图一行 + 明细整行铺满」，标签、金额、箭头都不裁。
+        if (breakdownStacks(LocalDensity.current.fontScale, LocalConfiguration.current.screenWidthDp.toFloat())) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CategoryBreakdown(
                     slices = slices,
                     total = total,
@@ -1226,7 +1291,8 @@ private fun BreakdownCard(
                 rowsBlock(Modifier.fillMaxWidth())
             }
         } else {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            // 环图垂直居中在明细列表旁边：5 行明细比环图高，顶部对齐会让左下角空一大块。
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 CategoryBreakdown(
                     slices = slices,
                     total = total,
@@ -1234,7 +1300,7 @@ private fun BreakdownCard(
                     showLegend = false,
                     showCount = false,
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 rowsBlock(Modifier.weight(1f))
             }
         }
@@ -1258,13 +1324,13 @@ private fun BreakdownRows(
     Column(modifier = modifier) {
         rows.forEachIndexed { index, row ->
             if (index > 0) {
-                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.30f))
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 行高 48dp：触控下限，也给右侧箭头留位置。
-                    .heightIn(min = 48.dp)
+                    // 行高 56dp：触控下限之上留出呼吸，两行标签不再贴着分隔线。
+                    .heightIn(min = 56.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(
                         role = Role.Button,
@@ -1330,8 +1396,8 @@ private fun BreakdownRows(
 @Composable
 private fun EnergyCard(ledger: Ledger, data: ReportData) {
     val scheme = MaterialTheme.colorScheme
-    SectionCard(contentPadding = PaddingValues(20.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    SectionCard(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             data.fuel?.let { line ->
                 EnergyBlock(
                     line = line,
@@ -1367,6 +1433,20 @@ private fun EnergyCard(ledger: Ledger, data: ReportData) {
     }
 }
 
+/**
+ * 一条能耗线（油耗 / 电耗）。
+ *
+ * 2026-11-16 用户反馈「油耗卡片有大量空白」：1.0× 改成左右两栏——左边是大数字 + 单位，
+ * 右边是「均价 / 次数与量」，把原来右下角的空位用起来；1.3× 以上仍用竖排（大字不裁）。
+ *
+ * @param line 单条能耗线（rate / estimated / count / amount / unitPrice / intervals）
+ * @param electric true = 电耗（kWh），false = 油耗（L）
+ * @param title 卡片内标题（油耗 / 电耗）
+ * @param volumeUnit 金额行里的量单位（升 / 度）
+ * @param priceUnit 单价单位（元/升 / 元/度）
+ * @param rateUnit 百公里能耗单位（升/百公里 / 度/百公里）
+ * @param missingText 没有满箱 / 满电记录时的说明
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EnergyBlock(
@@ -1380,7 +1460,7 @@ private fun EnergyBlock(
 ) {
     val scheme = MaterialTheme.colorScheme
     val rate = line.rate ?: line.estimated
-    // 2.0× 时「6.6 L/100 km」+ 右侧对比胶囊放不进一行：对比胶囊换到下方，单位整词不裁。
+    // 1.3× 以上「6.6 L/100 km」+ 右侧信息放不进一行：回退到竖排，单位整词不裁。
     val stacked = LocalDensity.current.fontScale >= 1.3f
     val previousRate = line.previous?.rate
     val deltaChip: @Composable (Modifier) -> Unit = { chipModifier ->
@@ -1394,16 +1474,29 @@ private fun EnergyBlock(
             Text(
                 text = chip,
                 fontSize = 11.sp,
+                lineHeight = 13.sp,
                 color = scheme.primary,
                 maxLines = 1,
                 modifier = chipModifier
                     .clip(CircleShape)
                     .background(scheme.primary.copy(alpha = 0.10f))
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val detailLine = buildList {
+        add(energyCountText(line.count, electric))
+        if (line.amount > 0.0) add("${Format.fmt(line.amount)} $volumeUnit")
+    }.joinToString(" · ")
+    val priceLine = line.unitPrice?.let { "${Format.money(it)} $priceUnit" }
+    val spanLine = buildList {
+        if (line.intervals > 0) {
+            add(spanCountText(line.intervals, electric))
+            if (line.intervals in 1..2 && rate != null) add(tr("样本少", "small sample"))
+        }
+    }.joinToString(" · ")
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             Box(
                 modifier = Modifier
@@ -1421,77 +1514,147 @@ private fun EnergyBlock(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                if (title != null) {
-                    Text(
-                        text = title,
-                        fontSize = 12.sp,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (title != null) {
+                        Text(
+                            text = title,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (!stacked) deltaChip(Modifier)
                 }
                 if (rate != null) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        itemVerticalAlignment = Alignment.Bottom,
-                    ) {
-                        Text(
-                            text = Format.fmt(rate),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = scheme.onSurface,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                        Text(
-                            text = rateUnit,
-                            fontSize = 12.sp,
-                            color = scheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 3.dp),
-                            maxLines = 1,
-                        )
-                        if (line.rate == null && line.estimated != null) {
+                    if (stacked) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            itemVerticalAlignment = Alignment.Bottom,
+                        ) {
                             Text(
-                                text = tr("估算", "est."),
-                                fontSize = 10.sp,
+                                text = Format.fmt(rate),
+                                fontSize = 28.sp,
+                                lineHeight = 32.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            Text(
+                                text = rateUnit,
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp,
                                 color = scheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 5.dp),
+                                modifier = Modifier.padding(bottom = 3.dp),
                                 maxLines = 1,
                             )
+                            if (line.rate == null && line.estimated != null) {
+                                Text(
+                                    text = tr("估算", "est."),
+                                    fontSize = 10.sp,
+                                    lineHeight = 13.sp,
+                                    color = scheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 5.dp),
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    } else {
+                        // 1.0×：大数字占左，均价 / 次数与量靠右，填掉原来的空白。
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = Format.fmt(rate),
+                                fontSize = 28.sp,
+                                lineHeight = 32.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            Text(
+                                text = rateUnit,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 3.dp),
+                                maxLines = 1,
+                            )
+                            if (line.rate == null && line.estimated != null) {
+                                Text(
+                                    text = tr("估算", "est."),
+                                    fontSize = 10.sp,
+                                    lineHeight = 13.sp,
+                                    color = scheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                                    maxLines = 1,
+                                )
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            Column(horizontalAlignment = Alignment.End) {
+                                priceLine?.let {
+                                    Text(
+                                        text = it,
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = scheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
+                                Text(
+                                    text = detailLine,
+                                    fontSize = 10.sp,
+                                    lineHeight = 13.sp,
+                                    color = scheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }
+                if (stacked) {
+                    if (rate != null) {
+                        Text(
+                            text = (listOfNotNull(detailLine, priceLine)).joinToString(" · "),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            color = scheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                if (spanLine.isNotEmpty()) {
+                    Text(
+                        text = spanLine,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                if (rate == null) {
+                    Text(
+                        text = missingText,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             }
-            if (!stacked) deltaChip(Modifier)
         }
         if (stacked) deltaChip(Modifier)
-        val parts = mutableListOf(energyCountText(line.count, electric))
-        if (line.amount > 0.0) parts += "${Format.fmt(line.amount)} $volumeUnit"
-        line.unitPrice?.let { parts += "${Format.money(it)} $priceUnit" }
-        Text(
-            text = parts.joinToString(" · "),
-            fontSize = 11.sp,
-            color = scheme.onSurface,
-            maxLines = if (stacked) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (line.intervals > 0) {
-            Text(
-                text = buildList {
-                    add(spanCountText(line.intervals, electric))
-                    if (line.intervals in 1..2 && rate != null) add(tr("样本少", "small sample"))
-                }.joinToString(" · "),
-                fontSize = 10.sp,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-        if (rate == null) {
-            Text(
-                text = missingText,
-                fontSize = 11.sp,
-                color = scheme.onSurfaceVariant,
-            )
-        }
     }
 }
 

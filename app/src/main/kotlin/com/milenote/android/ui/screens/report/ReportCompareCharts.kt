@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -86,7 +87,8 @@ internal fun ChartModeToggle(
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = modifier
-            .height(34.dp)
+            // 2.0× 字号下 34dp 固定高会把「环比 / 同比」裁掉一半，改成最小高度随文字长高。
+            .heightIn(min = 34.dp)
             .clip(CircleShape)
             .background(scheme.surfaceContainerHigh)
             .padding(2.dp),
