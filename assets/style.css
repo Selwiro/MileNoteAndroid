@@ -714,8 +714,9 @@ button { font: inherit; color: inherit; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.check b { display: block; font-size: 0.99rem; font-weight: 600; letter-spacing: -0.01em; }
-.check span { display: block; margin-top: 2px; color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+/* 只作用于文字区：.check span 会连 .check-icon 一起命中，把图标的 grid 居中层掉 */
+.check div > b { display: block; font-size: 0.99rem; font-weight: 600; letter-spacing: -0.01em; }
+.check div > span { display: block; margin-top: 2px; color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
 
 /* ---------- 下载 CTA ---------- */
 
