@@ -1899,6 +1899,9 @@ class MileNoteViewModel(
                     )
                 }
                 val meta = webDavRepository.testConnection()
+                // 「远端格式」以前只能等一次真实同步才更新（HEAD 只有元信息）。这里补一次
+                // 256 字节的探测，让「保存并测试」之后就能显示明文 / 加密。
+                val remoteFormat = if (meta.exists) webDavRepository.probeRemoteFormat() else null
                 updateWebDav {
                     it.copy(
                         connectionVerified = true,
@@ -1910,6 +1913,7 @@ class MileNoteViewModel(
                         },
                         remoteExists = meta.exists,
                         remoteSize = meta.size,
+                        remoteEncrypted = remoteFormat,
                     )
                 }
             } catch (t: Throwable) {

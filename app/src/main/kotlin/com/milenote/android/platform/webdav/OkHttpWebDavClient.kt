@@ -86,6 +86,16 @@ interface WebDavClient {
     suspend fun get(credentials: WebDavCredentials): WebDavContent?
 
     /**
+     * 只读文件开头最多 [maxBytes] 字节（`Range: bytes=0-<n-1>`）。
+     *
+     * 用来判断「远端当前是明文还是加密信封」——HEAD 只有元信息，格式必须读到内容开头才知道。
+     * 服务器忽略 Range 时也只读到 [maxBytes] 就断开，不会把整份备份拉下来。
+     *
+     * @return 不存在返回 `null`。
+     */
+    suspend fun prefix(credentials: WebDavCredentials, maxBytes: Int = 256): String?
+
+    /**
      * PUT 上传内容。
      *
      * @param ifMatchEtag 非空时发送 `If-Match`（值需为**规范化后**的 ETag，不带引号）；
@@ -294,6 +304,34 @@ class OkHttpWebDavClient(
         // 再校验一次，防止调用方绕过 Repository.save（例如配置被直接注入）。
         WebDavUrl.validate(credentials.url, credentials.allowHttp)
     }
+
+    override suspend fun prefix(credentials: WebDavCredentials, maxBytes: Int): String? =
+        withContext(io) {
+            validate(credentials)
+            execute("GET(range)") {
+                val request = baseRequest(credentials)
+                    .get()
+                    .header("Range", "bytes=0-${(maxBytes - 1).coerceAtLeast(0)}")
+                    .build()
+                http.newCall(request).execute().use { response ->
+                    when (response.code) {
+                        200, 206 -> {
+                            val buffer = ByteArray(maxBytes)
+                            var total = 0
+                            val stream = response.body.byteStream()
+                            while (total < maxBytes) {
+                                val read = stream.read(buffer, total, maxBytes - total)
+                                if (read < 0) break
+                                total += read
+                            }
+                            String(buffer, 0, total, Charsets.UTF_8)
+                        }
+                        404, 410 -> null
+                        else -> throw statusException(response.code)
+                    }
+                }
+            }
+        }
 
     private fun baseRequest(credentials: WebDavCredentials): Request.Builder {
         val builder = Request.Builder().url(credentials.url)

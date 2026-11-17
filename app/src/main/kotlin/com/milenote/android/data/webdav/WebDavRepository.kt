@@ -233,6 +233,17 @@ class WebDavRepository(
         )
     }
 
+    /**
+     * 探测远端当前格式：读取文件开头 256 字节判断是明文还是加密信封。
+     *
+     * 换地址 / 保存并测试后调用，让「远端格式」不再是「未知」——它以前只靠一次真实同步才更新。
+     *
+     * @return true 加密 / false 明文 / null 判断不了（远端不存在、非 JSON、读取失败）。
+     */
+    suspend fun probeRemoteFormat(): Boolean? = withContext(Dispatchers.IO) {
+        runCatching { remoteFormatFromPrefix(client.prefix(requireCredentials())) }.getOrNull()
+    }
+
     /** 最近一次 [fetchLedger] 得到的加密信封原始字节；没有缓存时为 null。 */
     fun cachedEncryptedRemoteBytes(): ByteArray? = encryptedRemoteCache
 

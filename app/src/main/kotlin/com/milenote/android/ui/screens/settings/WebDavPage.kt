@@ -251,10 +251,11 @@ internal fun WebDavPage(
             )
             WebDavInfoRow(
                 tr("远端格式", "Remote format"),
-                when (state.remoteEncrypted) {
-                    null -> tr("未知", "Unknown")
-                    true -> tr("加密", "Encrypted")
-                    false -> tr("明文", "Plain")
+                when {
+                    state.remoteExists == false -> tr("—（远端尚无文件）", "— (no remote file yet)")
+                    state.remoteEncrypted == true -> tr("加密", "Encrypted")
+                    state.remoteEncrypted == false -> tr("明文", "Plain")
+                    else -> tr("未知（同步或测试后显示）", "Unknown (shown after saving & testing)")
                 },
             )
             if (state.configured && !state.fileUrl.isBlank()) {
