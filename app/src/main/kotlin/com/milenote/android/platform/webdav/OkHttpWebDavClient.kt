@@ -1,6 +1,7 @@
 package com.milenote.android.platform.webdav
 
 import com.milenote.android.data.webdav.WebDavRemoteMeta
+import com.milenote.android.domain.backup.LedgerLimits
 import com.milenote.android.i18n.tr
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -475,8 +476,8 @@ class OkHttpWebDavClient(
 
         private val JSON_MEDIA_TYPE: MediaType = "application/json; charset=utf-8".toMediaType()
 
-        /** 远端账本下载上限：32 MB（远超含图片的正常账本，同时挡住误放的大文件）。 */
-        const val MAX_REMOTE_LEDGER_BYTES: Long = 32L * 1024 * 1024
+        /** 远端账本下载上限：与导出 / 本地还原同源（信封口径，1.0 审查 #12）。 */
+        const val MAX_REMOTE_LEDGER_BYTES: Long = LedgerLimits.MAX_ENVELOPE_BYTES
 
         /** 默认 OkHttp 客户端：connect 15s / read 20s / write 20s。 */
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()

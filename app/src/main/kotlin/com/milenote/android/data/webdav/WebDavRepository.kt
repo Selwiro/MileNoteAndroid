@@ -2,6 +2,7 @@ package com.milenote.android.data.webdav
 
 import android.content.Context
 import com.milenote.android.domain.backup.BackupException
+import com.milenote.android.domain.backup.LedgerLimits
 import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.i18n.tr
 import com.milenote.android.platform.webdav.OkHttpWebDavClient
@@ -238,6 +239,17 @@ class WebDavRepository(
             encrypted.toByteArray(Charsets.UTF_8)
         } else {
             plainJson.toByteArray(Charsets.UTF_8)
+        }
+        // 1.0 审查 #12：上传以前没有上限，能传一份自己下载不回来的文件。
+        if (bytes.size > LedgerLimits.MAX_ENVELOPE_BYTES) {
+            throw WebDavException(
+                tr(
+                    "备份过大（约 %d MB，上限 %d MB）：请先压缩或删除部分车辆图片再同步",
+                    "The backup is too large (about %d MB, limit %d MB) — compress or remove some vehicle images first",
+                    bytes.size / (1024 * 1024),
+                    (LedgerLimits.MAX_ENVELOPE_BYTES / (1024 * 1024)).toInt(),
+                ),
+            )
         }
         val condition = webDavUploadCondition(force, expectedEtag)
         return@withContext client.put(

@@ -3,6 +3,7 @@ package com.milenote.android.data.garage
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.BackupException
 import com.milenote.android.domain.backup.GarageOps
+import com.milenote.android.domain.backup.LedgerLimits
 import com.milenote.android.domain.backup.SyncStamps
 import com.milenote.android.domain.calc.syncServiceHistory
 import com.milenote.android.domain.demo.DemoData
@@ -320,7 +321,22 @@ class GarageRepository(
                 tr("演示模式下不能导出完整备份，请先退出演示", "Exit the demo before exporting a full backup"),
             )
         }
-        BackupCodec.encode(_garage.value ?: GarageOps.normalizeGarage(null))
+        val json = BackupCodec.encode(_garage.value ?: GarageOps.normalizeGarage(null))
+        // 1.0 审查 #12：导出以前没有上限，App 能生成自己读不回来的备份（本地还原与
+        // WebDAV 都有上限）。这里就在源头拦住，并给出可操作的原因。
+        val size = json.toByteArray(Charsets.UTF_8).size
+        if (size > LedgerLimits.MAX_PLAIN_BYTES) {
+            val actualMb = size / (1024 * 1024)
+            throw IllegalStateException(
+                tr(
+                    "备份过大（约 %d MB，上限 %d MB）：请先压缩或删除部分车辆图片再导出",
+                    "The backup is too large (about %d MB, limit %d MB) — compress or remove some vehicle images first",
+                    actualMb,
+                    LedgerLimits.maxPlainMb(),
+                ),
+            )
+        }
+        json
     }
 
     /**

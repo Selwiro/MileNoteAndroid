@@ -11,6 +11,7 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.FIELDS
 import com.milenote.android.domain.import.file.SpreadsheetData
 import com.milenote.android.domain.import.file.SpreadsheetFiles
+import com.milenote.android.domain.backup.LedgerLimits
 import com.milenote.android.domain.import.file.SpreadsheetLimits
 import com.milenote.android.domain.import.file.SpreadsheetReadException
 import com.milenote.android.i18n.DataLabels
@@ -142,8 +143,8 @@ internal fun detectSharedImportSource(
 internal fun manualImportSources(ev: Boolean): List<ImportSource> =
     if (ev) MANUAL_IMPORT_SOURCES.filter { it != ImportSource.BEAR } else MANUAL_IMPORT_SOURCES
 
-/** 备份文件上限（Web 恢复备份 20 MB）。 */
-internal const val BACKUP_MAX_BYTES: Long = 20L * 1024 * 1024
+/** 备份文件上限：与导出 / WebDAV 共用 [LedgerLimits.MAX_PLAIN_BYTES]（1.0 审查 #12）。 */
+internal const val BACKUP_MAX_BYTES: Long = LedgerLimits.MAX_PLAIN_BYTES
 
 /** 表格文件上限（与 domain `SpreadsheetLimits.MAX_FILE_BYTES` 一致）。 */
 internal val TABLE_MAX_BYTES: Long = SpreadsheetLimits.MAX_FILE_BYTES

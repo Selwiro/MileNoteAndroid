@@ -546,7 +546,7 @@ fun SettingsScreen(
             busy = true
             try {
                 // 先查大小、再限量读（与导入向导同一套）：不把超大文件整个读进内存再判长度，
-                // 上限统一 BACKUP_MAX_BYTES（20 MB），避免同一份文件两个页面结论不同（审计 B33）。
+                // 上限统一 BACKUP_MAX_BYTES（= LedgerLimits.MAX_PLAIN_BYTES），四个入口同一口径（#12）。
                 val text = withContext(Dispatchers.IO) {
                     val limitMessage = tr(
                         "备份文件超过 %d MB，已取消导入",
@@ -1825,8 +1825,9 @@ private fun BackupRestorePage(
                         tr("演示模式下不可用", "Unavailable in demo mode")
                     } else {
                         tr(
-                            "只合并新增，不覆盖现有数据（上限 20 MB）",
-                            "Merges new records only; never overwrites (max 20 MB)",
+                            "只合并新增，不覆盖现有数据（上限 %d MB）",
+                            "Merges new records only; never overwrites (max %d MB)",
+                            (BACKUP_MAX_BYTES / (1024 * 1024)).toInt(),
                         )
                     },
                     enabled = !busy && !demo,

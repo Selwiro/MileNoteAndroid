@@ -216,7 +216,11 @@ internal class ImportWizardState(
             val isBackup = src == ImportSource.BACKUP
             val limit = if (isBackup) BACKUP_MAX_BYTES else TABLE_MAX_BYTES
             val limitMessage = if (isBackup) {
-                tr("备份文件超过 20 MB，无法恢复", "Backup file exceeds 20 MB and can't be restored")
+                tr(
+                    "备份文件超过 %d MB，无法恢复",
+                    "Backup file exceeds %d MB and can't be restored",
+                    (BACKUP_MAX_BYTES / (1024 * 1024)).toInt(),
+                )
             } else {
                 tr("文件超过 10 MB，请拆分后再导入", "File exceeds 10 MB — split it before importing")
             }
@@ -264,7 +268,7 @@ internal class ImportWizardState(
         busyMessage = tr("正在读取分享内容…", "Reading shared content…")
         try {
             val rawName = fileName.ifBlank { tr("分享导入", "Shared import") }
-            // 20 MB 级文本解码放到后台，避免主线程卡顿。
+            // 几十 MB 级文本解码放到后台，避免主线程卡顿。
             val trimmed = withContext(Dispatchers.Default) {
                 runCatching { decodeText(bytes) }.getOrNull()?.trim()
             }
@@ -273,7 +277,11 @@ internal class ImportWizardState(
             if (jsonLike && looksLikeBackupJson(textContent)) {
                 if (bytes.size > BACKUP_MAX_BYTES) {
                     throw ImportFileException(
-                        tr("备份文件超过 20 MB，无法恢复", "Backup file exceeds 20 MB and can't be restored"),
+                        tr(
+                    "备份文件超过 %d MB，无法恢复",
+                    "Backup file exceeds %d MB and can't be restored",
+                    (BACKUP_MAX_BYTES / (1024 * 1024)).toInt(),
+                ),
                     )
                 }
                 val name = ensureExtension(rawName, "json")

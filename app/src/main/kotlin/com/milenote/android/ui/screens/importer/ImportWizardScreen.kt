@@ -423,11 +423,14 @@ private fun SourceStep(wizard: ImportWizardState, ev: Boolean, onPick: () -> Uni
         item {
             SectionHeader(
                 title = tr("选择导入来源", "Choose import source"),
-                subtitle = tr(
-                    "文件只在本机解析，不会上传；表格文件 ≤10 MB，备份 ≤20 MB",
-                    "Files are parsed on this device and never uploaded; spreadsheets ≤10 MB, " +
-                        "backups ≤20 MB",
-                ),
+                subtitle = run {
+                    val backupMb = (BACKUP_MAX_BYTES / (1024 * 1024)).toInt()
+                    tr(
+                        "文件只在本机解析，不会上传；表格文件 ≤10 MB，备份 ≤%d MB",
+                        "Files are parsed on this device and never uploaded; spreadsheets ≤10 MB, backups ≤%d MB",
+                        backupMb,
+                    )
+                },
             )
         }
         if (wizard.fromShare) {
