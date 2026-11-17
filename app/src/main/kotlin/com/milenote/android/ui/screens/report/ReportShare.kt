@@ -8,8 +8,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -311,12 +309,16 @@ internal fun ReportShareOverlay(
                         fontWeight = FontWeight.SemiBold,
                         color = ShareInk,
                     )
-                    Text(
-                        text = sharePeriodLabel(data),
-                        fontSize = 12.sp,
-                        color = ShareInk.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
+                    // 紧凑布局（矮屏 / 大字号）不显示期次副标题：海报封面里已经有了，
+                    // 把这点高度留给预览图。
+                    if (!compactShareLayout) {
+                        Text(
+                            text = sharePeriodLabel(data),
+                            fontSize = 12.sp,
+                            color = ShareInk.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(
@@ -327,35 +329,34 @@ internal fun ReportShareOverlay(
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
-
-            // 1.0 UX 走查：320×480dp + 2.0× 字号时固定的预览高度会把下面三个操作挤出屏幕
-            // （「分享文本」直接被裁掉）。改成按剩余高度等比缩小，极端情况下还能滚动。
+            // 海报预览：**始终完整显示**在剩余空间里，不滚动、不裁切。
+            // 以前固定高度 + 上限 0.35 的缩放，小屏 / 大字号下海报会比可用区域高，
+            // 结果只看到上半张、要往下划才能看全（用户反馈）。
+            // 现在同时按宽度和高度算缩放比取较小值：宁可小一点，也不出滚动。
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .verticalScroll(rememberScrollState()),
+                    .weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                val scale = if (maxHeight < previewHeight) {
-                    (maxHeight / previewHeight).coerceIn(0.35f, 1f)
-                } else {
-                    1f
-                }
+                val widthScale = if (maxWidth < previewWidth) maxWidth / previewWidth else 1f
+                val heightScale = if (maxHeight < previewHeight) maxHeight / previewHeight else 1f
+                val scale = minOf(1f, widthScale, heightScale).coerceIn(0.1f, 1f)
                 val width = previewWidth * scale
                 val height = previewHeight * scale
                 Box(contentAlignment = Alignment.Center) {
-                    // 柔光把海报从深色底上托起来；不描边、不套框。
-                    Box(
-                        modifier = Modifier
-                            .size(width * 1.18f, height * 1.06f)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(ShareAccent.copy(alpha = 0.20f), Color.Transparent),
+                    // 柔光把海报从深色底上托起来；海报被缩得很小时不画（只剩一团光斑）。
+                    if (width >= 140.dp) {
+                        Box(
+                            modifier = Modifier
+                                .size(width * 1.18f, height * 1.06f)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(ShareAccent.copy(alpha = 0.20f), Color.Transparent),
+                                    ),
                                 ),
-                            ),
-                    )
+                        )
+                    }
                     val image = preview
                     if (image != null) {
                         Image(
@@ -385,8 +386,8 @@ internal fun ReportShareOverlay(
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
-
+            // 注意：这里**不能**再放假 Spacer(weight(1f))——它和预览区平分剩余高度，
+            // 会把海报压到半个屏幕并留一大片空白（实拍过）。
             error?.let { message ->
                 MessageBar(message = message, kind = MessageKind.WARNING)
                 Spacer(modifier = Modifier.height(10.dp))
@@ -415,30 +416,37 @@ internal fun ReportShareOverlay(
                     ) {
                         Text(tr("保存图片", "Save image"), fontWeight = FontWeight.SemiBold)
                     }
-                    OutlinedButton(
-                        onClick = { shareImage() },
-                        enabled = !busy,
-                        shape = CircleShape,
-                        border = BorderStroke(1.dp, ShareInk.copy(alpha = 0.32f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ShareInk),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
+                    // 次操作并排一行：三行按钮在 2.0× 字号下会吃掉近 200dp，
+                    // 海报被挤到只剩几十 dp 高（实拍过）。改成「主按钮 + 一行两个」。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(tr("分享图片", "Share image"))
-                    }
-                    TextButton(
-                        onClick = { shareText() },
-                        enabled = !busy,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
-                    ) {
-                        Text(
-                            text = tr("分享文本", "Share text"),
-                            color = ShareInk.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center,
-                        )
+                        OutlinedButton(
+                            onClick = { shareImage() },
+                            enabled = !busy,
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, ShareInk.copy(alpha = 0.32f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ShareInk),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp),
+                        ) {
+                            Text(tr("分享图片", "Share image"), textAlign = TextAlign.Center)
+                        }
+                        TextButton(
+                            onClick = { shareText() },
+                            enabled = !busy,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp),
+                        ) {
+                            Text(
+                                text = tr("分享文本", "Share text"),
+                                color = ShareInk.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
             } else {
