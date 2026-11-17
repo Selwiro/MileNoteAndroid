@@ -396,68 +396,144 @@ object SyncMerge {
         val servicePlanBase = pick(local.servicePlanBase, remote.servicePlanBase, base?.servicePlanBase, hasBase)
         val vehicle = pick(local.vehicle, remote.vehicle, base?.vehicle, hasBase)
             .let { it.copy(powertrain = normalizePowertrain(it.powertrain)) }
-        val byCategory = LinkedHashMap<String, List<String>>()
-        for ((category, projects) in local.serviceProjectsByCategory.orEmpty()) {
-            byCategory[category] = splitProjects(projects)
-        }
-        for ((category, projects) in remote.serviceProjectsByCategory.orEmpty()) {
-            byCategory[category] = splitProjects(byCategory[category].orEmpty() + projects)
-        }
-        val hiddenProjects = LinkedHashMap<String, List<String>>()
-        for ((category, projects) in local.hiddenServiceProjects.orEmpty()) {
-            hiddenProjects[category] = projects.distinct()
-        }
-        for ((category, projects) in remote.hiddenServiceProjects.orEmpty()) {
-            hiddenProjects[category] = (hiddenProjects[category].orEmpty() + projects).distinct()
-        }
         return local.copy(
             vehicle = vehicle,
             // 恢复备份加回整车的时刻要跟着车走：另一台设备靠它判断「这辆车被刻意恢复过」。
             restoredAt = listOfNotNull(local.restoredAt, remote.restoredAt).maxOrNull(),
-            // 体检「忽略」是用户决定，两边任一忽略过都保留（并集），不会因同步被另一边覆盖回来。
-            ignoredHealthIssues = orNullIfEmpty(
-                (local.ignoredHealthIssues.orEmpty() + remote.ignoredHealthIssues.orEmpty()).distinct(),
-                local.ignoredHealthIssues,
-                remote.ignoredHealthIssues,
-            ),
-            customCategories = orNullIfEmpty(
-                (local.customCategories.orEmpty() + remote.customCategories.orEmpty()).distinct(),
-                local.customCategories,
-                remote.customCategories,
-            ),
+            // 下面这些配置以前一律取并集，于是「本地刚取消隐藏 / 刚还原默认分类名」会被同步
+            // 带回来（1.0 审查 #22）。改成三向比较：只有一边相对基线变化时取那一边，
+            // 这样删除与「还原默认」才传播得出去。
+            ignoredHealthIssues = mergeList(base?.ignoredHealthIssues, local.ignoredHealthIssues, remote.ignoredHealthIssues, hasBase),
+            customCategories = mergeList(base?.customCategories, local.customCategories, remote.customCategories, hasBase),
             servicePlan = servicePlan,
             servicePlanBase = servicePlanBase,
             servicePlanConfigured = when {
-                local.servicePlanConfigured == true || remote.servicePlanConfigured == true -> true
+                local.servicePlanConfigured == true && remote.servicePlanConfigured == true -> true
                 local.servicePlanConfigured == false && remote.servicePlanConfigured == false -> false
-                else -> null
+                !hasBase -> local.servicePlanConfigured
+                local.servicePlanConfigured == base?.servicePlanConfigured -> remote.servicePlanConfigured
+                else -> local.servicePlanConfigured
             },
-            serviceProjects = orNullIfEmpty(
-                splitProjects(local.serviceProjects.orEmpty() + remote.serviceProjects.orEmpty()),
-                local.serviceProjects,
-                remote.serviceProjects,
+            serviceProjects = mergeList(
+                base?.serviceProjects?.let { splitProjects(it) },
+                local.serviceProjects?.let { splitProjects(it) },
+                remote.serviceProjects?.let { splitProjects(it) },
+                hasBase,
             ),
-            serviceProjectsByCategory = orNullIfEmpty(byCategory, local.serviceProjectsByCategory, remote.serviceProjectsByCategory),
-            hiddenCategories = orNullIfEmpty(
-                (local.hiddenCategories.orEmpty() + remote.hiddenCategories.orEmpty())
-                    .map { Categories.normalize(it) }
-                    .filter { it.isNotEmpty() }
-                    .distinct(),
-                local.hiddenCategories,
-                remote.hiddenCategories,
+            serviceProjectsByCategory = mergeProjectMap(
+                base?.serviceProjectsByCategory,
+                local.serviceProjectsByCategory,
+                remote.serviceProjectsByCategory,
+                hasBase,
             ),
-            categoryLabels = orNullIfEmpty(
-                remote.categoryLabels.orEmpty() + local.categoryLabels.orEmpty(),
-                local.categoryLabels,
-                remote.categoryLabels,
+            hiddenCategories = mergeList(
+                base?.hiddenCategories?.map { Categories.normalize(it) },
+                local.hiddenCategories?.map { Categories.normalize(it) }?.filter { it.isNotEmpty() },
+                remote.hiddenCategories?.map { Categories.normalize(it) }?.filter { it.isNotEmpty() },
+                hasBase,
             ),
-            hiddenServiceProjects = orNullIfEmpty(hiddenProjects, local.hiddenServiceProjects, remote.hiddenServiceProjects),
-            serviceProjectLabels = orNullIfEmpty(
-                remote.serviceProjectLabels.orEmpty() + local.serviceProjectLabels.orEmpty(),
+            categoryLabels = mergeLabelMap(base?.categoryLabels, local.categoryLabels, remote.categoryLabels, hasBase),
+            hiddenServiceProjects = mergeProjectMap(
+                base?.hiddenServiceProjects,
+                local.hiddenServiceProjects,
+                remote.hiddenServiceProjects,
+                hasBase,
+            ),
+            serviceProjectLabels = mergeLabelMap(
+                base?.serviceProjectLabels,
                 local.serviceProjectLabels,
                 remote.serviceProjectLabels,
+                hasBase,
             ),
         )
+    }
+
+    /**
+     * 列表三向合并：能传播删除。
+     *
+     * - 无基线：并集（老行为，降级合并时不知道哪边删过）；
+     * - 两边相同：原样；
+     * - 只有一边相对基线变化：取那一边（**可能变短 = 删除，也可能变长**）；
+     * - 两边都变：取并集，但**本地删掉的仍然保持删除**（本地删除是用户的明确动作，
+     *   不能被另一台设备的旧值复活）。
+     */
+    private fun <T> mergeList(base: List<T>?, local: List<T>?, remote: List<T>?, hasBase: Boolean): List<T>? {
+        val l = local.orEmpty()
+        val r = remote.orEmpty()
+        val b = base.orEmpty()
+        val merged: List<T> = when {
+            !hasBase -> (l + r).distinct()
+            l == r -> l.distinct()
+            l == b -> r.distinct()
+            r == b -> l.distinct()
+            else -> {
+                val removedLocally = b.toSet() - l.toSet()
+                (l + r).distinct().filterNot { it in removedLocally }
+            }
+        }
+        return orNullIfEmpty(merged, local, remote)
+    }
+
+    /**
+     * `分类 → 项目列表` 的三向合并：按 key 分别合并，key 被删除时就真的删除。
+     */
+    private fun mergeProjectMap(
+        base: Map<String, List<String>>?,
+        local: Map<String, List<String>>?,
+        remote: Map<String, List<String>>?,
+        hasBase: Boolean,
+    ): Map<String, List<String>>? {
+        val l = local.orEmpty()
+        val r = remote.orEmpty()
+        val b = base.orEmpty()
+        val keys = LinkedHashSet<String>().apply {
+            addAll(b.keys)
+            addAll(l.keys)
+            addAll(r.keys)
+        }
+        val merged = LinkedHashMap<String, List<String>>()
+        for (key in keys) {
+            val lv = l[key]?.let { splitProjects(it) }
+            val rv = r[key]?.let { splitProjects(it) }
+            val bv = b[key]?.let { splitProjects(it) }
+            val value = mergeList(bv, lv, rv, hasBase) ?: continue
+            if (value.isNotEmpty()) merged[key] = value
+        }
+        return orNullIfEmpty(merged, local, remote)
+    }
+
+    /**
+     * `名称 → 显示名` 的三向合并：key 被移除 = 「还原默认名」，必须能传播。
+     */
+    private fun mergeLabelMap(
+        base: Map<String, String>?,
+        local: Map<String, String>?,
+        remote: Map<String, String>?,
+        hasBase: Boolean,
+    ): Map<String, String>? {
+        val l = local.orEmpty()
+        val r = remote.orEmpty()
+        val b = base.orEmpty()
+        val keys = LinkedHashSet<String>().apply {
+            addAll(b.keys)
+            addAll(l.keys)
+            addAll(r.keys)
+        }
+        val merged = LinkedHashMap<String, String>()
+        for (key in keys) {
+            val lv = l[key]
+            val rv = r[key]
+            val bv = b[key]
+            val value = when {
+                !hasBase -> lv ?: rv
+                lv == rv -> lv
+                lv == bv -> rv
+                rv == bv -> lv
+                else -> lv
+            }
+            if (value != null) merged[key] = value
+        }
+        return orNullIfEmpty(merged, local, remote)
     }
 
     /** 合并结果为空且两边本来都没有这个字段时保留 null（不让备份多出空数组）。 */

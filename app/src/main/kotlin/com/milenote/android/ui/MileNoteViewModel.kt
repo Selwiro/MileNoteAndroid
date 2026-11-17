@@ -31,7 +31,10 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.domain.backup.ImportUndo
+import com.milenote.android.domain.backup.ImportUndoResult
 import com.milenote.android.domain.backup.SyncMerge
+import com.milenote.android.domain.backup.buildImportUndo
 import com.milenote.android.domain.backup.LedgerCrypto
 import com.milenote.android.domain.calc.Categories
 import com.milenote.android.domain.calc.CategoryConfig
@@ -232,8 +235,12 @@ data class ImportWriteResult(
     val skipped: Int,
     val overwritten: Int,
     val completedServices: Int,
-    /** 导入前快照（结果页「撤销本次导入」必须回到这一份，不能用「最新快照」）。 */
-    val undoSnapshot: File? = null,
+    /**
+     * 本次导入的逆操作参数（结果页「撤销本次导入」用它只反做这次改动）。
+     *
+     * 以前这里放的是导入前整库快照，撤销 = 整库回滚，会把导入后同步下来的远端记录一起抹掉。
+     */
+    val undo: ImportUndo? = null,
 )
 
 /** 全局 UI 状态。 */
@@ -1578,10 +1585,13 @@ class MileNoteViewModel(
         var skipped = 0
         var overwritten = 0
         var completedServices = 0
-        // 导入前留快照：结果页可一键撤销本次导入（B23）。必须记住具体文件：
-        // 导入后自动同步会再写快照，「最新一份」可能已经不是导入前的状态。
-        val undoSnapshot = repository.snapshotForUndo()
+        // 撤销依据在**同一把锁内**取：transform 收到的就是写入前的账本，成功后再拿写入后的，
+        // 两者对比得到本次导入真正改动过的记录 / 提醒（#5）。不再另拍整库快照。
+        var before: Garage? = null
+        var targetCarId: String? = null
         val written = repository.save(syncHistory = true) { garage ->
+                    before = garage
+                    targetCarId = garage.activeCar?.id
                     updateActive(garage) { ledger ->
                         // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据写回。
                         // 复用旧 id / 口径字段，保住「提醒 → 记录」的关联（B17）。
@@ -1642,13 +1652,22 @@ class MileNoteViewModel(
         if (written is SaveResult.Failed) {
             throw IllegalStateException(written.message)
         }
+        val afterGarage = (written as SaveResult.Ok).garage
+        val carId = targetCarId
+        val undo = carId?.let { id ->
+            buildImportUndo(
+                carId = id,
+                before = before?.cars?.firstOrNull { it.id == id },
+                after = afterGarage.cars.firstOrNull { it.id == id },
+            )
+        }
         return ImportWriteResult(
             added = added,
             merged = merged,
             skipped = skipped,
             overwritten = overwritten,
             completedServices = completedServices,
-            undoSnapshot = undoSnapshot,
+            undo = undo?.takeUnless { it.isEmpty },
         )
     }
 
@@ -1677,8 +1696,27 @@ class MileNoteViewModel(
     }
 
     /** 撤销本次导入：回到 [snapshot] 这份导入前快照（B23）。 */
-    suspend fun undoLastImport(snapshot: File?): Boolean =
-        snapshot?.let { repository.rollbackToSnapshot(it) } ?: false
+    /**
+     * 撤销本次导入：只反做这次导入改过的记录 / 提醒（#5）。
+     *
+     * 导入后被同步拉下来的其他记录、用户导入后又改过的条目都不会被撤掉。
+     *
+     * @return 实际回退与跳过的条数；没有可撤销内容时返回 null。
+     */
+    suspend fun undoLastImport(undo: ImportUndo?): ImportUndoResult? {
+        if (undo == null || undo.isEmpty) return null
+        var outcome: ImportUndoResult? = null
+        // 用 save() 而不是整库回滚：结果页看到的账本可能已经被自动同步改过。
+        val result = repository.save(syncHistory = true) { garage ->
+            val applied = com.milenote.android.domain.backup.undoImport(garage, undo)
+            outcome = applied
+            applied.garage
+        }
+        return when (result) {
+            is SaveResult.Ok -> outcome
+            is SaveResult.Failed -> throw IllegalStateException(result.message)
+        }
+    }
 
     /** 刷新「最近一次损坏账本」状态；进入备份与还原页时调用。 */
     suspend fun refreshQuarantinedRaw() {

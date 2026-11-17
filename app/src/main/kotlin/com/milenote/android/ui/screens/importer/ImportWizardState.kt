@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.milenote.android.domain.backup.ImportUndo
 import com.milenote.android.domain.calc.mergeFuelBatch
 import com.milenote.android.domain.calc.mergeImported
 import com.milenote.android.domain.import.ImportItem
@@ -118,17 +119,17 @@ internal class ImportWizardState(
         private set
 
     /**
-     * 本次导入前的快照文件（B23）。
+     * 本次导入的逆操作参数（#5）。
      *
-     * 存具体文件而不是「有快照」的布尔值：导入后自动同步会再写快照，
-     * 撤销必须回到导入前那一份，不能用目录里的最新一份。
+     * 以前存的是导入前整库快照，撤销会把导入后同步下来的远端记录一起抹掉；现在只记
+     * 「这次导入改过哪些记录 / 提醒」，撤销时逐条反做。
      */
-    var undoSnapshot by mutableStateOf<File?>(null)
+    var undo by mutableStateOf<ImportUndo?>(null)
         private set
 
     /** 结果页据此显示「撤销本次导入」。 */
     val canUndoImport: Boolean
-        get() = undoSnapshot != null
+        get() = undo != null
 
     private var previewGeneration = 0
 
@@ -661,7 +662,7 @@ internal class ImportWizardState(
                         val withFuelTank = hasFuelTank && src != ImportSource.CSV
                         // 等待真实写库结果再展示成功：修复「先报成功、后写库失败」。
                         val written = vm.applyImportAwait(items, if (withFuelTank) fuelBasis else null, overwriteDuplicates)
-                        undoSnapshot = written.undoSnapshot
+                        undo = written.undo
                         result = WizardResult(
                             title = if (overwriteDuplicates) {
                                 tr("导入完成（已覆盖重复）", "Import complete (duplicates overwritten)")
@@ -711,7 +712,7 @@ internal class ImportWizardState(
         }
     }
 
-    /** 撤销本次导入：回到导入前快照（B23）。 */
+    /** 撤销本次导入：只反做这次导入的差异（#5）。 */
     fun undoImport() {
         if (busy || !canUndoImport) return
         scope.launch {
@@ -719,16 +720,31 @@ internal class ImportWizardState(
             busyMessage = tr("正在撤销导入…", "Undoing the import…")
             error = null
             try {
-                val snapshot = undoSnapshot
-                if (snapshot == null || !vm.undoLastImport(snapshot)) {
-                    throw ImportFileException(
-                        tr("撤销失败：导入前的快照已不可用", "Undo failed: the pre-import snapshot is no longer available"),
+                val outcome = vm.undoLastImport(undo)
+                    ?: throw ImportFileException(
+                        tr("撤销失败：没有可撤销的导入内容", "Undo failed: there is nothing to undo"),
                     )
-                }
-                undoSnapshot = null
+                undo = null
                 result = WizardResult(
                     title = tr("已撤销本次导入", "Import undone"),
-                    lines = listOf(tr("已恢复导入前的数据。", "The data from before the import was restored.")),
+                    lines = buildList {
+                        add(tr("已撤销 %d 条改动。", "Reverted %d changes.", outcome.undone))
+                        if (outcome.skipped > 0) {
+                            add(
+                                tr(
+                                    "%d 条在导入后又被改过，已保留现在的值。",
+                                    "%d items changed after the import — their current values were kept.",
+                                    outcome.skipped,
+                                ),
+                            )
+                        }
+                        add(
+                            tr(
+                                "导入后从其他设备同步来的记录不受影响。",
+                                "Records synced from other devices after the import are untouched.",
+                            ),
+                        )
+                    },
                 )
             } catch (e: Exception) {
                 error = e.message ?: tr("撤销失败，请重试", "Undo failed — try again")
