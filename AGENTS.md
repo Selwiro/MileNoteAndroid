@@ -6,7 +6,7 @@
 
 ## 现状
 
-- **0.44.1（versionCode 107，beta）**；第一个正式版定为 1.0.0。包名 `com.milenote.android`，
+- **1.0.0-rc5（versionCode 108，prerelease 候选）**；第一个正式版定为 1.0.0，rc 只给真机验收用。包名 `com.milenote.android`，
   minSdk 26 / targetSdk 37。界面中英双语（我的 → 外观 → 语言）。
 - Kotlin 2.4.21 + Jetpack Compose（BOM 2026.09.00、material3 1.5.0-beta02）+ Material 3 Expressive；
   AGP 9.5.0 / Gradle 9.6.0。**版本矩阵是实测跑通的，不要随手升级。**
