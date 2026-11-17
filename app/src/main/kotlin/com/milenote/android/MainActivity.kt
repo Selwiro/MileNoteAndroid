@@ -29,6 +29,9 @@ import com.milenote.android.i18n.VolumeUnit
 import com.milenote.android.i18n.I18n
 import com.milenote.android.i18n.Units
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.ui.screens.importer.BACKUP_MAX_BYTES
+import com.milenote.android.ui.screens.importer.ImportFileException
+import com.milenote.android.ui.screens.importer.readUriBytes
 import com.milenote.android.i18n.tr
 import com.milenote.android.navigation.AppShortcut
 import com.milenote.android.navigation.MileNoteApp
@@ -152,27 +155,35 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_SEND) return
         val container = (application as MileNoteApplication).container
         lifecycleScope.launch {
-            val shared = withContext(Dispatchers.IO) { readSharedContent(intent) }
-            if (shared != null) {
-                container.pendingShare.value = shared
-            } else {
-                Toast.makeText(
+            // 1.0 审查 #11：以前读文件全量进内存再判大小，提示还在 IO 线程弹。
+            // 现在读取本身就是流式限量，结果连失败原因一起带回主线程再提示。
+            when (val result = withContext(Dispatchers.IO) { readSharedContent(intent) }) {
+                is SharedRead.Ok -> container.pendingShare.value = result.import
+                is SharedRead.Failed -> Toast.makeText(
                     this@MainActivity,
-                    tr("没有读取到可导入的内容", "Nothing importable found"),
+                    result.message,
                     Toast.LENGTH_SHORT,
                 ).show()
             }
         }
     }
 
-    private fun readSharedContent(intent: Intent): SharedImport? {
+    /** 系统分享内容的读取结果：成功带内容，失败带可展示原因（提示必须在主线程弹）。 */
+    private sealed interface SharedRead {
+        data class Ok(val import: SharedImport) : SharedRead
+        data class Failed(val message: String) : SharedRead
+    }
+
+    private fun readSharedContent(intent: Intent): SharedRead {
         val mime = intent.type
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)
         if (!text.isNullOrBlank()) {
-            return SharedImport(
-                bytes = text.toByteArray(Charsets.UTF_8),
-                fileName = guessShareFileName(text, mime),
-                mimeType = mime ?: "text/plain",
+            return SharedRead.Ok(
+                SharedImport(
+                    bytes = text.toByteArray(Charsets.UTF_8),
+                    fileName = guessShareFileName(text, mime),
+                    mimeType = mime ?: "text/plain",
+                ),
             )
         }
         val clip = intent.clipData
@@ -180,10 +191,12 @@ class MainActivity : ComponentActivity() {
             val item = clip.getItemAt(0)
             item.text?.takeIf { it.isNotBlank() }?.let { textItem ->
                 val textValue = textItem.toString()
-                return SharedImport(
-                    bytes = textValue.toByteArray(Charsets.UTF_8),
-                    fileName = guessShareFileName(textValue, mime),
-                    mimeType = mime,
+                return SharedRead.Ok(
+                    SharedImport(
+                        bytes = textValue.toByteArray(Charsets.UTF_8),
+                        fileName = guessShareFileName(textValue, mime),
+                        mimeType = mime,
+                    ),
                 )
             }
             item.uri?.let { return readSharedUri(it, mime ?: clip.description?.getMimeType(0)) }
@@ -191,10 +204,10 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         val stream: Uri? = intent.getParcelableExtra(Intent.EXTRA_STREAM)
         stream?.let { return readSharedUri(it, mime) }
-        return null
+        return SharedRead.Failed(tr("没有读取到可导入的内容", "Nothing importable found"))
     }
 
-    private fun readSharedUri(uri: Uri, mime: String?): SharedImport? = try {
+    private fun readSharedUri(uri: Uri, mime: String?): SharedRead = try {
         val resolvedMime = contentResolver.getType(uri) ?: mime
         val name = contentResolver.query(
             uri,
@@ -205,24 +218,24 @@ class MainActivity : ComponentActivity() {
         )?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: tr("分享导入", "Shared import")
-        val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        when {
-            bytes == null -> null
-            bytes.size > 20 * 1024 * 1024 -> {
-                Toast.makeText(
-                    this,
-                    tr(
-                        "分享文件超过 20 MB，请先在钱迹中拆分导出",
-                        "Shared file is larger than 20 MB — split the export in Qianji first",
-                    ),
-                    Toast.LENGTH_LONG,
-                ).show()
-                null
-            }
-            else -> SharedImport(bytes = bytes, fileName = name, mimeType = resolvedMime)
-        }
+        val limitMessage = tr(
+            "分享文件超过 %d MB，请先在钱迹中拆分导出",
+            "Shared file is larger than %d MB — split the export in Qianji first",
+            (BACKUP_MAX_BYTES / (1024 * 1024)).toInt(),
+        )
+        // 流式限量读取：有大小元数据先用它挡，未知长度也不读到内存里再判断。
+        val bytes = readUriBytes(this, uri, BACKUP_MAX_BYTES, limitMessage)
+        SharedRead.Ok(SharedImport(bytes = bytes, fileName = name, mimeType = resolvedMime))
+    } catch (e: ImportFileException) {
+        SharedRead.Failed(e.message ?: tr("无法读取分享的文件", "Could not read the shared file"))
     } catch (t: Throwable) {
-        null
+        SharedRead.Failed(
+            tr(
+                "无法读取分享的文件：%s",
+                "Could not read the shared file: %s",
+                t.message ?: tr("未知错误", "unknown error"),
+            ),
+        )
     }
 
     private fun guessShareFileName(text: String, mime: String?): String {
