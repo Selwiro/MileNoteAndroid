@@ -771,8 +771,8 @@ button { font: inherit; color: inherit; }
 .cta-shot {
   position: relative;
   z-index: 1;
-  width: clamp(140px, 15vw, 178px);
-  aspect-ratio: 720 / 1600;
+  width: clamp(150px, 16vw, 196px);
+  aspect-ratio: 3 / 4;
   margin: 0;
   overflow: hidden;
   border-radius: 24px;
