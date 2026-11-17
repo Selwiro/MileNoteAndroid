@@ -101,6 +101,8 @@ fun MineScreen(
         configured = state.webDav.configured,
         problemKind = webDavProblem?.kind,
         failureCategory = webDavProblem?.category,
+        connectionVerified = state.webDav.connectionVerified,
+        hasSynced = state.webDav.lastSyncAt != null,
     )
     val backupText = when {
         backupMissing -> tr("尚未备份", "No backup yet")

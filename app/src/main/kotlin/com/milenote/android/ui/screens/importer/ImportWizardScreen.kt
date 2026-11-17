@@ -67,6 +67,7 @@ import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.Units
+import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
@@ -106,6 +107,8 @@ fun ImportWizardScreen(
     initialSource: String? = null,
     onClose: () -> Unit,
     onOpenHealth: () -> Unit = {},
+    /** 结果页「查看本次记录」：带着本次导入的记录编号跳到费用明细。 */
+    onOpenImportedRecords: (Set<String>) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -214,7 +217,9 @@ fun ImportWizardScreen(
                     wizard = wizard,
                     // 导入后账本已更新：直接按当前车算一次体检，给完成页一个入口（F1）。
                     healthAttention = ledger?.let { dataHealth(it).attentionCount } ?: 0,
+                    carName = DataLabels.vehicleName(ledger?.vehicle?.name.orEmpty()),
                     onOpenHealth = onOpenHealth,
+                    onOpenImportedRecords = onOpenImportedRecords,
                 )
             }
         }
@@ -609,7 +614,12 @@ private fun PreviewStep(
                         requiredHint = tr("日期与实付金额是导入的必填字段。", "Date and amount paid are required."),
                     )
                 }
-                item { TableStatsCard(wizard = wizard) }
+                item {
+                    TableStatsCard(
+                        wizard = wizard,
+                        carName = DataLabels.vehicleName(ledger?.vehicle?.name.orEmpty()),
+                    )
+                }
                 val shown = minOf(wizard.tableItems.size, PREVIEW_ROW_LIMIT)
                 items(shown) { index ->
                     TablePreviewRow(
@@ -900,10 +910,15 @@ private fun MappingCard(
 }
 
 @Composable
-private fun TableStatsCard(wizard: ImportWizardState) {
+private fun TableStatsCard(wizard: ImportWizardState, carName: String) {
     SectionCard(
         title = tr("预览", "Preview"),
-        subtitle = tr("共 %d 行", "%d rows", wizard.tableItems.size),
+        subtitle = tr(
+            "共 %d 行 · 记入「%s」",
+            "%d rows · into \"%s\"",
+            wizard.tableItems.size,
+            carName,
+        ),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusPill(
@@ -1253,7 +1268,9 @@ private fun editableNumber(value: Double?): String = value?.let { Numbers.jsStri
 private fun ResultStep(
     wizard: ImportWizardState,
     healthAttention: Int,
+    carName: String,
     onOpenHealth: () -> Unit,
+    onOpenImportedRecords: (Set<String>) -> Unit,
 ) {
     val result = wizard.result
     LazyColumn(
@@ -1288,6 +1305,10 @@ private fun ResultStep(
                         Text(text = result.title, style = MaterialTheme.typography.titleMedium)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+                    // 1.0 UX 走查：结果页也要写清这批数据记到了哪辆车。
+                    if (carName.isNotBlank()) {
+                        InfoRow(tr("记入", "Into"), carName)
+                    }
                     result.lines.forEach { line ->
                         InfoRow("", line)
                     }
@@ -1299,6 +1320,25 @@ private fun ResultStep(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+            }
+        }
+        if (wizard.importedRecordIds.isNotEmpty()) {
+            item {
+                OutlinedButton(
+                    onClick = { onOpenImportedRecords(wizard.importedRecordIds) },
+                    enabled = !wizard.busy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MileNoteDimens.ButtonMinHeight),
+                ) {
+                    Text(
+                        tr(
+                            "查看本次导入的 %d 条记录",
+                            "View the %d records from this import",
+                            wizard.importedRecordIds.size,
+                        ),
+                    )
                 }
             }
         }

@@ -193,6 +193,13 @@ data class WebDavUiState(
     /** 远端加密但本机没有密码时的密码输入弹层；null 表示无。 */
     val decryptPrompt: WebDavDecryptPrompt? = null,
     val lastSyncAt: Long? = null,
+    /**
+     * 最近一次「测试连接」的结果（1.0 UX 走查 #10）。
+     *
+     * null = 还没测过；true = 连上了；false = 测试失败。以前失败后「我的」仍显示
+     * 「同步已开启」，用户以为已经备份好了。
+     */
+    val connectionVerified: Boolean? = null,
     val lastResult: String? = null,
     val remoteExists: Boolean? = null,
     val remoteSize: Long? = null,
@@ -277,6 +284,13 @@ data class UiState(
     val webDav: WebDavUiState = WebDavUiState(),
     /** 列表页筛选：页面 key（[ListFilterPages]）→ 条件；切车 / 进出演示账本时清空。 */
     val listFilters: Map<String, ListFilterState> = emptyMap(),
+    /**
+     * 一次性筛选：报告「费用构成」下钻时给费用明细的临时条件（1.0 UX 走查 #8）。
+     *
+     * 以前直接写进 [listFilters]，于是从总览再打开费用明细时还挂着报告那次的时间 + 分类筛选。
+     * 现在只传一次，明细页消费完就清掉，用户自己的筛选不被覆盖。
+     */
+    val pendingRecordsFilter: ListFilterState? = null,
     /** 最近一次读取失败被隔离的原始账本；仅用于设置页导出入口。 */
     val quarantinedRaw: QuarantinedRaw? = null,
     /** 最近一次整体覆盖（WebDAV 下载 / 还原）前的本地快照；非空时设置页显示回滚入口。 */
@@ -421,6 +435,18 @@ class MileNoteViewModel(
         _state.value = _state.value.copy(
             listFilters = _state.value.listFilters + (page to filter),
         )
+    }
+
+    /** 报告下钻：把临时筛选交给费用明细页（只生效一次）。 */
+    fun requestRecordsFilter(filter: ListFilterState) {
+        _state.value = _state.value.copy(pendingRecordsFilter = filter)
+    }
+
+    /** 费用明细页消费完一次性筛选（不写进它自己的持久筛选）。 */
+    fun consumeRecordsFilter() {
+        if (_state.value.pendingRecordsFilter != null) {
+            _state.value = _state.value.copy(pendingRecordsFilter = null)
+        }
     }
 
     private fun clearListFilters() {
@@ -1025,12 +1051,19 @@ class MileNoteViewModel(
             val result = repository.save(syncHistory = false) { garage ->
                 val ledger = blankLedger(powertrain = nextVehicle.powertrain)
                     .copy(
-                        id = Ids.newId(),
                         vehicle = nextVehicle,
                         reminders = reminders,
                         servicePlanConfigured = if (reminders.isNotEmpty()) true else null,
                     )
-                garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
+                // 1.0 UX 走查：新装时车库里本来就有一辆空白占位车，向导以前又追加一辆，
+                // 结果「设置我的车」之后出现两辆同名车。首次设置就填充那辆占位车（id 不变）。
+                val placeholder = garage.cars.singleOrNull()?.takeIf(::isPlaceholderCar)
+                if (placeholder != null) {
+                    garage.copy(cars = listOf(ledger.copy(id = placeholder.id)), activeId = placeholder.id)
+                } else {
+                    val created = ledger.copy(id = Ids.newId())
+                    garage.copy(cars = garage.cars + created, activeId = created.id)
+                }
             }
             val failed = result is SaveResult.Failed
             _state.value = _state.value.copy(
@@ -1868,6 +1901,7 @@ class MileNoteViewModel(
                 val meta = webDavRepository.testConnection()
                 updateWebDav {
                     it.copy(
+                        connectionVerified = true,
                         busy = false,
                         lastResult = if (meta.exists) {
                             tr("连接成功，远端已有备份（%d 字节）", "Connected — a backup exists on the server (%d bytes)", meta.size)
@@ -1879,7 +1913,13 @@ class MileNoteViewModel(
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: tr("WebDAV 配置保存失败", "Could not save WebDAV settings")) }
+                updateWebDav {
+                    it.copy(
+                        connectionVerified = false,
+                        busy = false,
+                        error = t.message ?: tr("WebDAV 配置保存失败", "Could not save WebDAV settings"),
+                    )
+                }
             }
         }
     }
@@ -1901,7 +1941,9 @@ class MileNoteViewModel(
                     )
                 }
             } catch (t: Throwable) {
-                updateWebDav { it.copy(busy = false, error = t.message ?: tr("清除失败", "Clear failed")) }
+                updateWebDav {
+                    it.copy(busy = false, connectionVerified = null, error = t.message ?: tr("清除失败", "Clear failed"))
+                }
             }
         }
     }
@@ -1913,6 +1955,7 @@ class MileNoteViewModel(
                 val meta = webDavRepository.testConnection()
                 updateWebDav {
                     it.copy(
+                        connectionVerified = true,
                         busy = false,
                         lastResult = if (meta.exists) {
                             tr("连接成功，远端已有备份", "Connected — a backup exists on the server")
@@ -1926,7 +1969,7 @@ class MileNoteViewModel(
             } catch (t: Throwable) {
                 val message = t.message ?: tr("连接失败", "Connection failed")
                 recordWebDavFailure(t, message)
-                updateWebDav { it.copy(busy = false, error = message) }
+                updateWebDav { it.copy(busy = false, connectionVerified = false, error = message) }
             }
         }
     }
@@ -2395,6 +2438,23 @@ class MileNoteViewModel(
                 ),
             )
         }
+    }
+
+    /**
+     * 是不是「新装自带的空白占位车」：没有记录、没有提醒，车辆字段全空。
+     *
+     * 只有这种车才允许被首次建车向导原地填充；有真实数据的车必须走显式的「添加车辆」。
+     */
+    private fun isPlaceholderCar(ledger: Ledger): Boolean {
+        val vehicle = ledger.vehicle
+        return ledger.records.isEmpty() &&
+            ledger.reminders.isEmpty() &&
+            vehicle.plate.isBlank() &&
+            vehicle.model.isBlank() &&
+            (vehicle.startKm ?: 0.0) == 0.0 &&
+            vehicle.currentKm == 0.0 &&
+            vehicle.companionDate.isNullOrBlank() &&
+            vehicle.image.isNullOrBlank()
     }
 
     /**

@@ -42,14 +42,22 @@ fun mineSyncStatus(
     configured: Boolean,
     problemKind: WebDavProblemKind?,
     failureCategory: WebDavFailureCategory? = null,
+    /** 最近一次「测试连接」：null = 没测过 / true = 连上了 / false = 测试失败。 */
+    connectionVerified: Boolean? = null,
+    /** 是否有过成功同步（有则显示「最近同步成功」）。 */
+    hasSynced: Boolean = false,
 ): MineSyncStatus = when {
     !configured -> MineSyncStatus(text = tr("同步未开启", "Sync off"), warn = false)
-    problemKind == null -> MineSyncStatus(text = tr("同步已开启", "Sync on"), warn = false)
+    // 1.0 UX 走查：连接测试失败后仍显示「同步已开启」会让人以为已经备份好了。
+    connectionVerified == false -> MineSyncStatus(text = tr("已保存 · 未连接", "Saved · not connected"), warn = true)
     problemKind == WebDavProblemKind.CONFLICT ->
         MineSyncStatus(text = tr("同步冲突", "Sync conflict"), warn = true)
     problemKind == WebDavProblemKind.NEEDS_PASSWORD ->
         MineSyncStatus(text = tr("同步需密码", "Sync needs password"), warn = true)
-    else -> MineSyncStatus(text = syncFailureLabel(failureCategory), warn = true)
+    problemKind != null -> MineSyncStatus(text = syncFailureLabel(failureCategory), warn = true)
+    hasSynced -> MineSyncStatus(text = tr("最近同步成功", "Last sync succeeded"), warn = false)
+    // 配好了、也连得上，但一次都没同步过：不能说「同步已开启」。
+    else -> MineSyncStatus(text = tr("已连接 · 尚未同步", "Connected · not synced yet"), warn = false)
 }
 
 /** 失败短标签：五类归一（UX6）。 */

@@ -147,10 +147,22 @@ fun RecordsScreen(
         }
         return
     }
+    // 报告下钻的一次性条件（#8）：只覆盖本次进入的筛选，用户一改筛选就落回他自己的持久筛选。
+    var drillFilter by remember { mutableStateOf<ListFilterState?>(null) }
+    val pending = state.pendingRecordsFilter
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            drillFilter = pending
+            vm.consumeRecordsFilter()
+        }
+    }
     RecordsContent(
         ledger = ledger,
-        filter = state.listFilters[ListFilterPages.RECORDS] ?: ListFilterState(),
-        onFilterChange = { vm.setListFilter(ListFilterPages.RECORDS, it) },
+        filter = drillFilter ?: (state.listFilters[ListFilterPages.RECORDS] ?: ListFilterState()),
+        onFilterChange = { next ->
+            drillFilter = null
+            vm.setListFilter(ListFilterPages.RECORDS, next)
+        },
         onAddRecord = { vm.openEditor() },
         onOpenRecord = { recordId -> vm.openEditor(recordId) },
         onDeleteRecords = { records, onDeleted -> vm.deleteRecords(records, onDeleted) },
@@ -192,6 +204,7 @@ private fun RecordsContent(
             period = filter.period,
             customRange = filter.customRange,
             today = today,
+            onlyIds = filter.onlyIds,
         )
     }
     val groups = remember(filtered) { filtered.groupBy { it.date.take(7) } }
@@ -235,8 +248,11 @@ private fun RecordsContent(
             .map { Categories.normalize(it.category) }
             .filter { it.isNotEmpty() }
             .toSet()
+        val uncategorized = ledger.records.any { Categories.normalize(it.category).isEmpty() }
         Categories.ALL.filter { it in present } +
-            present.filter { it !in Categories.ALL }.sorted()
+            present.filter { it !in Categories.ALL }.sorted() +
+            // #8：导入脏数据里的空分类以前只能从报告下钻看到，筛选面板里没有这个选项。
+            listOfNotNull(Categories.UNCATEGORIZED.takeIf { uncategorized })
     }
     // 分类条数：按「时间 + 搜索」算、不按已选分类；与时间筛选联动，避免显示不实的 0。
     val categoryCounts = remember(ledger, filter.query, filter.period, filter.customRange, today) {
@@ -251,6 +267,14 @@ private fun RecordsContent(
     }
     val activeChips = remember(filter, categoryOptions, ledger) {
         buildList {
+            if (filter.hasIdFilter) {
+                add(
+                    ActiveFilterChip(
+                        key = "ids",
+                        label = tr("本次导入 %d 条", "This import: %d", filter.onlyIds.size),
+                    ),
+                )
+            }
             if (filter.hasTimeFilter) {
                 add(ActiveFilterChip("time", rangeLabel(filter.period, filter.customRange)))
             }
@@ -280,10 +304,11 @@ private fun RecordsContent(
             period = draft.period,
             customRange = draft.customRange,
             today = today,
+            onlyIds = draft.onlyIds,
         )
     }
     // 面板里的分类条数按「时间 + 搜索」算，不按已选分类，切换勾选时数字不会互相归零。
-    val draftBase = remember(ledger, draft.query, draft.period, draft.customRange, today) {
+    val draftBase = remember(ledger, draft.query, draft.period, draft.customRange, draft.onlyIds, today) {
         filterRecords(
             ledger = ledger,
             query = draft.query,
@@ -291,6 +316,7 @@ private fun RecordsContent(
             period = draft.period,
             customRange = draft.customRange,
             today = today,
+            onlyIds = draft.onlyIds,
         )
     }
     val draftCounts = remember(draftBase) {
@@ -346,6 +372,7 @@ private fun RecordsContent(
                             chips = activeChips,
                             onRemove = { key ->
                                 when {
+                                    key == "ids" -> onFilterChange(filter.copy(onlyIds = emptySet()))
                                     key == "time" -> onFilterChange(
                                         filter.copy(period = Period.ALL, customRange = null),
                                     )
@@ -463,7 +490,11 @@ private fun RecordsContent(
                     FilterOption(
                         key = name,
                         label = DataLabels.categoryFor(ledger, name, ledger.vehicle.energyProfile),
-                        count = draftCounts[name] ?: 0,
+                        count = if (name == Categories.UNCATEGORIZED) {
+                            draftCounts[""] ?: 0
+                        } else {
+                            draftCounts[name] ?: 0
+                        },
                         color = categoryColorOf(name),
                     )
                 },
@@ -942,6 +973,8 @@ internal fun filterRecords(
     period: Period = Period.ALL,
     customRange: DateRange? = null,
     today: LocalDate,
+    /** 只看这些记录编号（导入结果页「查看本次记录」，#16 UX）；空集 = 不限制。 */
+    onlyIds: Set<String> = emptySet(),
 ): List<Record> {
     val range = customRange ?: Dates.range(period, today)
     val keyword = query.trim()
@@ -958,6 +991,7 @@ internal fun filterRecords(
             val inPeriod = (range.from.isEmpty() || record.date >= range.from) &&
                 (range.to.isEmpty() || record.date <= range.to)
             val normalizedCategory = Categories.normalize(record.category)
+            val matchId = onlyIds.isEmpty() || record.id in onlyIds
             val matchCategory = selectedCategories.isEmpty() ||
                 normalizedCategory in selectedCategories ||
                 (wantsUncategorized && normalizedCategory.isEmpty())
@@ -981,7 +1015,7 @@ internal fun filterRecords(
                     append(Numbers.jsString(it)).append(' ')
                 }
             }.contains(keyword, ignoreCase = true)
-            inPeriod && matchCategory && matchSearch
+            inPeriod && matchId && matchCategory && matchSearch
         }
         .sortedWith(
             compareByDescending<Record> { it.date }

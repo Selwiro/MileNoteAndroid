@@ -131,6 +131,10 @@ internal class ImportWizardState(
     val canUndoImport: Boolean
         get() = undo != null
 
+    /** 本次导入实际新增 / 更新过的记录编号（结果页「查看本次记录」用）。 */
+    val importedRecordIds: Set<String>
+        get() = undo?.touched?.keys.orEmpty()
+
     private var previewGeneration = 0
 
     private val ledger get() = vm.state.value.activeCar
@@ -209,6 +213,9 @@ internal class ImportWizardState(
             error = tr("请先选择导入来源", "Select an import source first")
             return
         }
+        // 1.0 UX 走查：第二份文件的预览会混入上一份的信息（表头 / 行数 / 工作表）。
+        // 每次读新文件都先清干净文件级状态，再写这一次的解析结果。
+        resetFile()
         busy = true
         busyMessage = tr("正在读取文件…", "Reading file…")
         error = null
@@ -774,9 +781,28 @@ internal class ImportWizardState(
         }
     }
 
-    fun confirmLabel(): String = when (source) {
-        ImportSource.BACKUP -> tr("确认恢复", "Restore")
-        else -> tr("确认导入", "Import")
+    /**
+     * 确认按钮文案：直接写清「导入几条 / 跳过几条」（1.0 UX 走查）。
+     *
+     * 以前只有一个「导入」，用户点完才知道有行被跳过；现在按钮本身就是承诺。
+     */
+    fun confirmLabel(): String {
+        if (source == ImportSource.BACKUP) {
+            val cars = backupPreview?.cars ?: 0
+            val records = backupPreview?.records ?: 0
+            return if (records > 0) {
+                tr("恢复 %d 辆车 · %d 条记录", "Restore %d vehicles · %d records", cars, records)
+            } else {
+                tr("确认恢复", "Restore")
+            }
+        }
+        val valid = validTableCount()
+        val skipped = invalidTableCount() + excludedTableCount()
+        return when {
+            valid == 0 -> tr("没有可导入的行", "Nothing to import")
+            skipped > 0 -> tr("导入 %d 条 · 跳过 %d 条", "Import %d · skip %d", valid, skipped)
+            else -> tr("导入 %d 条", "Import %d", valid)
+        }
     }
 
     /** CSV 回灌是否可直接确认（不走「忽略 / 覆盖重复」弹层：同编号行原位更新）。 */

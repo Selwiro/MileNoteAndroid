@@ -797,11 +797,15 @@ internal fun WebDavPage(
                     ConflictOption(tr("合并（按记录自动合并）", "Merge (record by record)"), tr("按每条记录的修改时间合并，两边的新增与修改都保留", "Merge each record by its last edit time; additions and edits from both sides are kept")) {
                         onResolveConflict(WebDavConflictChoice.MERGE)
                     }
+                    // 1.0 UX 走查：覆盖类动作一点就执行，和普通同步页的「先确认」不一致。
+                    // 这里改成走同一个覆盖确认弹层，方向与可回滚条件都在确认框里说清。
                     ConflictOption(tr("用本地覆盖远端", "Overwrite remote with local"), tr("上传本机数据，远端内容被替换", "Upload this device's data; remote content is replaced")) {
-                        onResolveConflict(WebDavConflictChoice.KEEP_LOCAL)
+                        onDismissConflict()
+                        overwriteAction = WebDavOverwrite.UPLOAD
                     }
                     ConflictOption(tr("用远端覆盖本地", "Overwrite local with remote"), tr("下载远端数据，本机内容被替换", "Download the remote data; local content is replaced")) {
-                        onResolveConflict(WebDavConflictChoice.KEEP_REMOTE)
+                        onDismissConflict()
+                        overwriteAction = WebDavOverwrite.DOWNLOAD
                     }
                 }
             },

@@ -341,6 +341,9 @@ private fun pendingReminderCandidates(
     return reminders
         .filter { reminder ->
             if (reminder.done) return@filter false
+            // 1.0 UX 走查：里程已经到期、日期还在两年后时，两条补充规则都不满足，
+            // 待办会显示「0 项到期」。任一维度已经到期就直接进待办，补充规则只管未到期项。
+            if (reminderState(reminder, km, today).level == ReminderLevel.OVERDUE) return@filter true
             val due = reminder.dueDate
             val dueDateSoon = due != null && Dates.isValid(due) && due <= cutoff
             val mileageOnlySoon = (due == null || !Dates.isValid(due)) &&

@@ -43,10 +43,25 @@ class MineSyncStatusTest {
     }
 
     @Test
-    fun `configured without problem is sync on and not a warning`() {
-        val status = mineSyncStatus(configured = true, problemKind = null)
-        assertEquals("同步已开启", status.text)
+    fun `configured with a successful sync reports success without a warning`() {
+        val status = mineSyncStatus(configured = true, problemKind = null, hasSynced = true)
+        assertEquals("最近同步成功", status.text)
         assertFalse(status.warn)
+    }
+
+    @Test
+    fun `configured but never synced does not claim sync is on`() {
+        // 1.0 UX 走查：配好了却一次都没同步过，以前也显示「同步已开启」。
+        val status = mineSyncStatus(configured = true, problemKind = null, hasSynced = false)
+        assertEquals("已连接 · 尚未同步", status.text)
+        assertFalse(status.warn)
+    }
+
+    @Test
+    fun `a failed connection test is reported as saved but not connected`() {
+        val status = mineSyncStatus(configured = true, problemKind = null, connectionVerified = false)
+        assertEquals("已保存 · 未连接", status.text)
+        assertTrue(status.warn)
     }
 
     @Test
@@ -76,7 +91,7 @@ class MineSyncStatusTest {
         assertEquals("Sync failed", mineSyncStatus(true, WebDavProblemKind.ERROR).text)
         assertEquals("Sync conflict", mineSyncStatus(true, WebDavProblemKind.CONFLICT).text)
         assertEquals("Sync needs password", mineSyncStatus(true, WebDavProblemKind.NEEDS_PASSWORD).text)
-        assertEquals("Sync on", mineSyncStatus(true, null).text)
+        assertEquals("Last sync succeeded", mineSyncStatus(true, null, hasSynced = true).text)
         assertEquals("Sync off", mineSyncStatus(false, null).text)
     }
 

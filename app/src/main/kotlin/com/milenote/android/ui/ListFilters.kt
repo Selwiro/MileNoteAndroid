@@ -41,6 +41,12 @@ data class ListFilterState(
     val categories: Set<String> = emptySet(),
     val types: Set<String> = emptySet(),
     val query: String = "",
+    /**
+     * 只看这些记录编号（导入结果页「查看本次记录」用）。
+     *
+     * 不进 [activeCount]：它不是用户设置的筛选，而是「本次导入」的范围。
+     */
+    val onlyIds: Set<String> = emptySet(),
 ) {
     /** 实际生效的时间区间：自定义优先。 */
     fun range(today: LocalDate = Dates.today()): DateRange =
@@ -54,4 +60,7 @@ data class ListFilterState(
 
     /** 恢复默认：全部时间、无分类、无类型、空搜索。 */
     fun cleared(): ListFilterState = ListFilterState()
+
+    /** 是否限制了「本次导入」的记录范围。 */
+    val hasIdFilter: Boolean get() = onlyIds.isNotEmpty()
 }

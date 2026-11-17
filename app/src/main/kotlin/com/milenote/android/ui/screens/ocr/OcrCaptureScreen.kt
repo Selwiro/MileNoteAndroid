@@ -203,28 +203,42 @@ fun OcrCaptureScreen(
                 // 读出的值仍要过一致性校验，失败则留空并继续走 OCR 兜底。
                 var pumpReadingsDetected = false
                 val pumpImage = prepared
-                if (pumpImage != null && (bestParsed.amount == null || bestParsed.liters == null)) {
+                // 1.0 UX 走查：纸质小票以前也会跑七段数码管解码，把 220.00 元读成 888.38 元
+                // 并一键回填。先要求画面里真有「加油机屏幕」的证据（金额 + 单价 / 单价 + 升数），
+                // 再读数码管；读数还要过一致性校验（金额 ≈ 升数 × 单价）。
+                val pumpEvidence = hasPumpScreenEvidence(allTexts)
+                if (pumpImage != null && pumpEvidence && (bestParsed.amount == null || bestParsed.liters == null)) {
                     val reading = withContext(Dispatchers.IO) { PumpDisplayReader.read(pumpImage) }
                     // 允许部分回填：只读出单价也算命中（金额/升数由用户手填或快速手填补）。
                     if (reading != null &&
                         (reading.amount != null || reading.liters != null || reading.unitPrice != null)
                     ) {
                         pumpReadingsDetected = true
+                        val consistent = pumpReadingConsistent(reading.amount, reading.liters, reading.unitPrice)
+                        val readingAmount = reading.amount.takeIf { consistent }
+                        val readingLiters = reading.liters.takeIf { consistent }
                         bestParsed = bestParsed.copy(
-                            amount = bestParsed.amount ?: reading.amount,
-                            liters = bestParsed.liters ?: reading.liters,
+                            amount = bestParsed.amount ?: readingAmount,
+                            liters = bestParsed.liters ?: readingLiters,
                             unitPrice = bestParsed.unitPrice ?: reading.unitPrice,
                             warnings = bestParsed.warnings.filterNot { warning ->
-                                (reading.amount != null &&
+                                (readingAmount != null &&
                                     (warning.contains("实付金额") || warning.contains("Paid amount"))) ||
-                                    (reading.liters != null &&
+                                    (readingLiters != null &&
                                         (warning.contains("加油量") || warning.contains("Fuel amount"))) ||
                                     (reading.unitPrice != null &&
                                         (warning.contains("油价") || warning.contains("Unit price")))
-                            } + tr(
-                                "已按加油机屏幕读数识别，请核对",
-                                "Read from the pump display — please verify",
-                            ),
+                            } + if (consistent) {
+                                tr(
+                                    "已按加油机屏幕读数识别，请核对",
+                                    "Read from the pump display — please verify",
+                                )
+                            } else {
+                                tr(
+                                    "机屏读数不自洽（金额 ≠ 升数 × 单价），只采用了单价，请核对金额与升数",
+                                    "The pump readings do not add up (amount ≠ litres × unit price) — only the unit price was used; check the amount and litres",
+                                )
+                            },
                         )
                     }
                 }
@@ -894,3 +908,31 @@ private fun number(value: Double): String =
     } else {
         String.format(Locale.CHINA, "%.2f", value)
     }
+
+/**
+ * OCR 原文里有没有「加油机屏幕」的证据（1.0 UX 走查）。
+ *
+ * 纸票的排版是「加油站 / 流水号 / 品名 / 金额」；机屏通常同时出现金额、单价与升数，
+ * 且单价常写成「元/L」。三个里至少凑到两个才认为值得跑数码管解码，
+ * 避免把纸质小票读成离谱的机屏数字。
+ */
+private fun hasPumpScreenEvidence(texts: List<String>): Boolean {
+    val merged = texts.joinToString(" ")
+    if (merged.isBlank()) return false
+    val hasAmount = merged.contains("金额") || merged.contains("amount", ignoreCase = true)
+    val hasUnitPrice = merged.contains("单价") || merged.contains("unit price", ignoreCase = true) ||
+        Regex("元\\s*/\\s*[Ll]").containsMatchIn(merged) ||
+        Regex("\\d+\\.\\d{2}\\s*/\\s*[Ll]").containsMatchIn(merged)
+    val hasLiters = merged.contains("升") || merged.contains("litre", ignoreCase = true) ||
+        merged.contains("liter", ignoreCase = true) ||
+        Regex("\\d+\\.\\d{2}\\s*[Ll]\\b").containsMatchIn(merged)
+    return (hasAmount && hasUnitPrice) || (hasUnitPrice && hasLiters)
+}
+
+/** 机屏读数自洽性：金额 ≈ 升数 × 单价（容差 2% 或 0.5 元）；缺项时不判断。 */
+private fun pumpReadingConsistent(amount: Double?, liters: Double?, unitPrice: Double?): Boolean {
+    if (amount == null || liters == null || unitPrice == null) return true
+    if (liters <= 0.0 || unitPrice <= 0.0) return false
+    val expected = liters * unitPrice
+    return kotlin.math.abs(amount - expected) <= maxOf(0.5, amount * 0.02)
+}

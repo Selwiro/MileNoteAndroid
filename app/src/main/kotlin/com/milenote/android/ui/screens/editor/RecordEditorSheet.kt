@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.background
+import androidx.compose.ui.text.style.TextOverflow
+import com.milenote.android.i18n.DataLabels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -185,6 +188,8 @@ fun RecordEditorScreen(
         form = form,
         saving = uiState.savingRecord,
         submitError = uiState.editorError,
+        carName = DataLabels.vehicleName(ledger.vehicle.name),
+        demo = uiState.demo,
         onDismiss = { requestDismiss() },
         onSave = {
             val record = form.attemptSave()
@@ -362,6 +367,8 @@ private fun RecordEditorBody(
     form: RecordEditorState,
     saving: Boolean,
     submitError: String?,
+    carName: String,
+    demo: Boolean,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
     onRequestDelete: () -> Unit,
@@ -393,9 +400,26 @@ private fun RecordEditorBody(
         ) {
             EditorHeader(
                 title = form.title,
+                // 1.0 UX 走查：多车用户从首页进「记一笔」时看不出这笔记到哪辆车。
+                subtitle = tr("记入 · %s", "Recording to %s", carName),
                 onBack = onDismiss,
                 onDelete = if (form.original != null) onRequestDelete else null,
             )
+            if (demo) {
+                // 演示账本和真实账本外观一致，提交前必须一直看得见「不会保存」。
+                Text(
+                    text = tr(
+                        "演示数据：这里的修改不会保存到本机",
+                        "Demo data — changes here are not saved",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.tertiaryContainer)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -480,6 +504,7 @@ private fun RecordEditorBody(
 @Composable
 private fun EditorHeader(
     title: String,
+    subtitle: String? = null,
     onBack: () -> Unit,
     onDelete: (() -> Unit)?,
 ) {
@@ -497,12 +522,22 @@ private fun EditorHeader(
                     contentDescription = tr("返回", "Back"),
                 )
             }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             if (onDelete != null) {
                 // 删除只放在这里：底部操作栏是拇指区，删除和保存并排的误触成本太高（UX1）。
                 IconButton(onClick = onDelete) {

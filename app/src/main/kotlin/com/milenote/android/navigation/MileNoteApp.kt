@@ -328,10 +328,10 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     // 返回报告页时报告自己的周期状态由 rememberSaveable 保留，不受列表筛选影响。
                     onOpenRecords = { categories, range: DateRange ->
                         // 空窗口 = 累计口径的全部记录：不写时间筛选，明细页用默认「全部」，
-                        // 也不会留下一个 9999 年的日期范围（#20）。
+                        // 也不会留下一个 9999 年的日期范围（#20）。一次性传参而不是写进
+                        // 明细页的持久筛选，从总览再进来不会还挂着报告的条件（#8）。
                         val noTimeFilter = range.from.isEmpty() && range.to.isEmpty()
-                        vm.setListFilter(
-                            ListFilterPages.RECORDS,
+                        vm.requestRecordsFilter(
                             ListFilterState(
                                 customRange = range.takeUnless { noTimeFilter },
                                 categories = categories,
@@ -398,6 +398,12 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                                 com.milenote.android.ui.screens.settings.SettingsPage.HEALTH.key,
                             ),
                         )
+                    },
+                    onOpenImportedRecords = { ids ->
+                        // 结果页「查看本次记录」：带一次性编号筛选进费用明细（#16 UX 走查）。
+                        vm.requestRecordsFilter(ListFilterState(onlyIds = ids))
+                        navController.popBackStack()
+                        navController.navigate(Routes.RECORDS)
                     },
                     modifier = Modifier.padding(inner),
                 )
