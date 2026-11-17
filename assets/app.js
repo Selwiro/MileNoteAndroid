@@ -7,10 +7,11 @@
   function t(zh, en) { return EN ? en : zh; }
 
   var THEME_KEY = 'milenote-theme';
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   /* ---------- 主题 ---------- */
   function paintThemeMeta(theme) {
-    var color = theme === 'dark' ? '#0e1316' : '#f7fafb';
+    var color = theme === 'dark' ? '#0b1115' : '#f5f9fb';
     document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
       meta.setAttribute('content', color);
     });
@@ -56,203 +57,51 @@
     }
   }
 
-  /* ---------- 幻灯片翻页（空格 / ↓ / PageDown 前进，↑ 后退） ---------- */
-  function initDeck() {
-    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
-    if (!slides.length) return;
-
-    var dots = Array.prototype.slice.call(document.querySelectorAll('[data-goto]'));
-    var countEl = document.querySelector('[data-pager-count]');
-    var hint = document.querySelector('[data-deck-hint]');
+  /* ---------- 顶栏状态 + 顶部滚动进度 ---------- */
+  function initScrollChrome() {
     var header = document.querySelector('.site-header');
-    var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-
-    var index = 0;
+    var progress = document.querySelector('[data-progress]');
     var ticking = false;
 
-    /* 浏览器会在刷新时恢复上次滚动位置，和「一屏一页」冲突，这里关掉 */
-    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-
-    function pad(n) { return (n < 10 ? '0' : '') + n; }
-
-    function paint(i) {
-      slides.forEach(function (slide, j) {
-        slide.classList.toggle('is-active', j === i);
-      });
-      dots.forEach(function (dot, j) {
-        dot.setAttribute('aria-current', j === i ? 'true' : 'false');
-      });
-      if (countEl) countEl.textContent = pad(i + 1) + ' / ' + pad(slides.length);
-      if (hint) hint.classList.toggle('is-hidden', i > 0);
-      if (header) header.classList.toggle('is-scrolled', i > 0);
-    }
-
-    function setActive(i, syncHash) {
-      index = Math.max(0, Math.min(slides.length - 1, i));
-      paint(index);
-      if (syncHash !== false && slides[index].id) {
-        try { history.replaceState(null, '', '#' + slides[index].id); } catch (e) { /* ignore */ }
-      }
-    }
-
-    function goTo(i) {
-      i = Math.max(0, Math.min(slides.length - 1, i));
-      setActive(i);
-      slides[i].scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-    }
-
-    /* 当前页：以视口 40% 处所在的幻灯片为准 */
-    function nearest() {
+    function paint() {
+      ticking = false;
       var y = window.scrollY || window.pageYOffset || 0;
-      var ref = y + window.innerHeight * 0.4;
-      var best = 0;
-      for (var i = 0; i < slides.length; i += 1) {
-        if (slides[i].offsetTop <= ref) best = i;
+      if (header) header.classList.toggle('is-scrolled', y > 8);
+      if (progress) {
+        var max = document.documentElement.scrollHeight - window.innerHeight;
+        var ratio = max > 0 ? Math.min(1, Math.max(0, y / max)) : 0;
+        progress.style.setProperty('--p', String(ratio));
       }
-      return best;
     }
 
     window.addEventListener('scroll', function () {
       if (ticking) return;
       ticking = true;
-      window.requestAnimationFrame(function () {
-        ticking = false;
-        setActive(nearest());
-      });
+      window.requestAnimationFrame(paint);
     }, { passive: true });
-
-    dots.forEach(function (dot) {
-      dot.addEventListener('click', function () {
-        goTo(parseInt(dot.getAttribute('data-goto'), 10) || 0);
-      });
-    });
-
-    document.addEventListener('keydown', function (event) {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-      var tag = ((event.target && event.target.tagName) || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-
-      var step = function (delta) {
-        event.preventDefault();
-        goTo(nearest() + delta);
-      };
-
-      switch (event.key) {
-        case ' ':
-        case 'Spacebar':
-          step(event.shiftKey ? -1 : 1);
-          break;
-        case 'ArrowDown':
-        case 'PageDown':
-          step(1);
-          break;
-        case 'ArrowUp':
-        case 'PageUp':
-          step(-1);
-          break;
-        case 'Home':
-          event.preventDefault();
-          goTo(0);
-          break;
-        case 'End':
-          event.preventDefault();
-          goTo(slides.length - 1);
-          break;
-        default:
-          break;
-      }
-    });
-
-    /* 带 #hash 打开时直接落到对应那一屏 */
-    var start = 0;
-    if (location.hash) {
-      var target = location.hash.slice(1);
-      slides.forEach(function (slide, j) {
-        if (slide.id === target) start = j;
-      });
-    }
-    function jumpTo(i) {
-      slides[i].scrollIntoView({ behavior: 'auto', block: 'start' });
-    }
-
-    setActive(start, false);
-    jumpTo(start);
-    /* 图片/字体加载完后浏览器可能再动一次滚动，load 时校正 */
-    window.addEventListener('load', function () {
-      jumpTo(start);
-      setActive(start, false);
-    });
+    window.addEventListener('resize', paint, { passive: true });
+    paint();
   }
 
-  /* ---------- 界面预览 ---------- */
-  function initScreens() {
-    var stageImg = document.querySelector('[data-screen-img]');
-    if (!stageImg) return;
+  /* ---------- 滚动入场（IntersectionObserver，无 JS 时内容照常可见） ---------- */
+  function initReveal() {
+    var items = Array.prototype.slice.call(document.querySelectorAll('[data-reveal]'));
+    if (!items.length) return;
 
-    var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
-    var caption = document.querySelector('[data-screen-cap]');
-    /* 资源前缀由页面给出（中文页 assets/screens/，英文页 ../assets/screens-en/） */
-    var base = stageImg.getAttribute('data-screen-base') || '';
-    var shots = EN ? [
-      { file: 'fuel.webp?v=20261116', cap: 'Fuel & energy' },
-      { file: 'editor.webp?v=20261116', cap: 'Quick entry' },
-      { file: 'report.webp?v=20261116', cap: 'Vehicle report' },
-      { file: 'maintenance.webp?v=20261116', cap: 'Maintenance' }
-    ] : [
-      { file: 'fuel.webp?v=20261116', cap: '油耗·能耗' },
-      { file: 'editor.webp?v=20261116', cap: '快速记账' },
-      { file: 'report.webp?v=20261116', cap: '用车报告' },
-      { file: 'maintenance.webp?v=20261116', cap: '维修保养' }
-    ];
-    shots.forEach(function (shot) { shot.src = base + shot.file; });
-
-    var preloaded = {};
-    function preload(i) {
-      var shot = shots[(i + shots.length) % shots.length];
-      if (!shot || preloaded[shot.src]) return;
-      preloaded[shot.src] = true;
-      var img = new Image();
-      img.src = shot.src;
+    if (reduceMotion || !('IntersectionObserver' in window)) {
+      items.forEach(function (el) { el.classList.add('is-in'); });
+      return;
     }
 
-    var current = 0;
-
-    function show(i) {
-      current = (i + shots.length) % shots.length;
-      var shot = shots[current];
-      stageImg.src = shot.src;
-      stageImg.alt = shot.cap + t('界面', ' screen');
-      if (caption) caption.textContent = shot.cap;
-      tabs.forEach(function (tab, j) {
-        tab.setAttribute('aria-selected', String(j === current));
-        tab.tabIndex = j === current ? 0 : -1;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
       });
-      preload(current + 1);
-      preload(current - 1);
-    }
+    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
 
-    tabs.forEach(function (tab, i) {
-      tab.tabIndex = i === 0 ? 0 : -1;
-      tab.addEventListener('click', function () { show(i); });
-      tab.addEventListener('keydown', function (event) {
-        var delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-        if (!delta) return;
-        /* ← → 只在 tab 内部换图，不触发整页翻页 */
-        event.preventDefault();
-        event.stopPropagation();
-        show(i + delta);
-        var next = tabs[(i + delta + tabs.length) % tabs.length];
-        if (next) next.focus();
-      });
-    });
-
-    var prev = document.querySelector('[data-screen-prev]');
-    var next = document.querySelector('[data-screen-next]');
-    if (prev) prev.addEventListener('click', function () { show(current - 1); });
-    if (next) next.addEventListener('click', function () { show(current + 1); });
-
-    preload(1);
-    preload(2);
+    items.forEach(function (el) { io.observe(el); });
   }
 
   /* ---------- 下载入口：静态指向 Releases 页，取到最新 Release 才升级为 APK 直链 ----------
@@ -262,11 +111,23 @@
     if (!links.length) return;
 
     var API = 'https://api.github.com/repos/Selwiro/MileNoteAndroid/releases?per_page=10';
-    var CACHE_KEY = 'milenote-release-v2';
+    var CACHE_KEY = 'milenote-release-v3';
     var TTL = 5 * 60 * 1000;
+
+    function versionLine(data) {
+      var mb = data.size ? Math.round(data.size / (1024 * 1024)) : 0;
+      if (EN) {
+        return 'Latest v' + data.version + (mb ? ' · about ' + mb + ' MB' : '');
+      }
+      return '最新版本 v' + data.version + (mb ? ' · 约 ' + mb + ' MB' : '');
+    }
 
     function apply(data) {
       links.forEach(function (link) { link.href = data.apkUrl; });
+
+      document.querySelectorAll('[data-release-version]').forEach(function (el) {
+        el.textContent = versionLine(data);
+      });
 
       var ld = document.querySelector('script[type="application/ld+json"]');
       if (ld) {
@@ -287,7 +148,7 @@
       if (!apk || !apk.browser_download_url) return null;
       var version = String(release.tag_name || '').replace(/^v/i, '');
       if (!version) return null;
-      return { version: version, apkUrl: apk.browser_download_url };
+      return { version: version, apkUrl: apk.browser_download_url, size: apk.size || 0 };
     }
 
     var cached = null;
@@ -331,8 +192,8 @@
   }
 
   initTheme();
-  initDeck();
-  initScreens();
+  initScrollChrome();
+  initReveal();
   initRelease();
   initYear();
 })();

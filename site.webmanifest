@@ -1,13 +1,13 @@
 {
   "name": "里程志 MileNote",
   "short_name": "里程志",
-  "description": "本地优先的多车用车账本：九类费用、满箱法油耗、12 项保养提醒。无需账号，数据只存在本机。",
+  "description": "本地优先的 Android 用车小助手：多车管理、日常开销记录、油耗与电耗分析、保养到期提醒。无需账号，数据默认保存在本机。",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
   "display": "browser",
-  "background_color": "#F7FAFB",
-  "theme_color": "#446378",
+  "background_color": "#F5F9FB",
+  "theme_color": "#F5F9FB",
   "icons": [
     {
       "src": "assets/img/icon-192.png",

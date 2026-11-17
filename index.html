@@ -30,8 +30,8 @@
   <meta name="twitter:image" content="https://selwiro.github.io/MileNoteAndroid/assets/og.png">
   <meta name="twitter:image:alt" content="里程志 MileNote：Android 用车小助手">
 
-  <meta name="theme-color" content="#f7fafb" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0e1316" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f9fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b1115" media="(prefers-color-scheme: dark)">
 
   <script>
     /* 在样式加载前定好主题，避免深色模式闪白 */
@@ -54,7 +54,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="preload" as="image" href="assets/screens/dashboard.webp?v=20261116">
-  <link rel="stylesheet" href="assets/style.css?v=20261116f">
+  <link rel="stylesheet" href="assets/style.css?v=20261117">
 
   <script type="application/ld+json">
   {
@@ -74,6 +74,7 @@
 </head>
 <body>
   <a class="skip-link" href="#hero">跳到主要内容</a>
+  <div class="scroll-progress" aria-hidden="true"><span data-progress></span></div>
 
   <header class="site-header" id="top">
     <div class="header-inner">
@@ -96,71 +97,86 @@
     </div>
   </header>
 
-  <main class="deck">
+  <main>
 
-    <!-- ============ 01 首屏 ============ -->
-    <section class="slide slide-hero is-active" id="hero" aria-label="里程志 MileNote">
-      <div class="slide-inner hero-grid">
-        <div class="hero-copy">
-          <span class="eyebrow">Android 原生 · 开源免费 · 本地优先</span>
-          <h1>里程志<span class="latin">MileNote</span></h1>
-          <p class="lede">一款简单实用的 Android 用车小助手。多车分开管，满箱法算真实油耗，保养到期提醒，用车开销一眼看清。</p>
-          <p class="lede">无需注册账号，数据默认保存在本地，也可以通过 WebDAV 在自己的设备之间同步。</p>
-          <div class="hero-actions">
+    <!-- ============ 首屏 ============ -->
+    <section class="hero" id="hero" aria-labelledby="hero-title">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="wrap hero-grid">
+        <div class="hero-copy" data-reveal>
+          <span class="pill"><span class="pill-dot" aria-hidden="true"></span>Android 原生 · 开源免费 · 本地优先</span>
+          <h1 id="hero-title">每一公里的花费，<br>都<span class="grad">记清楚</span></h1>
+          <p class="lede">里程志 MileNote 是一款简单实用的 Android 用车小助手：多车分开管，满箱法算真实油耗，保养到期提醒，用车成本一眼看清。</p>
+          <p class="lede-sub">无需注册账号，数据默认保存在本机，也可以通过 WebDAV 在你自己的设备之间同步。</p>
+          <div class="actions">
             <a class="btn btn-primary btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>
               <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>
               下载 Android 版
             </a>
-            <a class="btn btn-quiet btn-lg" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">
+            <a class="btn btn-ghost btn-lg" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">
               <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18c-4.5 1.4-4.5-2.2-6.3-2.7M15 21v-3.2a2.8 2.8 0 0 0-.8-2.3c2.7-.3 5.3-1.4 5.3-6a4.7 4.7 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.3s-1-.3-3.3 1.3a11 11 0 0 0-5.8 0C6.7 1.7 5.7 2 5.7 2a4.3 4.3 0 0 0-.1 3.3A4.7 4.7 0 0 0 4.3 8.5c0 4.6 2.6 5.7 5.3 6a2.8 2.8 0 0 0-.8 2.3V21"/></svg>
               查看源代码
             </a>
           </div>
-          <p class="hero-meta">支持 Android 8.0 及以上版本<span class="dot">·</span>免费使用<span class="dot">·</span>无需注册</p>
+          <ul class="meta-row">
+            <li>Android 8.0 及以上</li>
+            <li>免费使用</li>
+            <li>无需注册</li>
+          </ul>
+          <p class="release-line" data-release-version>最新版本见 GitHub Releases</p>
         </div>
 
-        <div class="hero-visual">
-          <figure class="phone phone-hero">
-            <img src="assets/screens/dashboard.webp?v=20261116" width="720" height="1600" alt="里程志「用车总览」界面：用车统计、支出趋势与平均油耗">
-          </figure>
+        <div class="hero-visual" data-reveal style="--i:1">
+          <div class="stage">
+            <span class="stage-glow" aria-hidden="true"></span>
+            <figure class="shot shot-back">
+              <img src="assets/screens/report.webp?v=20261116" width="720" height="1600" alt="" aria-hidden="true">
+            </figure>
+            <figure class="shot shot-main">
+              <img src="assets/screens/dashboard.webp?v=20261116" width="720" height="1600" alt="里程志「用车总览」界面：用车统计、支出趋势与平均油耗">
+            </figure>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- ============ 02 功能介绍 ============ -->
-    <section class="slide" id="features" aria-label="功能介绍">
-      <div class="slide-inner">
-        <div class="slide-head">
-          <h2>功能介绍</h2>
-        </div>
-        <ul class="feature-grid">
-          <li class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5H8L19 8.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16v3.5Z"/><path d="M14 6.5 17.5 10"/></svg></span>
+    <!-- ============ 功能 ============ -->
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <span class="eyebrow">功能</span>
+          <h2 id="features-title">日常用车，六件事都替你管</h2>
+          <p class="section-lede">从记一笔到年度报告，全部在你的手机里完成，不联网也能用。</p>
+        </header>
+
+        <ul class="bento">
+          <li class="card" data-reveal style="--i:0">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5H8L19 8.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16v3.5Z"/><path d="M14 6.5 17.5 10"/></svg></span>
             <h3>日常用车，轻松记录</h3>
             <p>加油、充电、停车、保养随手记，支持自定义分类与小票识别。</p>
           </li>
-          <li class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 17v-3.6l1.7-3.3a2 2 0 0 1 1.8-1.1h5.4a2 2 0 0 1 1.8 1.1l1.7 3.3V17"/><path d="M3.8 13.4h12.6"/><circle cx="6.6" cy="17" r="1.3"/><circle cx="14" cy="17" r="1.3"/></svg></span>
+          <li class="card" data-reveal style="--i:1">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 17v-3.6l1.7-3.3a2 2 0 0 1 1.8-1.1h5.4a2 2 0 0 1 1.8 1.1l1.7 3.3V17"/><path d="M3.8 13.4h12.6"/><circle cx="6.6" cy="17" r="1.3"/><circle cx="14" cy="17" r="1.3"/></svg></span>
             <h3>多辆车辆，独立管理</h3>
             <p>多车的费用、能耗与保养各自独立，随时切换查看。</p>
           </li>
-          <li class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l3.6-5.6"/><circle cx="12" cy="17" r="1.3"/><path d="M5.6 11.6l1 .9M12 8.4v1.2M18.4 11.6l-1 .9"/></svg></span>
+          <li class="card" data-reveal style="--i:2">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l3.6-5.6"/><circle cx="12" cy="17" r="1.3"/><path d="M5.6 11.6l1 .9M12 8.4v1.2M18.4 11.6l-1 .9"/></svg></span>
             <h3>油耗电耗，清晰掌握</h3>
             <p>满箱法 / 满电法算真实能耗，查看平均油耗与变化趋势。</p>
           </li>
-          <li class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19v-6M11 19V9M17 19v-4"/><path d="M3.5 19h17"/></svg></span>
+          <li class="card" data-reveal style="--i:3">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19v-6M11 19V9M17 19v-4"/><path d="M3.5 19h17"/></svg></span>
             <h3>费用统计，一目了然</h3>
             <p>自动汇总支出，月度趋势与费用构成看清用车成本。</p>
           </li>
-          <li class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2.5"/><path d="M4 10h16M8 4v3M16 4v3"/><path d="M9 14.5l2 2 4-4"/></svg></span>
+          <li class="card" data-reveal style="--i:4">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2.5"/><path d="M4 10h16M8 4v3M16 4v3"/><path d="M9 14.5l2 2 4-4"/></svg></span>
             <h3>保养计划，及时查看</h3>
             <p>按日期或里程到期提醒，完成后自动安排下一次。</p>
           </li>
-          <li class="feature">
-            <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5v11M7.5 15.5l3-3M7.5 15.5l-3-3"/><path d="M16.5 19.5v-11M16.5 8.5l3 3M16.5 8.5l-3 3"/></svg></span>
+          <li class="card" data-reveal style="--i:5">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5v11M7.5 15.5l3-3M7.5 15.5l-3-3"/><path d="M16.5 19.5v-11M16.5 8.5l3 3M16.5 8.5l-3 3"/></svg></span>
             <h3>数据迁移，方便可靠</h3>
             <p>导入小熊油耗、钱迹记录，支持 CSV / JSON 导出与 WebDAV 同步。</p>
           </li>
@@ -168,91 +184,130 @@
       </div>
     </section>
 
-    <!-- ============ 03 界面预览 ============ -->
-    <section class="slide slide-soft" id="screens" aria-label="界面预览">
-      <div class="slide-inner">
-        <div class="screen-copy">
-          <div class="slide-head slide-head-center">
-            <span class="eyebrow">界面预览</span>
-            <h2>简洁直观的使用体验</h2>
-            <p class="lede">基于 Material 3 Expressive 设计，提供五种主题配色、浅色与深色模式，以及中文和英文界面。</p>
-          </div>
+    <!-- ============ 界面预览 ============ -->
+    <section class="section section-tint" id="screens" aria-labelledby="screens-title">
+      <div class="wrap">
+        <header class="section-head section-head-center" data-reveal>
+          <span class="eyebrow">界面预览</span>
+          <h2 id="screens-title">简洁直观，用起来不费劲</h2>
+          <p class="section-lede">基于 Material 3 Expressive 设计，五种主题配色、浅色与深色模式，中文与英文界面。</p>
+        </header>
 
-          <div class="screen-tabs" role="tablist" aria-label="界面截图">
-            <button class="screen-tab" type="button" role="tab" aria-selected="true" data-screen="0">油耗·能耗</button>
-            <button class="screen-tab" type="button" role="tab" aria-selected="false" data-screen="1">快速记账</button>
-            <button class="screen-tab" type="button" role="tab" aria-selected="false" data-screen="2">用车报告</button>
-            <button class="screen-tab" type="button" role="tab" aria-selected="false" data-screen="3">维修保养</button>
-          </div>
-        </div>
+        <ul class="gallery">
+          <li data-reveal style="--i:0">
+            <figure>
+              <div class="shot"><img src="assets/screens/fuel.webp?v=20261116" width="720" height="1600" alt="里程志「油耗·能耗」界面：平均油耗与历次加油记录"></div>
+              <figcaption>油耗·能耗</figcaption>
+            </figure>
+          </li>
+          <li data-reveal style="--i:1">
+            <figure>
+              <div class="shot"><img src="assets/screens/editor.webp?v=20261116" width="720" height="1600" alt="里程志「记一笔」界面：金额、分类与里程快速录入"></div>
+              <figcaption>快速记账</figcaption>
+            </figure>
+          </li>
+          <li data-reveal style="--i:2">
+            <figure>
+              <div class="shot"><img src="assets/screens/report.webp?v=20261116" width="720" height="1600" alt="里程志「用车报告」界面：月度支出对比与费用构成"></div>
+              <figcaption>用车报告</figcaption>
+            </figure>
+          </li>
+          <li data-reveal style="--i:3">
+            <figure>
+              <div class="shot"><img src="assets/screens/maintenance.webp?v=20261116" width="720" height="1600" alt="里程志「保养」界面：保养项目与到期提醒"></div>
+              <figcaption>维修保养</figcaption>
+            </figure>
+          </li>
+        </ul>
 
-        <div class="screen-stage" role="tabpanel" aria-live="polite">
-          <button class="screen-arrow" type="button" data-screen-prev aria-label="上一张">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
-          </button>
-          <figure class="screen-figure">
-            <div class="phone phone-screen">
-              <img data-screen-img data-screen-base="assets/screens/" src="assets/screens/fuel.webp?v=20261116" width="720" height="1600" alt="油耗·能耗界面">
-            </div>
-            <figcaption data-screen-cap>油耗·能耗</figcaption>
-          </figure>
-          <button class="screen-arrow" type="button" data-screen-next aria-label="下一张">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
-          </button>
+        <div class="spec-row" data-reveal>
+          <span class="spec">
+            <span class="swatches" aria-hidden="true"><i style="background:#6f9ab2"></i><i style="background:#5f9c94"></i><i style="background:#c39a6b"></i><i style="background:#8e8fc0"></i><i style="background:#9c7f8e"></i></span>
+            五种主题配色
+          </span>
+          <span class="spec">浅色 / 深色模式</span>
+          <span class="spec">中文 / English</span>
+          <span class="spec">界面元素均支持大字号</span>
         </div>
       </div>
     </section>
 
-    <!-- ============ 04 隐私与数据 ============ -->
-    <section class="slide" id="privacy" aria-label="隐私与数据">
-      <div class="slide-inner privacy-grid">
-        <div class="slide-head">
+    <!-- ============ 隐私与数据 ============ -->
+    <section class="section" id="privacy" aria-labelledby="privacy-title">
+      <div class="wrap privacy-grid">
+        <div class="privacy-copy" data-reveal>
           <span class="eyebrow">隐私与数据</span>
-          <h2>数据默认保存在你的设备上</h2>
-          <p class="privacy-note">无广告、无订阅、无埋点统计。</p>
+          <h2 id="privacy-title">数据默认保存在<br>你的设备上</h2>
+          <p class="privacy-note">无广告、无订阅、无埋点统计。没有服务器在收集你的行车与加油记录。</p>
           <p class="privacy-note">WebDAV 同步需要自行配置存储服务，远端数据以明文 JSON 保存。</p>
         </div>
-        <div>
-          <ul class="privacy-list">
-            <li>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
-              <div><b>无需账号</b><span>不需要注册或登录。</span></div>
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
-              <div><b>本地存储</b><span>数据默认只保存在手机中。</span></div>
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
-              <div><b>本地识别</b><span>小票识别和文件解析均在设备端完成。</span></div>
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
-              <div><b>自主备份</b><span>随时导出完整备份，不依赖开发者服务器。</span></div>
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg>
-              <div><b>可选同步</b><span>使用自己的 WebDAV 服务管理跨设备数据。</span></div>
-            </li>
-          </ul>
+        <ul class="check-list" data-reveal style="--i:1">
+          <li class="check">
+            <span class="check-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg></span>
+            <div><b>无需账号</b><span>不需要注册或登录。</span></div>
+          </li>
+          <li class="check">
+            <span class="check-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg></span>
+            <div><b>本地存储</b><span>数据默认只保存在手机中。</span></div>
+          </li>
+          <li class="check">
+            <span class="check-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg></span>
+            <div><b>本地识别</b><span>小票识别和文件解析均在设备端完成。</span></div>
+          </li>
+          <li class="check">
+            <span class="check-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg></span>
+            <div><b>自主备份</b><span>随时导出完整备份，不依赖开发者服务器。</span></div>
+          </li>
+          <li class="check check-wide">
+            <span class="check-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9 17l10-10"/></svg></span>
+            <div><b>可选同步</b><span>使用自己的 WebDAV 服务管理跨设备数据，不经过任何中转。</span></div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ 下载 ============ -->
+    <section class="section section-tight" id="download" aria-labelledby="download-title">
+      <div class="wrap">
+        <div class="cta-panel" data-reveal>
+          <span class="cta-glow" aria-hidden="true"></span>
+          <div class="cta-copy">
+            <span class="eyebrow eyebrow-light">免费 · 开源</span>
+            <h2 id="download-title">装好就能用，不必先注册</h2>
+            <p>安装包从 GitHub Releases 下载，手机可直接安装；支持 Android 8.0 及以上版本。</p>
+            <div class="actions">
+              <a class="btn btn-light btn-lg" href="https://github.com/Selwiro/MileNoteAndroid/releases" data-download>
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4-4m-4 4-4-4"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>
+                下载 Android 版
+              </a>
+              <a class="btn btn-outline-light btn-lg" href="https://github.com/Selwiro/MileNoteAndroid" target="_blank" rel="noopener">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18c-4.5 1.4-4.5-2.2-6.3-2.7M15 21v-3.2a2.8 2.8 0 0 0-.8-2.3c2.7-.3 5.3-1.4 5.3-6a4.7 4.7 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.3s-1-.3-3.3 1.3a11 11 0 0 0-5.8 0C6.7 1.7 5.7 2 5.7 2a4.3 4.3 0 0 0-.1 3.3A4.7 4.7 0 0 0 4.3 8.5c0 4.6 2.6 5.7 5.3 6a2.8 2.8 0 0 0-.8 2.3V21"/></svg>
+                查看源代码
+              </a>
+            </div>
+            <p class="cta-meta" data-release-version>最新版本见 GitHub Releases</p>
+          </div>
+          <figure class="cta-shot" aria-hidden="true">
+            <img src="assets/screens/fuel.webp?v=20261116" width="720" height="1600" alt="">
+          </figure>
         </div>
       </div>
     </section>
 
   </main>
 
-  <div class="deck-bar">
-    <div class="pager" role="group" aria-label="页面导航">
-      <button class="pager-dot" type="button" data-goto="0" aria-label="第 1 页：里程志" aria-current="true"></button>
-      <button class="pager-dot" type="button" data-goto="1" aria-label="第 2 页：功能介绍"></button>
-      <button class="pager-dot" type="button" data-goto="2" aria-label="第 3 页：界面预览"></button>
-      <button class="pager-dot" type="button" data-goto="3" aria-label="第 4 页：隐私与数据"></button>
-      <span class="pager-count" data-pager-count>01 / 04</span>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div class="footer-brand">
+        <img src="assets/img/brand-tile.png" width="26" height="26" alt="">
+        <span>里程志 MileNote</span>
+      </div>
+      <p class="footer-tagline">本地优先的 Android 用车小助手。</p>
+      <p class="footer-note">本站不加载第三方脚本，也没有统计与追踪。</p>
+      <p class="footer-copy">© <span id="year">2026</span> 里程志 MileNote</p>
     </div>
-    <p class="deck-hint" data-deck-hint>按空格或 ↓ 继续</p>
-    <span class="bar-copy">© <span id="year">2026</span> 里程志 MileNote</span>
-  </div>
+  </footer>
 
-  <script src="assets/app.js?v=20261116e" defer></script>
+  <script src="assets/app.js?v=20261117" defer></script>
 </body>
 </html>
