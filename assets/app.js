@@ -117,9 +117,9 @@
     function versionLine(data) {
       var mb = data.size ? Math.round(data.size / (1024 * 1024)) : 0;
       if (EN) {
-        return 'Latest v' + data.version + (mb ? ' · about ' + mb + ' MB' : '');
+        return 'Version v' + data.version + (mb ? ' · about ' + mb + ' MB' : '');
       }
-      return '最新版本 v' + data.version + (mb ? ' · 约 ' + mb + ' MB' : '');
+      return '版本 v' + data.version + (mb ? ' · 约 ' + mb + ' MB' : '');
     }
 
     function apply(data) {
