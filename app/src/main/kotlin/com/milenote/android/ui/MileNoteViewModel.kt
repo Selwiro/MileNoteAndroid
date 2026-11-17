@@ -31,6 +31,7 @@ import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.domain.backup.ImageGuard
 import com.milenote.android.domain.backup.ImportUndo
 import com.milenote.android.domain.backup.ImportUndoResult
 import com.milenote.android.domain.backup.SyncMerge
@@ -975,6 +976,7 @@ class MileNoteViewModel(
             POWERTRAIN_PHEV -> vehicle.copy(fuelCostSource = null)
             else -> vehicle
         }
+        if (rejectOversizedVehicleImage(nextVehicle)) return
         viewModelScope.launch {
             val result = repository.save(syncHistory = false) { garage ->
                 val ledger = blankLedger(powertrain = nextVehicle.powertrain)
@@ -1007,6 +1009,7 @@ class MileNoteViewModel(
             POWERTRAIN_PHEV -> vehicle.copy(fuelCostSource = null)
             else -> vehicle
         }
+        if (rejectOversizedVehicleImage(nextVehicle)) return
         val baseKm = nextVehicle.startKm?.takeIf { it > 0 } ?: nextVehicle.currentKm.takeIf { it > 0 }
         viewModelScope.launch {
             val reminders = if (enablePlan && baseKm != null) {
@@ -2392,6 +2395,18 @@ class MileNoteViewModel(
                 ),
             )
         }
+    }
+
+    /**
+     * 车辆图片尺寸闸门（1.0 审查 #25）。
+     *
+     * 备份里的超尺寸图片会被静默丢掉（数据优先）；用户主动上传时必须明确告诉他原因，
+     * 否则会以为「上传成功但首页没变」。
+     */
+    private fun rejectOversizedVehicleImage(vehicle: Vehicle): Boolean {
+        val problem = ImageGuard.problem(vehicle.image) ?: return false
+        _state.value = _state.value.copy(message = problem)
+        return true
     }
 
     private fun updateWebDav(transform: (WebDavUiState) -> WebDavUiState) {

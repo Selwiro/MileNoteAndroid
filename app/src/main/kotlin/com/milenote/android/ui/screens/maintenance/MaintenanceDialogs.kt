@@ -57,6 +57,7 @@ import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.calc.defaultServicePlan
 import com.milenote.android.domain.calc.resolveServicePlan
 import com.milenote.android.domain.calc.serviceProjectOptions
+import com.milenote.android.domain.calc.splitProjects
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.model.Ledger
 import com.milenote.android.domain.model.PlanEntry
@@ -227,8 +228,21 @@ internal fun CompleteServiceDialog(
                         addAll(selectedProjects)
                         addAll(customProject.split(Regex("[、,，;；\\s]+")))
                     }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                    // 首保的必需项：插混/燃油是机油机滤，纯电是三电诊断。只记录无关项目
+                    // 就消掉首保提醒是错的（1.0 审查 #21）。
+                    val required = if (reminder.firstOnly == true) {
+                        splitProjects(reminder.projects.orEmpty())
+                    } else {
+                        emptyList()
+                    }
+                    val missing = required.filter { requiredItem ->
+                        projects.none { it == requiredItem || it.contains(requiredItem) }
+                    }
                     val nextError = when {
                         dateValue == null || dateValue.isEmpty() -> tr("日期无效", "Invalid date")
+                        // 与普通记账 / 导入同一条日期规则（1.0 审查 #18：以前这里能保存 1899-12-31）。
+                        !Dates.isPlausibleRecordDate(dateValue) ->
+                            tr("日期早于 1970 年，请检查", "The date is before 1970 — check it")
                         odometer.isNotBlank() && (odometerValue == null || odometerValue < 0) ->
                             tr("里程必须是有效非负数", "Mileage must be a valid non-negative number")
                         odometerValue == null ->
@@ -237,6 +251,11 @@ internal fun CompleteServiceDialog(
                                 "Enter the odometer to complete this service",
                             )
                         projects.isEmpty() -> tr("请填写维修保养项目", "Enter at least one service item")
+                        missing.isNotEmpty() -> tr(
+                            "首保还需记录：%s",
+                            "The first service still needs: %s",
+                            missing.joinToString(tr("、", ", ")),
+                        )
                         amountValue == null || amountValue < 0 ->
                             tr("金额必须大于或等于 0", "Amount must be 0 or greater")
                         else -> null

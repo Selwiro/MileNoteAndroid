@@ -231,13 +231,16 @@ class BackupModelTest {
                 ),
             )
         }
-        assertThrows(BackupException::class.java) {
-            BackupCodec.decode(
-                BackupCodec.encode(
-                    garage.copy(cars = listOf(garage.cars[0].copy(records = listOf(record, record)))),
-                ),
-            )
-        }
+        // 1.0 审查 #23：重复编号不再拒整份备份，改成自动拆分（保留第一条，其余加 #2），
+        // 否则用户连同一份备份里的有效记录都拿不回来。
+        val repaired = BackupCodec.decode(
+            BackupCodec.encode(
+                garage.copy(cars = listOf(garage.cars[0].copy(records = listOf(record, record)))),
+            ),
+        )
+        assertEquals(2, repaired.cars[0].records.size)
+        assertEquals(repaired.cars[0].records.size, repaired.cars[0].records.map { it.id }.distinct().size)
+        assertEquals(listOf(record.id, "${record.id}#2"), repaired.cars[0].records.map { it.id })
         assertThrows(BackupException::class.java) {
             BackupCodec.decode(
                 BackupCodec.encode(

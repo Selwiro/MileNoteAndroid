@@ -37,6 +37,63 @@ class MergeImportTest {
     }
 
     @Test
+    fun `same id import without the other energy column keeps the old unit`() {
+        // 1.0 审查 #9：车改成纯电后导出的旧格式 CSV 没有加油量列，原样导回时
+        // 那一列是空的——空不等于清空，历史升数不能被 null 覆盖。
+        val old = Record(
+            id = "r-1",
+            date = "2026-11-01",
+            category = "油费",
+            amount = 200.0,
+            liters = 25.0,
+            fuelGrade = "95#",
+            unitPrice = 8.0,
+        )
+        val imported = Record(
+            id = "r-1",
+            date = "2026-11-01",
+            category = "油费",
+            amount = 200.0,
+            liters = null,
+            kwh = null,
+            fuelGrade = null,
+            unitPrice = 8.0,
+        )
+
+        val result = mergeImported(listOf(old), listOf(importedItem(imported)))
+
+        val kept = result.records.single()
+        assertEquals(25.0, kept.liters!!, 1e-9)
+        assertNull(kept.kwh)
+        assertEquals("95#", kept.fuelGrade)
+    }
+
+    @Test
+    fun `same id import with a new energy unit replaces the old one`() {
+        val old = Record(
+            id = "r-1",
+            date = "2026-11-01",
+            category = "油费",
+            amount = 200.0,
+            liters = 25.0,
+            fuelGrade = "95#",
+        )
+        val imported = Record(
+            id = "r-1",
+            date = "2026-11-01",
+            category = "油费",
+            amount = 200.0,
+            kwh = 30.0,
+        )
+
+        val kept = mergeImported(listOf(old), listOf(importedItem(imported))).records.single()
+
+        assertEquals(30.0, kept.kwh!!, 1e-9)
+        assertNull(kept.liters)
+        assertNull(kept.fuelGrade)
+    }
+
+    @Test
     fun `csv write back updates the same record id in place`() {
         val existing = Record(
             id = "r1", date = "2026-01-01", category = "油费", amount = 300.0,

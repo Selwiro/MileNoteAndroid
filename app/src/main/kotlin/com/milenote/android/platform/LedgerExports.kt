@@ -32,7 +32,6 @@ object LedgerExports {
     fun csv(ledger: Ledger): ByteArray {
         val profile = ledger.vehicle.energyProfile
         val headers = ExpenseWorkbook.headers(ledger)
-        val dual = profile == EnergyProfile.DUAL
         val sorted = ledger.records.sortedWith(
             compareByDescending<com.milenote.android.domain.model.Record> { it.date }
                 .thenByDescending { it.odometer ?: 0.0 },
@@ -42,11 +41,12 @@ object LedgerExports {
             append("\r\n")
             for (r in sorted) {
                 // 充电行：有充电量且没有加油量（一条记录只认一种能量）。
-                val charging = dual && r.kwh != null && r.liters == null
+                val charging = r.kwh != null && r.liters == null
+                // 1.0 审查 #9：能量列按**记录自身**的量纲写，不能按当前动力类型。切换动力类型
+                // 之后导出，另一种能量的历史记录以前会被整列丢掉，再导回就变成另一种单位。
                 val energy = when (profile) {
                     EnergyProfile.ELECTRIC_ONLY -> r.kwh
-                    EnergyProfile.DUAL -> if (charging) null else r.liters
-                    EnergyProfile.FUEL_ONLY -> r.liters
+                    else -> r.liters
                 }
                 val values = buildList {
                     add(r.date)
@@ -68,7 +68,12 @@ object LedgerExports {
                     add(r.note)
                     add(r.source)
                     add(r.id)
-                    if (dual) add(if (charging) r.kwh?.let { numberCell(it) } ?: "" else "")
+                    // 末列 = 另一种能量：燃油车写「充电量」，纯电写「加油量」，插混写「充电量」。
+                    val secondary = when (profile) {
+                        EnergyProfile.ELECTRIC_ONLY -> r.liters
+                        else -> r.kwh
+                    }
+                    add(secondary?.let { numberCell(it) } ?: "")
                 }
                 append(values.joinToString(",") { cell(it) })
                 append("\r\n")

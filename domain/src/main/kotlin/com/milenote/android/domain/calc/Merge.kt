@@ -119,8 +119,27 @@ fun mergeImported(records: List<Record>, items: List<ImportItem>): MergeResult {
                 if (key.isNotEmpty()) keys.add(key)
                 val oldKey = if (!old.sourceId.isNullOrEmpty()) "${old.source}:${old.sourceId}" else ""
                 if (oldKey.isNotEmpty()) keys.add(oldKey)
+                // 能量量纲不能被「缺列」改写（1.0 审查 #9）：切动力类型后导出的 CSV 可能
+                // 没有另一种能量列，原样导回时该列是空的 —— 空不等于「清空」，要保留原值。
+                // 但一条记录只能有一种量纲，导入真的给了新量纲时以导入的为准。
+                val hasLiters = r.liters != null
+                val hasKwh = r.kwh != null
+                val liters = when {
+                    hasKwh && !hasLiters -> null
+                    hasLiters -> r.liters
+                    else -> old.liters
+                }
+                val kwh = when {
+                    hasLiters && !hasKwh -> null
+                    hasKwh -> r.kwh
+                    else -> old.kwh
+                }
+                val grade = if (kwh != null && liters == null) null else r.fuelGrade ?: old.fuelGrade
                 result[index] = r.copy(
                     id = old.id,
+                    liters = liters,
+                    kwh = kwh,
+                    fuelGrade = grade,
                     fuelCounted = r.fuelCounted ?: old.fuelCounted,
                     importedKeys = keys.toList().ifEmpty { null },
                     sourceId = r.sourceId?.takeIf { it.isNotBlank() } ?: old.sourceId,

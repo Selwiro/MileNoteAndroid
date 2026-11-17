@@ -15,6 +15,21 @@ import org.junit.Test
 class ImportMappingTest {
 
     @Test
+    fun `formula guard apostrophe is removed on import`() {
+        // 1.0 审查 #24：导出为防公式注入加了撇号，导回以前不复原，
+        // `- 夜间折扣` 原样往返会变成 `'- 夜间折扣`。
+        val headers = listOf("日期", "备注", "金额")
+        val items = normalizeImport(
+            listOf(listOf("2026-11-01", "'- 夜间折扣", 20.0), listOf("2026-11-02", "'普通备注", 15.0)),
+            detectMap(headers),
+            "qianji",
+        )
+        assertEquals("- 夜间折扣", items[0].record.note)
+        // 只认「撇号 + = + - @」的组合，正文里本来就用撇号开头的内容不动。
+        assertEquals("'普通备注", items[1].record.note)
+    }
+
+    @Test
     fun `qianji rejects income non car and foreign currency`() {
         val headers = listOf("date", "category", "money", "type", "currency", "key")
         val map = detectMap(headers)

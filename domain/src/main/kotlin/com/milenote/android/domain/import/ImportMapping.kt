@@ -87,7 +87,21 @@ private fun rawCell(row: List<Any?>, map: Map<String, Int?>, key: String): Any? 
 }
 
 private fun textCell(row: List<Any?>, map: Map<String, Int?>, key: String): String =
-    Numbers.cellString(rawCell(row, map, key))
+    unescapeFormulaGuard(Numbers.cellString(rawCell(row, map, key)))
+
+/**
+ * 还原 CSV / XLSX 导出时加的「防公式」撇号（1.0 审查 #24）。
+ *
+ * 导出会给 `=` `+` `-` `@` 开头的文本加一个 `'`（防表格软件当公式执行），
+ * 导入以前不复原，于是 `- 夜间折扣` 原样导回会变成 `'- 夜间折扣`。
+ * 只认「撇号 + 这四个字符」的组合，正文里本来就用撇号开头的内容不受影响。
+ */
+internal fun unescapeFormulaGuard(text: String): String =
+    if (text.length > 1 && text[0] == '\'' && text[1] in charArrayOf('=', '+', '-', '@')) {
+        text.substring(1)
+    } else {
+        text
+    }
 
 /** JS `String(get(k) || '')` 的语义：0/false/null 都当空串。 */
 private fun textOrEmpty(row: List<Any?>, map: Map<String, Int?>, key: String): String {

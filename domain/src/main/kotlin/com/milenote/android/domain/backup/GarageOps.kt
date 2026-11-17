@@ -25,7 +25,13 @@ object GarageOps {
         val v = value?.trim().orEmpty()
         if (v.isEmpty()) return ""
         if (DATA_IMAGE.matches(v)) {
-            if (v.length > 1_500_000) throw BackupException(tr("图片过大，请重新上传压缩后的图片", "Image too large — upload a compressed image"))
+            if (v.length > ImageGuard.MAX_DATA_URL_CHARS) {
+                throw BackupException(tr("图片过大，请重新上传压缩后的图片", "Image too large — upload a compressed image"))
+            }
+            // 1.0 审查 #25：压缩格式的「小文件」可能是超大尺寸的图片炸弹。
+            // 这里**丢掉图片**而不是拒整份备份：账本数据优先，首页回落到默认插画；
+            // 用户在「车辆编辑」里重新上传时会被明确拦住（见 MileNoteViewModel.saveVehicle）。
+            if (ImageGuard.problem(v) != null) return ""
             return v
         }
         if (v.length > 2048) throw BackupException(tr("图片 URL 过长", "Image URL is too long"))
@@ -66,8 +72,13 @@ object GarageOps {
         if (!currentKm.isFinite() || currentKm < 0) throw BackupException(tr("车辆里程无效", "Invalid vehicle mileage"))
         val startKm = ledger.vehicle.startKm
         if (startKm != null && (!startKm.isFinite() || startKm < 0)) throw BackupException(tr("车辆里程无效", "Invalid vehicle mileage"))
-        safeImage(ledger.vehicle.image)
-        return ledger
+        // 图片校验返回清洗后的值（超尺寸 data URL 会被丢掉），必须写回账本。
+        val image = safeImage(ledger.vehicle.image)
+        return if (image == ledger.vehicle.image.orEmpty()) {
+            ledger
+        } else {
+            ledger.copy(vehicle = ledger.vehicle.copy(image = image.ifEmpty { null }))
+        }
     }
 
     /**
@@ -82,11 +93,15 @@ object GarageOps {
         }
         if (input.version != 2 || input.cars.isEmpty()) throw BackupException(tr("不是有效的多车备份", "Not a valid multi-vehicle data"))
         val ids = mutableSetOf<String>()
-        for (car in input.cars) {
-            validateLedger(car)
+        // 1.0 审查 #23：重复记录编号不再拒整份备份——先自动拆分（保留第一条，其余加 `#2`），
+        // 再走常规校验。否则旧备份连有效记录都进不来，体检里的「删除重复」也永远用不上。
+        // validateLedger 会返回「清洗过的」账本（超大图片被丢掉），后面必须用它的返回值，
+        // 否则清洗结果又被原对象盖回去。
+        val repairedCars = input.cars.map { car -> validateLedger(repairDuplicateRecordIds(car).first) }
+        for (car in repairedCars) {
             if (car.id.isEmpty() || !ids.add(car.id)) throw BackupException(tr("车辆编号无效或重复", "Invalid or duplicate vehicle ID"))
         }
-        val cars = input.cars.map { car ->
+        val cars = repairedCars.map { car ->
             car.copy(
                 // 动力类型只认 "fuel"/"phev"/"ev"，未知值归一为 null（语义=燃油），避免坏数据把车变成怪状态。
                 vehicle = car.vehicle.copy(powertrain = normalizePowertrain(car.vehicle.powertrain)),
@@ -95,6 +110,34 @@ object GarageOps {
         }
         val activeId = if (ids.contains(input.activeId)) input.activeId else cars.first().id
         return input.copy(activeId = activeId, cars = cars)
+    }
+
+    /**
+     * 把重复的记录编号改掉：保留第一条，其余改成 `id#2`、`id#3`……
+     *
+     * 旧备份 / 第三方导出里确实会出现同编号两条记录，直接拒整份会让用户连有效记录也拿不回来。
+     *
+     * @return 修好的账本 + 改掉的条数。
+     */
+    fun repairDuplicateRecordIds(ledger: Ledger): Pair<Ledger, Int> {
+        val seen = HashSet<String>(ledger.records.size)
+        var repaired = 0
+        val records = ledger.records.map { record ->
+            // 空编号不在这里修：那是「记录本身无效」，交给 validateLedger 拒绝。
+            if (record.id.isEmpty() || seen.add(record.id)) {
+                record
+            } else {
+                var n = 2
+                var candidate = "${record.id}#$n"
+                while (!seen.add(candidate)) {
+                    n++
+                    candidate = "${record.id}#$n"
+                }
+                repaired++
+                record.copy(id = candidate)
+            }
+        }
+        return if (repaired == 0) ledger to 0 else ledger.copy(records = records) to repaired
     }
 
     /** 旧版 v1 单车账本迁移为 v2 单车站（生成新车辆 id，分类与动力类型归一）。 */

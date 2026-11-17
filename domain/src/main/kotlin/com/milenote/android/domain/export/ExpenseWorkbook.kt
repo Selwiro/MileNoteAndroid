@@ -17,21 +17,27 @@ import com.milenote.android.domain.model.energyProfile
  */
 object ExpenseWorkbook {
 
-    /** 燃油车 / HEV：18 列（与 CSV 一致）。 */
+    /**
+     * 燃油车 / HEV：19 列 = 18 列主表 + 末尾「充电量」。
+     *
+     * 末列以前只有插混才有。切换动力类型后，历史记录可能是另一种能量（1.0 审查 #9）：
+     * 燃油车改成纯电后导出，旧加油行的升数就没有列可写，原样导回会被改写成 kWh。
+     * 现在三种动力类型都带两种能量列，表头固定、往返无损。
+     */
     private val HEADERS_FUEL = listOf(
         "日期", "地点", "项目", "分类", "金额",
         "应付金额", "优惠金额", "油价", "燃油标号",
-        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "记录编号",
+        "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "记录编号", "充电量",
     )
 
-    /** 纯电：18 列，能源列改充电语义（第 9 列仍是通用「标号」）。 */
+    /** 纯电：19 列，能源主列改充电语义（第 9 列是「标号」），末列补「加油量」保留历史加油记录。 */
     private val HEADERS_EV = listOf(
         "日期", "地点", "项目", "分类", "金额",
         "应付金额", "优惠金额", "电价", "标号",
-        "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源", "记录编号",
+        "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源", "记录编号", "加油量",
     )
 
-    /** 插混：19 列 = 燃油 18 列，末尾「充电量」在「记录编号」之前。 */
+    /** 插混：19 列 = 燃油 19 列，末尾「充电量」在「记录编号」之前。 */
     private val HEADERS_PHEV = listOf(
         "日期", "地点", "项目", "分类", "金额",
         "应付金额", "优惠金额", "单价", "燃油标号",
@@ -56,7 +62,6 @@ object ExpenseWorkbook {
 
     private fun detailRows(ledger: Ledger): List<List<XlsxCell>> {
         val profile = ledger.vehicle.energyProfile
-        val dual = profile == EnergyProfile.DUAL
         val header = headers(ledger).map { XlsxCell.Text(it) }
         val rows = ledger.records
             .sortedWith(
@@ -64,12 +69,12 @@ object ExpenseWorkbook {
                     .thenByDescending { it.odometer ?: 0.0 },
             )
             .map { record ->
-                // 充电行：有充电量且没有加油量（一条记录只认一种能量）。
-                val charging = dual && record.kwh != null && record.liters == null
+                // 能量列按**记录自身**的量纲写：插件可能在切动力类型后才导出，
+                // 用当前车辆类型决定列会把另一种能量丢掉（1.0 审查 #9）。
+                val charging = record.kwh != null && record.liters == null
                 val energy = when (profile) {
                     EnergyProfile.ELECTRIC_ONLY -> record.kwh
-                    EnergyProfile.DUAL -> if (charging) null else record.liters
-                    EnergyProfile.FUEL_ONLY -> record.liters
+                    else -> record.liters
                 }
                 buildList {
                     add(XlsxCell.Text(record.date))
@@ -91,7 +96,12 @@ object ExpenseWorkbook {
                     add(XlsxCell.Text(record.note))
                     add(XlsxCell.Text(record.source))
                     add(XlsxCell.Text(record.id))
-                    if (dual) add(if (charging) record.kwh.numberCell() else XlsxCell.Blank)
+                    // 末列 = 另一种能量：燃油车写「充电量」，纯电写「加油量」，插混写「充电量」。
+                    val secondary = when (profile) {
+                        EnergyProfile.ELECTRIC_ONLY -> record.liters
+                        else -> record.kwh
+                    }
+                    add(secondary.numberCell())
                 }
             }
         return listOf(header) + rows

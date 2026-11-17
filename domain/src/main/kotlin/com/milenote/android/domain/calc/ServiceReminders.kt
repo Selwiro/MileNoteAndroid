@@ -101,6 +101,14 @@ fun completeService(
     record: Record,
 ): List<Reminder> {
     val projects = splitProjects(record.projects)
+    // 首保的必需项没做齐就不能标完成：只记一条雨刮片不该消掉「机油机滤 + 三电诊断」，
+    // 否则保养历史与下一次到期都会被算错（1.0 审查 #21）。界面入口已有同样的提示，
+    // 这里是兜底（导入 / 其他调用方）。
+    if (reminder.firstOnly == true) {
+        val required = splitProjects(reminder.projects)
+        val covered = required.all { item -> projects.any { it == item || it.contains(item) } }
+        if (required.isNotEmpty() && !covered) return reminders
+    }
     val completed = reminders.map { r ->
         if (r.id == reminder.id) {
             r.copy(

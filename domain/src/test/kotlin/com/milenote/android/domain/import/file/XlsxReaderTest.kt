@@ -267,6 +267,39 @@ class XlsxReaderTest {
     }
 
     @Test
+    fun `rejects a far away column instead of allocating its buffer`() {
+        // 1.0 审查 #16：513 字节的越界列样本以前能直接 OOM。
+        val rowsXml = buildString {
+            append(XlsxFixture.row(1, XlsxFixture.inline("A1", "名称")))
+            append(XlsxFixture.row(2, XlsxFixture.inline("XFE2", "远端列")))
+        }
+        val bytes = XlsxFixture.build(sheets = listOf(XlsxFixture.Sheet("表", rowsXml)))
+
+        val exception = assertThrows(SpreadsheetReadException::class.java) {
+            XlsxReader().read(bytes)
+        }
+        assertTrue(exception.message!!.contains("列数超出支持范围"))
+    }
+
+    @Test
+    fun `rejects sparse sheets over the cell budget`() {
+        // 一行用到第 500 列，再把 20,000 行补齐到同一宽度会吃掉几百 MB。
+        val rowsXml = buildString {
+            append(XlsxFixture.row(1, XlsxFixture.inline("A1", "名称")))
+            for (rowIndex in 2..5_000) {
+                append(XlsxFixture.row(rowIndex, XlsxFixture.inline("A$rowIndex", "值")))
+            }
+            append(XlsxFixture.row(6, XlsxFixture.inline("SH6", "远端列")))
+        }
+        val bytes = XlsxFixture.build(sheets = listOf(XlsxFixture.Sheet("表", rowsXml)))
+
+        val exception = assertThrows(SpreadsheetReadException::class.java) {
+            XlsxReader().read(bytes)
+        }
+        assertTrue(exception.message!!.contains("表格过大"))
+    }
+
+    @Test
     fun `rejects bytes that are not a zip`() {
         val exception = assertThrows(SpreadsheetReadException::class.java) {
             reader.read(byteArrayOf(1, 2, 3, 4))

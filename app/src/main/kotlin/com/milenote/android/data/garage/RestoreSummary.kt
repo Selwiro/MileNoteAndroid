@@ -39,10 +39,20 @@ internal fun restoreSummaryMessage(summary: RestoreSummary): String {
         "Backup restored: %d vehicles · %d records · %d reminders",
         summary.cars, summary.records, summary.reminders,
     )
-    val switched = summary.switchedTo ?: return base
+    val repaired = if (summary.repairedDuplicates > 0) {
+        tr(
+            " · 修正 %d 条重复编号",
+            " · fixed %d duplicate IDs",
+            summary.repairedDuplicates,
+        )
+    } else {
+        ""
+    }
+    val withRepaired = base + repaired
+    val switched = summary.switchedTo ?: return withRepaired
     return tr(
         "%s（已切换到「%s」）",
         "%s (switched to \"%s\")",
-        base, switched,
+        withRepaired, switched,
     )
 }

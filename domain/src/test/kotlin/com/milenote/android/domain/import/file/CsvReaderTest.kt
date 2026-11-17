@@ -63,6 +63,24 @@ class CsvReaderTest {
     }
 
     @Test
+    fun `keeps an empty middle column in tsv`() {
+        // 1.0 审查 #17：tab 在字段开头被当成「前导空白」吃掉，`日期\t\t87.43`
+        // 会读成备注 `\t87.43`、金额空。
+        val data = reader.read("日期\t备注\t金额\n2026-11-01\t\t87.43".toByteArray(), "账单.tsv")
+
+        assertEquals(listOf("日期", "备注", "金额"), data.headers)
+        assertEquals(listOf<Any?>("2026-11-01", "", "87.43"), data.rows[0])
+    }
+
+    @Test
+    fun `keeps empty columns at the start and repeated empties in tsv`() {
+        val data = reader.read("\t\t金额\n\t\t87.43".toByteArray(), "账单.tsv")
+
+        assertEquals(listOf("", "", "金额"), data.headers)
+        assertEquals(listOf<Any?>("", "", "87.43"), data.rows[0])
+    }
+
+    @Test
     fun `detects semicolon delimiter when more semicolons than commas`() {
         val text = "日期;金额;备注\n2024-01-01;12,5;早餐"
         val data = reader.read(text.toByteArray(Charsets.UTF_8), "导出.csv")

@@ -26,10 +26,12 @@ class ExpenseWorkbookTest {
     )
 
     @Test
-    fun `fuel workbook has 18 columns and numeric amount cell`() {
+    fun `fuel workbook has 19 columns and numeric amount cell`() {
         val sheets = ExpenseWorkbook.sheets(fuelLedger())
         val detail = sheets.first { it.name == "费用明细" }
-        assertEquals(18, detail.rows.first().size)
+        // 1.0 审查 #9：三种动力类型统一 19 列（末列是另一种能量），表头不再随车辆类型变化。
+        assertEquals(19, detail.rows.first().size)
+        assertEquals("充电量", (detail.rows.first()[18] as XlsxCell.Text).value)
         assertEquals("日期", (detail.rows.first().first() as XlsxCell.Text).value)
         // 表头 + 两条记录
         assertEquals(3, detail.rows.size)
@@ -79,9 +81,10 @@ class ExpenseWorkbookTest {
         val ledger = evLedger(records = listOf(Record(id = "c1", date = "2026-11-01", category = "油费", amount = 60.0, kwh = 30.0)))
         val headers = ExpenseWorkbook.sheets(ledger).first { it.name == "费用明细" }.rows.first()
             .map { (it as XlsxCell.Text).value }
-        assertEquals(18, headers.size)
+        assertEquals(19, headers.size)
         assertEquals("充电量", headers[10])
         assertEquals("记录编号", headers[17])
+        assertEquals("加油量", headers[18])
         assertEquals("电价", headers[7])
     }
 

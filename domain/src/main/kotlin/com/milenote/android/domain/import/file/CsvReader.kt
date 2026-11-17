@@ -90,8 +90,10 @@ class CsvReader {
                     atFieldStart = false
                 }
 
-                (char == ' ' || char == '\t') && atFieldStart && !quoted -> {
+                (char == ' ' || char == '\t') && atFieldStart && !quoted && char != delimiter -> {
                     // 先攒着前导空白：随后若遇到引号就整段丢弃；否则原样保留（不改变未加引号字段的内容）。
+                    // 注意排除分隔符本身：TSV 的分隔符就是 tab，把它当空白会把
+                    // `日期\t\t87.43` 读成「备注 \t87.43、金额空」（1.0 审查 #17）。
                     cell.append(char)
                 }
 
@@ -104,6 +106,13 @@ class CsvReader {
                     row.add(cell.toString())
                     cell.clear()
                     atFieldStart = true
+                    // 一整行几百万个逗号同样能打爆内存；边加边拦（1.0 审查 #16）。
+                    if (row.size > SpreadsheetLimits.MAX_COLUMNS) {
+                        throw SpreadsheetLimits.tooManyColumns(
+                            SpreadsheetLimits.MAX_COLUMNS,
+                            atRow = rows.size + 1,
+                        )
+                    }
                 }
 
                 (char == '\n' || char == '\r') && !quoted -> {

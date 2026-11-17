@@ -33,6 +33,14 @@ internal object SpreadsheetGrid {
         }
 
         val width = maxOf(headerCells.size, dataRows.maxOfOrNull { it.size } ?: 0)
+        // 1.0 审查 #16：宽度以前取「所有行的最大列数」，一行远端列就会把每一行都补齐到
+        // 那个宽度（15 KB 的稀疏表能吃掉几百 MB）。先按列数与单元格总数设预算。
+        if (width > SpreadsheetLimits.MAX_COLUMNS) {
+            throw SpreadsheetLimits.tooManyColumns(SpreadsheetLimits.MAX_COLUMNS)
+        }
+        if (width.toLong() * dataRows.size > SpreadsheetLimits.MAX_CELLS) {
+            throw SpreadsheetLimits.tooManyCells(SpreadsheetLimits.MAX_CELLS, width, dataRows.size)
+        }
         val headers = List(width) { index -> cellText(headerCells.getOrNull(index)) }
         val rows = dataRows.map { row -> List<Any?>(width) { index -> row.getOrNull(index) } }
         return SpreadsheetData(

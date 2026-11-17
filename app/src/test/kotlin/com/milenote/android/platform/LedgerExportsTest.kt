@@ -11,6 +11,7 @@ import com.milenote.android.domain.model.Record
 import com.milenote.android.domain.model.Vehicle
 import java.nio.charset.StandardCharsets
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,6 +25,8 @@ class LedgerExportsTest {
         "日期", "地点", "项目", "分类", "金额",
         "应付金额", "优惠金额", "油价", "燃油标号",
         "总里程", "加油量", "加满", "漏记", "油耗", "行驶里程", "备注", "来源", "记录编号",
+        // 1.0 审查 #9：末列是「另一种能量」，三种动力类型都带上，表头就不再随车辆类型变化。
+        "充电量",
     )
 
     private fun ledger(record: Record): Ledger = Ledger(id = "car-test", records = listOf(record))
@@ -147,16 +150,49 @@ class LedgerExportsTest {
     }
 
     @Test
-    fun `ev csv header switches energy columns and keeps 18 columns`() {
+    fun `ev csv header switches energy columns and appends fuel column`() {
         val headers = parseDelimited(csvText(evLedger(evRecord()))).first()
         assertEquals(
             listOf(
                 "日期", "地点", "项目", "分类", "金额",
                 "应付金额", "优惠金额", "电价", "标号",
-                "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源", "记录编号",
+                "总里程", "充电量", "充满", "漏记", "能耗", "行驶里程", "备注", "来源", "记录编号", "加油量",
             ),
             headers,
         )
+        assertEquals(19, headers.size)
+    }
+
+    @Test
+    fun `switching the car to ev keeps historical fuel amounts round trippable`() {
+        // 燃油车改成纯电后再导出：旧加油行的升数与标号必须还在，导回不能被改写成 kWh。
+        val fuel = fuelRecord()
+        val rows = parseDelimited(csvText(evLedger(fuel)))
+        assertEquals("", rows[1][10])
+        assertEquals("95#", rows[1][8])
+        assertEquals("40", rows[1][18])
+
+        val item = importRows(rows.drop(1), detectMap(rows.first()), "milenote").single()
+        assertEquals("", item.error)
+        assertEquals(40.0, item.record.liters!!, 1e-9)
+        assertNull(item.record.kwh)
+        assertEquals("95#", item.record.fuelGrade)
+        assertEquals("r-fuel", item.record.id)
+    }
+
+    @Test
+    fun `switching the car to fuel keeps historical charge amounts round trippable`() {
+        val charge = evRecord()
+        val rows = parseDelimited(csvText(evLedger(charge)))
+        // 纯电车的燃油列一定为空，但末尾加油量列在；把车改成燃油再导出时结构不变。
+        val fuelCarRows = parseDelimited(csvText(ledger(charge.copy(id = "r-charge"))))
+        assertEquals("45", fuelCarRows[1][18])
+        assertEquals("", fuelCarRows[1][10])
+        val item = importRows(fuelCarRows.drop(1), detectMap(fuelCarRows.first()), "qianji").single()
+        assertEquals("", item.error)
+        assertEquals(45.0, item.record.kwh!!, 1e-9)
+        assertNull(item.record.liters)
+        assertEquals("45", rows[1][10])
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.milenote.android.data.garage
 
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.domain.backup.BackupPayload
 import com.milenote.android.domain.backup.BackupException
 import com.milenote.android.domain.backup.GarageOps
 import com.milenote.android.domain.backup.LedgerLimits
@@ -29,6 +30,8 @@ data class RestoreSummary(
     val reminders: Int,
     /** 恢复后自动切换到的车辆名（[GarageOps.activeCarWithRecords]，UX3）；没切换为 null。 */
     val switchedTo: String? = null,
+    /** 备份里重复的记录编号被自动拆开的条数（#23）。 */
+    val repairedDuplicates: Int = 0,
 )
 
 /**
@@ -446,7 +449,18 @@ class GarageRepository(
             ?.vehicle?.name
             ?.takeIf { it.isNotBlank() }
         replaceLocked(merged, snapshot = true)
-        summarizeRestore(payload, merged).copy(switchedTo = switchedTo)
+        summarizeRestore(payload, merged).copy(
+            switchedTo = switchedTo,
+            repairedDuplicates = when (payload) {
+                is BackupPayload.MulticarGarage -> payload.garage.cars.sumOf { car ->
+                    car.records.size - car.records.map { it.id }.distinct().size
+                }
+                is BackupPayload.LegacyLedger -> {
+                    val records = payload.ledger.records
+                    records.size - records.map { it.id }.distinct().size
+                }
+            },
+        )
     }
 
     /**

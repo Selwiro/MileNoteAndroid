@@ -193,6 +193,11 @@ class XlsxReader(
                 fallbackIndex
             }
             fallbackIndex = columnIndex + 1
+            // 列号来自文件里的 `r="AB1"`，可以任意大。先卡上限再分配，否则一个 513 字节的
+            // 越界列样本就能直接 OOM（1.0 审查 #16）。
+            if (columnIndex >= SpreadsheetLimits.MAX_COLUMNS) {
+                throw SpreadsheetLimits.tooManyColumns(SpreadsheetLimits.MAX_COLUMNS)
+            }
             val value = parseCell(cellElement, workbook)
             if (value != null) {
                 values[columnIndex] = value
