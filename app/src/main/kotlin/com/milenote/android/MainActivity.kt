@@ -37,6 +37,7 @@ import com.milenote.android.ui.Today
 import com.milenote.android.ui.theme.AppTheme
 import com.milenote.android.ui.theme.MileNoteTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -101,7 +102,15 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     Today.refresh()
-                    vm.maybeAutoSyncOnOpen()
+                    // 前台闸门：进 STARTED 才允许自动同步，退到后台立刻取消排队 / 在途的自动同步
+                    // 与退避重试（#13）。WebDAV 只在前台同步，退出应用即结束。
+                    vm.setForeground(true)
+                    try {
+                        vm.maybeAutoSyncOnOpen()
+                        awaitCancellation()
+                    } finally {
+                        vm.setForeground(false)
+                    }
                 }
             }
             LaunchedEffect(Unit) {

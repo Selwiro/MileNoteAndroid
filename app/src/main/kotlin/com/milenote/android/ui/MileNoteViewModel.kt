@@ -26,6 +26,7 @@ import com.milenote.android.data.webdav.WebDavFailureCategory
 import com.milenote.android.data.webdav.WebDavProblemKind
 import com.milenote.android.data.webdav.classifyWebDavFailure
 import com.milenote.android.data.webdav.WebDavRepository
+import com.milenote.android.platform.webdav.WebDavPreconditionFailedException
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
@@ -297,6 +298,20 @@ class MileNoteViewModel(
 
     private var autoSyncDebounceJob: Job? = null
 
+    /** 正在跑的那次自动同步；退到后台要能取消它（#13）。 */
+    private var autoSyncJob: Job? = null
+
+    /** 退避到期后的重试作业（#19）。 */
+    private var autoSyncRetryJob: Job? = null
+
+    /**
+     * 应用是否在前台。
+     *
+     * [Boolean] 只影响自动同步：仓库 AGENTS.md 规定 WebDAV 只在前台同步，
+     * 而以前防抖与在途请求都挂在 `viewModelScope`，退到桌面照样会发 PUT（1.0 审查 #13）。
+     */
+    private var foreground = false
+
     /** 上次「回前台」同步的时间，用于 15 秒节流（选图 / 分享面板返回不算一次新的打开）。 */
     private var lastForegroundSyncAt = 0L
 
@@ -357,18 +372,41 @@ class MileNoteViewModel(
         viewModelScope.launch {
             repository.localWrites.collect {
                 if (_state.value.demo) return@collect
+                // 后台不排队：退到桌面后 2.5 秒的防抖不该再触发一次 PUT（#13）。
+                if (!foreground) return@collect
                 val enabled = settingsRepository.settings.first().webDavAutoSync
                 if (!enabled || !webDavRepository.canSync()) return@collect
                 autoSyncDebounceJob?.cancel()
                 autoSyncDebounceJob = viewModelScope.launch {
                     delay(2_500)
-                    autoSync()
+                    if (foreground) requestAutoSync()
                 }
             }
         }
     }
 
     // ---------- 基础操作 ----------
+
+    /**
+     * 由 Activity 的 `repeatOnLifecycle(STARTED)` 驱动：进前台允许自动同步，退到后台取消。
+     *
+     * 取消的是「已排队 / 正在跑」的自动同步，以及退避重试；手动同步不受影响（用户在页面上点的）。
+     */
+    fun setForeground(value: Boolean) {
+        if (foreground == value) return
+        foreground = value
+        if (!value) {
+            autoSyncDebounceJob?.cancel()
+            autoSyncDebounceJob = null
+            autoSyncRetryJob?.cancel()
+            autoSyncRetryJob = null
+            autoSyncJob?.cancel()
+            autoSyncJob = null
+        } else {
+            // 回前台重新开始节流窗口，避免「切回来又切走」被 15 秒窗口吃掉一次同步。
+            lastForegroundSyncAt = 0L
+        }
+    }
 
     /** 写入指定页面的列表筛选（页面只读写自己的 key）。 */
     fun setListFilter(page: String, filter: ListFilterState) {
@@ -1872,9 +1910,11 @@ class MileNoteViewModel(
             try {
                 // 与自动同步共用一把锁：避免两路并发 PUT 与 markSynced 乱序。
                 webDavRepository.syncMutex.withLock {
+                    val epoch = webDavRepository.configEpoch()
                     val localJson = repository.exportBackup()
                     val localHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(localJson) }
                     val meta = webDavRepository.uploadLedger(localJson, force = true)
+                    ensureWebDavConfigUnchanged(epoch)
                     val encrypted = webDavRepository.hasEncryptionPassword()
                     webDavRepository.markSynced(meta.etag, localHash, localHash)
                     webDavRepository.saveBaseline(localJson)
@@ -1909,6 +1949,10 @@ class MileNoteViewModel(
             try {
                 // 与自动同步共用一把锁：覆盖本地前 repository.replace 会先写本地快照，可回滚。
                 webDavRepository.syncMutex.withLock {
+                    // #3：CAS 基准必须在**发起 GET 之前**取。以前是下载回来之后才取，于是
+                    // 「下载期间用户新记的那笔」已经进了基准，覆盖照做、那笔直接消失。
+                    val expected = repository.garage.value ?: repository.load()
+                    val epoch = webDavRepository.configEpoch()
                     when (val fetched = webDavRepository.fetchLedger()) {
                         is WebDavFetchResult.NotFound -> {
                             updateWebDav {
@@ -1928,12 +1972,16 @@ class MileNoteViewModel(
                         }
                         is WebDavFetchResult.Found -> {
                             val text = fetched.ledger.text
-                            applyRemoteBackup(text, mode)
-                            val localJson = repository.exportBackup()
-                            val localHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(localJson) }
+                            ensureWebDavConfigUnchanged(epoch)
+                            val applied = applyRemoteBackup(text, mode, expected)
+                            // 同步状态的哈希必须来自**实际写入的账本**：以前在这里重新
+                            // exportBackup()，会把覆盖后另一笔本地修改也算成「已同步」。
+                            val appliedJson = withContext(Dispatchers.IO) { BackupCodec.encode(applied) }
+                            val localHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(appliedJson) }
                             val remoteHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(text) }
+                            ensureWebDavConfigUnchanged(epoch)
                             webDavRepository.markSynced(fetched.meta.etag, localHash, remoteHash)
-                            webDavRepository.saveBaseline(localJson)
+                            webDavRepository.saveBaseline(appliedJson)
                             updateWebDav {
                                 it.copy(
                                     busy = false,
@@ -1975,6 +2023,8 @@ class MileNoteViewModel(
                     updateWebDav { it.copy(busy = true, error = null) }
                     try {
                         webDavRepository.syncMutex.withLock {
+                            val expected = repository.garage.value ?: repository.load()
+                            val epoch = webDavRepository.configEpoch()
                             when (val fetched = webDavRepository.fetchLedger()) {
                                 is WebDavFetchResult.NotFound -> {
                                     updateWebDav { it.copy(busy = false, error = tr("远端备份已不存在，请重新同步", "The remote backup no longer exists. Sync again.")) }
@@ -1984,7 +2034,8 @@ class MileNoteViewModel(
                                 }
                                 is WebDavFetchResult.Found -> {
                                     val text = fetched.ledger.text
-                                    val current = repository.garage.value ?: repository.load()
+                                    // 合并基准同样取在 GET 之前（与手动下载一致）。
+                                    val current = expected
                                     // 记录级三向合并（有基线时按每条记录的 updatedAt 裁决）；无基线时降级为
                                     // 「本机优先 + 只增」，与自动同步同一套逻辑，避免手动合并丢修改。
                                     val base = withContext(Dispatchers.IO) {
@@ -2011,7 +2062,26 @@ class MileNoteViewModel(
                                         )
                                     val mergedJson = withContext(Dispatchers.IO) { BackupCodec.encode(applied) }
                                     val mergedHash = withContext(Dispatchers.IO) { webDavRepository.plainHash(mergedJson) }
-                                    val meta = webDavRepository.uploadLedger(mergedJson, force = true)
+                                    ensureWebDavConfigUnchanged(epoch)
+                                    // #4：有 ETag 就用 If-Match 条件写，412 说明另一台设备刚提交了修改，
+                                    // 不能再无条件覆盖；服务器不给 ETag 时只能覆盖，但先把远端存一份。
+                                    val etag = fetched.meta.etag
+                                    val remoteProtected = if (etag == null) {
+                                        withContext(Dispatchers.IO) { webDavRepository.saveRemoteFallback(fetched.bytes) } != null
+                                    } else {
+                                        false
+                                    }
+                                    val meta = try {
+                                        webDavRepository.uploadLedger(mergedJson, force = etag == null, expectedEtag = etag)
+                                    } catch (e: WebDavPreconditionFailedException) {
+                                        throw IllegalStateException(
+                                            tr(
+                                                "另一台设备刚上传了修改，本次合并已放弃，请重新合并",
+                                                "Another device uploaded changes — this merge was skipped, merge again",
+                                            ),
+                                        )
+                                    }
+                                    ensureWebDavConfigUnchanged(epoch)
                                     webDavRepository.markSynced(meta.etag, mergedHash, mergedHash)
                                     webDavRepository.saveBaseline(mergedJson)
                                     updateWebDav {
@@ -2020,7 +2090,14 @@ class MileNoteViewModel(
                                             lastResult = SyncMessages.merged(
                                                 outcome.summary,
                                                 noBaseline = base == null,
-                                            ),
+                                            ) + if (remoteProtected) {
+                                                tr(
+                                                    "（服务器不支持条件写入，已在本机保留一份被覆盖的远端数据）",
+                                                    " (the server does not support conditional writes — a copy of the overwritten remote data was kept on this device)",
+                                                )
+                                            } else {
+                                                ""
+                                            },
                                             remoteExists = true,
                                             remoteSize = meta.size,
                                             remoteEncrypted = fetched.ledger is RemoteLedger.Decrypted,
@@ -2130,7 +2207,7 @@ class MileNoteViewModel(
     fun setWebDavAutoSync(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setWebDavAutoSync(enabled)
-            if (enabled) autoSync()
+            if (enabled) requestAutoSync()
         }
     }
 
@@ -2148,12 +2225,39 @@ class MileNoteViewModel(
             val now = System.currentTimeMillis()
             if (now - lastForegroundSyncAt < FOREGROUND_SYNC_MIN_INTERVAL_MS) return@launch
             lastForegroundSyncAt = now
-            autoSync()
+            requestAutoSync()
+        }
+    }
+
+    /** 排队一次自动同步（取消排队中的重试，保证同一时刻只有一轮）。 */
+    private fun requestAutoSync() {
+        if (!foreground) return
+        autoSyncRetryJob?.cancel()
+        autoSyncRetryJob = null
+        autoSyncJob?.cancel()
+        autoSyncJob = viewModelScope.launch { autoSync() }
+    }
+
+    /**
+     * 失败后按引擎的退避安排一次**定时重试**（#19）。
+     *
+     * 以前只记下「最早可重试时间」，没有任何调度者：应用一直前台、用户也不操作时，
+     * 网络恢复了也永远停在失败状态，要等下一次记账 / 回前台 / 手动同步。
+     */
+    private fun scheduleAutoSyncRetry() {
+        if (!foreground) return
+        val wait = webDavAutoSyncEngine.backoffRemainingMillis()
+        if (wait <= 0L) return
+        autoSyncRetryJob?.cancel()
+        autoSyncRetryJob = viewModelScope.launch {
+            delay(wait)
+            if (foreground) autoSync()
         }
     }
 
     private suspend fun autoSync() {
         if (_state.value.demo) return
+        if (!foreground) return
         val outcome = webDavAutoSyncEngine.sync()
         if (outcome.kind == AutoSyncOutcome.Kind.SKIPPED) return
         if (outcome.kind == AutoSyncOutcome.Kind.CONFLICT) {
@@ -2175,6 +2279,7 @@ class MileNoteViewModel(
                 },
             )
         }
+        if (outcome.kind == AutoSyncOutcome.Kind.ERROR) scheduleAutoSyncRetry()
     }
 
     private suspend fun runWebDavSync() {
@@ -2201,20 +2306,35 @@ class MileNoteViewModel(
         }
     }
 
-    private suspend fun applyRemoteBackup(text: String, mode: WebDavDownloadMode) = withContext(Dispatchers.IO) {
-        val current = repository.garage.value ?: repository.load()
+    private suspend fun applyRemoteBackup(
+        text: String,
+        mode: WebDavDownloadMode,
+        expected: Garage,
+    ): Garage = withContext(Dispatchers.IO) {
         val next = when (mode) {
-            WebDavDownloadMode.MERGE -> BackupCodec.restore(current, text)
+            WebDavDownloadMode.MERGE -> BackupCodec.restore(expected, text)
             WebDavDownloadMode.REPLACE -> BackupCodec.decode(text)
         }
-        // 同步期间用户可能又记了一笔：只有本地仍是同步开始时的快照才覆盖（B8）。
-        repository.replaceIfUnchanged(current, next)
+        // 只有本地仍是「发起 GET 之前」的快照才覆盖：下载期间新记的那笔必须保住（#3）。
+        repository.replaceIfUnchanged(expected, next)
             ?: throw IllegalStateException(
                 tr(
-                    "同步期间本地又有新修改，已放弃本次覆盖，请重试",
-                    "Local changes arrived during sync — this overwrite was skipped, try again",
+                    "下载期间本地又有新记录，已放弃本次覆盖，请重试",
+                    "New records arrived while downloading — this overwrite was skipped, try again",
                 ),
             )
+    }
+
+    /** 配置代际校验：中途换了地址 / 账号 / 密码，本轮同步作废（#10）。 */
+    private fun ensureWebDavConfigUnchanged(epoch: Int) {
+        if (webDavRepository.configEpoch() != epoch) {
+            throw IllegalStateException(
+                tr(
+                    "WebDAV 配置在同步过程中被修改，本次同步已中止，请重试",
+                    "The WebDAV settings changed during the sync — this run was aborted, try again",
+                ),
+            )
+        }
     }
 
     /**

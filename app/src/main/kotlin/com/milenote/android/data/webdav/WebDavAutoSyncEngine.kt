@@ -63,9 +63,15 @@ class WebDavAutoSyncEngine(
     private var consecutiveFailures = 0
     private var nextAttemptAtMillis = 0L
 
+    /** 本轮同步开始时的配置代际（[WebDavRepository.configEpoch]）。 */
+    private var passEpoch = 0
+
     /** 退避时长：30s 起逐次翻倍，上限 2 分钟（原 15 分钟太长，用户观感像「再也不同步」）。 */
     private fun backoffMillis(failures: Int): Long =
         minOf(BACKOFF_BASE_MS shl (failures - 1).coerceIn(0, 2), MAX_BACKOFF_MS)
+
+    /** 距下次允许自动重试还有多久（毫秒）；0 表示现在就可以试。 */
+    fun backoffRemainingMillis(): Long = (nextAttemptAtMillis - clock()).coerceAtLeast(0L)
 
     /** 清零退避（应用回前台 / 手动同步 / 同步成功时调用）。 */
     fun resetBackoff() {
@@ -163,6 +169,9 @@ class WebDavAutoSyncEngine(
     // ---------------------------------------------------------------------------------------
 
     private suspend fun runPass(): AutoSyncOutcome {
+        // 1.0 审查 #10：整轮同步绑同一份配置（地址 / 账号 / 密码）。中途换掉就中止，
+        // 绝不把「从 A 读到的结果」写到 B，也不给 B 记同步状态。
+        passEpoch = webDav.configEpoch()
         val local = garage.load()
         val localJson = BackupCodec.encode(local)
         val localHash = webDav.plainHash(localJson)
@@ -244,6 +253,7 @@ class WebDavAutoSyncEngine(
         if (found == null) return success(tr("已是最新", "Already up to date"))
         val applied = garage.replaceIfUnchanged(local, remoteGarage)
             ?: throw LocalChangedDuringSyncException()
+        ensureConfigUnchanged()
         val json = BackupCodec.encode(applied)
         val localHash = webDav.plainHash(json)
         webDav.markSynced(found.meta.etag, localHash, webDav.plainHash(found.ledger.text))
@@ -259,12 +269,15 @@ class WebDavAutoSyncEngine(
         if (found?.ledger is RemoteLedger.Decrypted && !webDav.hasEncryptionPassword()) {
             return blockedPlainUpload()
         }
+        ensureConfigUnchanged()
         val json = BackupCodec.encode(garageToUpload)
-        val meta = uploadWithPrecondition(json, found)
+        val uploaded = uploadWithPrecondition(json, found)
+        val meta = uploaded.meta
         val hash = webDav.plainHash(json)
+        ensureConfigUnchanged()
         webDav.markSynced(meta.etag, hash, hash)
         webDav.saveBaseline(json)
-        return success(action)
+        return success(if (uploaded.remoteProtected) action + noEtagNote() else action)
     }
 
     private suspend fun uploadMerged(
@@ -281,14 +294,18 @@ class WebDavAutoSyncEngine(
         // 只有「本地仍是同步开始时的快照」才写，避免把同步期间用户刚保存的修改覆盖掉。
         val applied = garage.replaceIfUnchanged(local, merged)
             ?: throw LocalChangedDuringSyncException()
+        ensureConfigUnchanged()
         val json = BackupCodec.encode(applied)
-        val meta = uploadWithPrecondition(json, found)
+        val uploaded = uploadWithPrecondition(json, found)
+        val meta = uploaded.meta
         val hash = webDav.plainHash(json)
+        ensureConfigUnchanged()
         webDav.markSynced(meta.etag, hash, hash)
         webDav.saveBaseline(json)
         return AutoSyncOutcome(
             AutoSyncOutcome.Kind.MERGED,
-            SyncMessages.merged(summary, noBaseline = noBaseline),
+            SyncMessages.merged(summary, noBaseline = noBaseline) +
+                if (uploaded.remoteProtected) noEtagNote() else "",
         )
     }
 
@@ -297,11 +314,37 @@ class WebDavAutoSyncEngine(
      *
      * 服务器不返回 ETag 而远端又存在时无法做条件写，只能无条件覆盖（内容已在本次同步里核对过）。
      */
-    private suspend fun uploadWithPrecondition(json: String, found: WebDavFetchResult.Found?): WebDavRemoteMeta {
+    private suspend fun uploadWithPrecondition(
+        json: String,
+        found: WebDavFetchResult.Found?,
+    ): PreconditionedUpload {
         val etag = found?.meta?.etag
         val force = found != null && etag == null
-        return webDav.uploadLedger(json, force = force, expectedEtag = etag)
+        var protected = false
+        if (force && found != null) {
+            // 服务器不支持条件写：这次只能无条件覆盖。至少先把即将被盖掉的远端内容
+            // 在本机留一份，并在结果文案里说明（1.0 审查 #4）。
+            protected = webDav.saveRemoteFallback(found.bytes) != null
+        }
+        val meta = webDav.uploadLedger(json, force = force, expectedEtag = etag)
+        return PreconditionedUpload(meta = meta, remoteProtected = protected)
     }
+
+    /** 条件上传的结果：远端元信息 + 是否走了「无 ETag 降级覆盖」。 */
+    private data class PreconditionedUpload(
+        val meta: WebDavRemoteMeta,
+        val remoteProtected: Boolean,
+    )
+
+    /** 配置在同步中途被换掉：本轮作废（不写同步状态、不写基线）。 */
+    private fun ensureConfigUnchanged() {
+        if (webDav.configEpoch() != passEpoch) throw ConfigChangedDuringSyncException()
+    }
+
+    private fun noEtagNote(): String = tr(
+        "（服务器不支持条件写入，已在本机保留一份被覆盖的远端数据）",
+        " (the server does not support conditional writes — a copy of the overwritten remote data was kept on this device)",
+    )
 
     private fun blockedPlainUpload(): AutoSyncOutcome = AutoSyncOutcome(
         AutoSyncOutcome.Kind.NEEDS_PASSWORD,
@@ -326,6 +369,11 @@ class WebDavAutoSyncEngine(
                 "远端文件正在被其他设备修改，已自动重试 %d 次仍失败，请稍后重试",
                 "The remote file keeps changing on another device — retried %d times, try again later",
                 MAX_PRECONDITION_RETRIES,
+            )
+        } else if (t is ConfigChangedDuringSyncException) {
+            tr(
+                "同步配置在同步过程中被修改，本次同步已中止（未写入同步状态）",
+                "The sync settings changed during the sync — this run was aborted and no sync state was written",
             )
         } else if (t is LocalChangedDuringSyncException) {
             tr(
@@ -376,6 +424,9 @@ class WebDavAutoSyncEngine(
 
     /** 同步过程中本地账本又被改过（用户刚保存了一笔）：本次判断作废，重读重算。 */
     private class LocalChangedDuringSyncException : Exception()
+
+    /** 同步过程中 WebDAV 配置被换掉（地址 / 账号 / 密码）：整轮中止，不写同步状态。 */
+    private class ConfigChangedDuringSyncException : Exception()
 
     private companion object {
         /** 412 后最多再重试几次（总共 3 次尝试）。 */

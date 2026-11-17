@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -60,6 +61,19 @@ class WebDavRepository(
     @Volatile
     private var encryptedRemoteCache: ByteArray? = null
 
+    /**
+     * 配置代际：每次保存 / 清除配置都 +1。
+     *
+     * 1.0 审查 #10：同步的每一步都会重新读「当前配置」的凭据，于是「GET 服务器 A → 用户改地址
+     * → PUT 到服务器 B」是可能的。同步入口记下代际，任何一步前发现变了就整轮中止，
+     * 并且不写同步状态（否则 A 的结果会被记成 B 的）。
+     */
+    @Volatile
+    private var configGeneration: Int = 0
+
+    /** 当前配置代际；同步流程用它判断「配置中途有没有被换掉」。 */
+    fun configEpoch(): Int = configGeneration
+
     /** 当前配置（不含密码明文）；未配置为 null。 */
     val config: StateFlow<WebDavConfigState?> = configStore.config
         .stateIn(scope, SharingStarted.Eagerly, null)
@@ -95,7 +109,7 @@ class WebDavRepository(
         allowHttp: Boolean,
         encryptionPassword: String?,
         enableEncryption: Boolean,
-    ) {
+    ): Unit = syncMutex.withLock {
         val normalizedUrl = WebDavUrl.validate(url, allowHttp)
         val normalizedUsername = username.trim()
         val previous = configStore.config.first()
@@ -116,14 +130,39 @@ class WebDavRepository(
             // 换了远端文件，旧基线不再对应当前远端，必须一起清掉（否则三向合并会拿错 base）。
             withContext(Dispatchers.IO) { baselineStore.clear() }
         }
+        // 让进行中的同步发现「配置已换」并中止（见 [configEpoch]）。
+        configGeneration += 1
     }
 
     /** 清除配置与同步状态（两个密码密文一并删除）。 */
-    suspend fun clear() {
+    suspend fun clear(): Unit = syncMutex.withLock {
         configStore.clear()
         syncStateStore.clear()
         withContext(Dispatchers.IO) { baselineStore.clear() }
         encryptedRemoteCache = null
+        configGeneration += 1
+    }
+
+    /**
+     * 服务器不支持条件写时（远端存在但没返回 ETag）的兜底：把即将被覆盖的远端内容在本机留一份。
+     *
+     * 1.0 审查 #4：这种情况下自动同步只能无条件覆盖，另一台设备刚传的修改会直接消失。
+     * 至少保证被覆盖的内容可找回（保留最近 3 份）。
+     *
+     * @return 备份文件；写不出来返回 null（不阻塞同步，但调用方要在文案里说明降级）。
+     */
+    suspend fun saveRemoteFallback(bytes: ByteArray): java.io.File? = withContext(Dispatchers.IO) {
+        runCatching {
+            val dir = java.io.File(appContext.filesDir, "webdav").apply { mkdirs() }
+            val file = java.io.File(dir, "remote-backup-${System.currentTimeMillis()}.json")
+            file.writeBytes(bytes)
+            dir.listFiles()
+                ?.filter { it.name.startsWith("remote-backup-") }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(3)
+                ?.forEach { it.delete() }
+            file
+        }.getOrNull()
     }
 
     /**
