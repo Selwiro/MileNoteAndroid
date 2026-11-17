@@ -2,6 +2,7 @@ package com.milenote.android.ui.screens.report
 
 import com.milenote.android.ui.Today
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,6 +51,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -61,6 +65,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.milenote.android.R
 import com.milenote.android.domain.calc.Companion
 import com.milenote.android.domain.calc.DateRange
 import com.milenote.android.domain.calc.Dates
@@ -746,44 +751,66 @@ private fun ReportHeroCard(ledger: Ledger, data: ReportData) {
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = heroSpendLabel(data),
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            color = content.copy(alpha = 0.62f),
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = buildAnnotatedString {
-                withStyle(
-                    SpanStyle(
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = content.copy(alpha = 0.88f),
-                    ),
-                ) { append(Units.currencySymbol) }
-                withStyle(
-                    SpanStyle(
-                        fontSize = 44.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-1).sp,
-                        color = content,
-                    ),
-                ) { append(intPart) }
-                if (decPart.isNotEmpty()) {
-                    withStyle(
-                        SpanStyle(
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = content.copy(alpha = 0.72f),
-                        ),
-                    ) { append(decPart) }
-                }
-            },
-            style = MaterialTheme.typography.moneyLarge.copy(fontSize = 44.sp, lineHeight = 46.sp),
-            maxLines = 1,
-            softWrap = false,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = heroSpendLabel(data),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = content.copy(alpha = 0.62f),
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(
+                            SpanStyle(
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = content.copy(alpha = 0.88f),
+                            ),
+                        ) { append(Units.currencySymbol) }
+                        withStyle(
+                            SpanStyle(
+                                fontSize = 44.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = (-1).sp,
+                                color = content,
+                            ),
+                        ) { append(intPart) }
+                        if (decPart.isNotEmpty()) {
+                            withStyle(
+                                SpanStyle(
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = content.copy(alpha = 0.72f),
+                                ),
+                            ) { append(decPart) }
+                        }
+                    },
+                    style = MaterialTheme.typography.moneyLarge.copy(fontSize = 44.sp, lineHeight = 46.sp),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+            // 2026-11-17 用户反馈封面「还是太空」：大数字右侧补一张与总览同款的车辆插画。
+            // 窄屏（<380dp）与 1.3× 以上字号不显示：这些情况下金额本身就需要整行宽度，
+            // 累计口径的「¥29,303.05」再让出 128dp 会被裁掉。
+            val showArt = LocalDensity.current.fontScale < 1.3f &&
+                LocalConfiguration.current.screenWidthDp >= 380
+            if (showArt) {
+                Image(
+                    painter = painterResource(R.drawable.milenote_car_hero),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .width(128.dp),
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(10.dp))
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(content.copy(alpha = 0.13f)))
