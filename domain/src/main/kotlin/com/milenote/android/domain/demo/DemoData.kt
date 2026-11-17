@@ -298,11 +298,12 @@ object DemoData {
 
     private fun shopTire(): String = tr("轮胎服务中心", "Tire service center")
 
-    /** 燃油车：Golf，24 个月 × 约 1,100 km，95# 6.6 L/100km。 */
+    /** 燃油两厢（虚构品牌，避免出现真实车型），24 个月 × 约 1,100 km，95# 6.6 L/100km。 */
     private fun weekendSpec(): CarSpec = CarSpec(
         id = "demo-weekend",
         name = tr("周末出逃计划", "Weekend escape plan"),
-        model = "Volkswagen · Golf",
+        // 虚构品牌 / 车型：演示数据不出现真实车厂与车型（2026-11-17 用户要求）。
+        model = tr("远峰 · T3 1.4T", "Yuanfeng · T3 1.4T"),
         plate = tr("A 号车", "Car A"),
         powertrain = null,
         startKm = 0.0,
@@ -336,11 +337,11 @@ object DemoData {
         gear = 168.0,
     )
 
-    /** 纯电：Dolphin（接手时 8,000 km），24 个月 × 约 900 km，13 kWh/100km。 */
+    /** 纯电两厢（虚构品牌；接手时 8,000 km），24 个月 × 约 900 km，13 kWh/100km。 */
     private fun citySpec(): CarSpec = CarSpec(
         id = "demo-city",
         name = tr("城市通勤", "City commute"),
-        model = "BYD · Dolphin",
+        model = tr("青禾 · E2", "Qinghe · E2"),
         plate = tr("B 号车", "Car B"),
         powertrain = POWERTRAIN_EV,
         startKm = 8000.0,
@@ -373,11 +374,11 @@ object DemoData {
         gear = 168.0,
     )
 
-    /** 插混：Qin PLUS DM-i，24 个月 × 约 1,050 km，3.4 L + 2.9 kWh /100km。 */
+    /** 插混三厢（虚构品牌），24 个月 × 约 1,050 km，3.4 L + 2.9 kWh /100km。 */
     private fun phevSpec(): CarSpec = CarSpec(
         id = "demo-phev",
         name = tr("插混通勤", "Plug-in commute"),
-        model = "BYD · Qin PLUS DM-i",
+        model = tr("景行 · P5", "Jingxing · P5"),
         plate = tr("C 号车", "Car C"),
         powertrain = POWERTRAIN_PHEV,
         startKm = 0.0,

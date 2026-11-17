@@ -74,8 +74,20 @@ class DemoDataTest {
         assertTrue(city.vehicle.currentKm in 26_000.0..31_000.0)
         assertEquals("周末出逃计划", weekend.vehicle.name)
         assertEquals("城市通勤", city.vehicle.name)
-        assertEquals("Volkswagen · Golf", weekend.vehicle.model)
-        assertEquals("BYD · Dolphin", city.vehicle.model)
+        // 演示不出现真实车厂 / 车型（2026-11-17 用户要求），品牌与车型都是虚构的。
+        assertEquals("远峰 · T3 1.4T", weekend.vehicle.model)
+        assertEquals("青禾 · E2", city.vehicle.model)
+        val realBrands = listOf(
+            "Volkswagen", "VW", "BYD", "Toyota", "Honda", "Nissan", "Tesla", "BMW", "Benz",
+            "Mercedes", "Audi", "Ford", "Hyundai", "Kia", "Geely", "Chery", "NIO", "Xpeng", "Li Auto",
+            "大众", "比亚迪", "丰田", "本田", "特斯拉", "宝马", "奔驰", "奥迪", "吉利", "奇瑞", "蔚来", "小鹏",
+        )
+        for (car in listOf(weekend, city)) {
+            assertTrue(
+                "${car.id} 的车型含真实品牌：${car.vehicle.model}",
+                realBrands.none { car.vehicle.model.contains(it, ignoreCase = true) },
+            )
+        }
         // 燃油车继续用默认 12 项方案
         assertEquals(null, weekend.vehicle.powertrain)
         assertEquals(12, weekend.servicePlan!!.size)
@@ -136,7 +148,7 @@ class DemoDataTest {
         assertEquals("demo-phev", phev.id)
         assertEquals(POWERTRAIN_PHEV, phev.vehicle.powertrain)
         assertEquals("phev", phev.vehicle.powertrainKey)
-        assertEquals("BYD · Qin PLUS DM-i", phev.vehicle.model)
+        assertEquals("景行 · P5", phev.vehicle.model)
         assertTrue(phev.vehicle.hasFuel)
         assertTrue(phev.vehicle.hasCharging)
         assertTrue(phev.isEv.not())
