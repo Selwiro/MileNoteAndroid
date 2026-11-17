@@ -1,6 +1,8 @@
 package com.milenote.android.data.garage
 
-import com.milenote.android.i18n.I18n
+import com.milenote.android.i18n.recordsText
+import com.milenote.android.i18n.remindersText
+import com.milenote.android.i18n.vehiclesText
 import com.milenote.android.domain.backup.BackupPayload
 import com.milenote.android.domain.backup.GarageOps
 import com.milenote.android.domain.i18n.tr
@@ -61,26 +63,3 @@ internal fun restoreSummaryMessage(summary: RestoreSummary): String {
     )
 }
 
-/** 车辆数量：英文按单复数，中文量词不变。 */
-private fun vehiclesText(count: Int): String =
-    if (I18n.english) {
-        if (count == 1) "1 vehicle" else "$count vehicles"
-    } else {
-        "$count 辆车"
-    }
-
-/** 记录数量。 */
-private fun recordsText(count: Int): String =
-    if (I18n.english) {
-        if (count == 1) "1 record" else "$count records"
-    } else {
-        "$count 条记录"
-    }
-
-/** 提醒数量。 */
-private fun remindersText(count: Int): String =
-    if (I18n.english) {
-        if (count == 1) "1 reminder" else "$count reminders"
-    } else {
-        "$count 条提醒"
-    }

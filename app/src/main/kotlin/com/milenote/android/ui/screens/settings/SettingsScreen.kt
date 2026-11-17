@@ -94,7 +94,9 @@ import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.AppLanguage
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.recordsText
 import com.milenote.android.i18n.tr
+import com.milenote.android.i18n.vehiclesText
 import com.milenote.android.platform.BackupFolder
 import com.milenote.android.platform.FileExporter
 import com.milenote.android.platform.LedgerExports
@@ -1657,7 +1659,7 @@ private fun BackupRestorePage(
         item("status") {
             SectionCard(title = tr("数据概览", "Data overview")) {
                 Text(
-                    text = tr("%d 辆车 · %d 条记录", "%d vehicles · %d records", carsCount, recordsCount),
+                    text = "${vehiclesText(carsCount)} · ${recordsText(recordsCount)}",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(

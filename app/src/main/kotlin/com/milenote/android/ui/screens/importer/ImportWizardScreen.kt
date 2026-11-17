@@ -68,6 +68,7 @@ import com.milenote.android.domain.import.ImportItem
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.DataLabels
+import com.milenote.android.i18n.vehicleCountText
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import com.milenote.android.ui.components.EmptyState
@@ -734,7 +735,7 @@ private fun BackupSummaryCard(wizard: ImportWizardState) {
             LoadingState(label = tr("正在解析备份…", "Parsing backup…"))
         } else {
             InfoRow(tr("备份版本", "Backup version"), tr("version %d", "version %d", preview.version))
-            InfoRow(tr("车辆", "Vehicles"), tr("%d 辆", "%d vehicles", preview.cars))
+            InfoRow(tr("车辆", "Vehicles"), vehicleCountText(preview.cars))
             InfoRow(tr("费用记录", "Expense records"), tr("%d 条", "%d records", preview.records))
             InfoRow(tr("提醒", "Reminders"), tr("%d 条", "%d reminders", preview.reminders))
             Spacer(modifier = Modifier.height(8.dp))

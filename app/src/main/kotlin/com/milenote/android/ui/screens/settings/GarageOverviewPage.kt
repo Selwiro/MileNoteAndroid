@@ -34,6 +34,7 @@ import com.milenote.android.domain.model.energyProfile
 import com.milenote.android.i18n.DataLabels
 import com.milenote.android.i18n.Units
 import com.milenote.android.i18n.tr
+import com.milenote.android.i18n.vehiclesText
 import com.milenote.android.ui.Today
 import com.milenote.android.ui.components.FilterPill
 import com.milenote.android.ui.components.SectionCard
@@ -111,7 +112,7 @@ internal fun GarageOverviewPage(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = tr("共 %d 辆车", "%d vehicles", cars.size),
+                    text = vehiclesText(cars.size),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )

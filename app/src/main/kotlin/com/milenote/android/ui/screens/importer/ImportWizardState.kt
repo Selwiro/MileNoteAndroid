@@ -15,6 +15,10 @@ import com.milenote.android.domain.import.file.SpreadsheetData
 import com.milenote.android.domain.model.hasFuel
 import com.milenote.android.domain.model.isEv
 import com.milenote.android.domain.model.powertrainKey
+import com.milenote.android.i18n.vehicleCountText
+import com.milenote.android.i18n.vehiclesText
+import com.milenote.android.i18n.recordsText
+import com.milenote.android.i18n.remindersText
 import com.milenote.android.i18n.tr
 import com.milenote.android.ui.MileNoteViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -635,11 +639,11 @@ internal class ImportWizardState(
                                 }
                                 add(
                                     tr(
-                                        "已合并：车辆 %d 辆 · 记录 %d 条 · 提醒 %d 条",
-                                        "Merged: %d vehicles · %d records · %d reminders",
-                                        restored.cars,
-                                        restored.records,
-                                        restored.reminders,
+                                        "已合并：车辆 %s · 记录 %s · 提醒 %s",
+                                        "Merged: %s · %s · %s",
+                                        vehicleCountText(restored.cars),
+                                        recordsText(restored.records),
+                                        remindersText(restored.reminders),
                                     ),
                                 )
                             },
@@ -791,7 +795,7 @@ internal class ImportWizardState(
             val cars = backupPreview?.cars ?: 0
             val records = backupPreview?.records ?: 0
             return if (records > 0) {
-                tr("恢复 %d 辆车 · %d 条记录", "Restore %d vehicles · %d records", cars, records)
+                "${vehiclesText(cars)} · ${recordsText(records)}"
             } else {
                 tr("确认恢复", "Restore")
             }
