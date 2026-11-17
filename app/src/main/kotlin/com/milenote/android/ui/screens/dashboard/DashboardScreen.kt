@@ -348,9 +348,13 @@ private fun DashboardContent(
                     // 完整 3 步向导按 D2=A 留 1.1，这里只给一个直达入口。
                     tertiaryLabel = tr("开始设置我的车", "Set up my car"),
                     onTertiaryAction = onOpenSetup,
-                    // UX8：费用明细入口原本只有右上角同色小图标，新用户找不到；空态直接给文字入口。
-                    linkLabel = tr("查看全部记录（费用明细）", "See all records (expense details)"),
-                    onLinkAction = { onNavigate(Routes.RECORDS) },
+                    // 1.0 UX 走查：空账本最想要的是「把我已有的数据弄进来」，
+                    // 导入向导第一步本来就区分「其他应用账单 / 完整备份」，直接指过去。
+                    linkLabel = tr(
+                        "导入或恢复已有数据（钱迹、小熊、完整备份）",
+                        "Import or restore existing data (Qianji, Bear, full backup)",
+                    ),
+                    onLinkAction = { onNavigate(Routes.IMPORTER) },
                 )
             }
             return@LazyColumn

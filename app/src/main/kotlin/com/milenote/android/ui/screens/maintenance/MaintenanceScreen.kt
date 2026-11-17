@@ -423,7 +423,8 @@ private fun ReminderCard(
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = tr("完成", "Done"),
+                        // 1.0 UX 走查：英文 Done 看起来像「已完成」状态，实际是打开「完成并记账」表单。
+                        text = tr("记录保养", "Log service"),
                         style = MaterialTheme.typography.labelMediumEmphasized,
                     )
                 }

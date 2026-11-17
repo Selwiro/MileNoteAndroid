@@ -32,12 +32,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -429,6 +432,44 @@ private fun RecordsContent(
                                     if (selecting) toggle(record.id) else startSelection(record.id)
                                 },
                             )
+                        }
+                    }
+                }
+            }
+
+            // 1.0 UX 走查：长列表滚到中间时，搜索与筛选条已经滚出屏幕。
+            // 滚过几条后浮一行「概要 + 改筛选 + 回顶部」，都在 48dp 触控区内。
+            if (!selecting && listState.firstVisibleItemIndex > 4) {
+                val scope = rememberCoroutineScope()
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 6.dp)
+                        .clip(RoundedCornerShape(50)),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 3.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = tr("%d 条 · 筛选 %d 项", "%d records · %d filters", filtered.size, filter.activeCount),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = { openSheet() },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(tr("改筛选", "Filters"))
+                        }
+                        TextButton(
+                            onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(tr("回顶部", "Top"))
                         }
                     }
                 }

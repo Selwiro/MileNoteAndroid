@@ -1795,7 +1795,11 @@ private fun BackupRestorePage(
                 SettingsActionRow(
                     icon = MileNoteIcons.FileText,
                     title = tr("导出费用 CSV", "Export expense CSV"),
-                    subtitle = tr("报表仅用于查看和对账", "Report for viewing and reconciling only"),
+                    // 1.0 UX 走查：这个 CSV 带「记录编号」，导入页能按编号原位回灌，不只是「查看」。
+                    subtitle = tr(
+                        "可查看对账，也可导回后按记录编号原位更新（回灌）",
+                        "For review and reconciliation — you can also import it back to update records by ID",
+                    ),
                     enabled = !busy,
                     onClick = onExportCsv,
                 )
@@ -1861,7 +1865,7 @@ private fun BackupRestorePage(
                     subtitle = if (demo) {
                         tr("演示模式下不可用", "Unavailable in demo mode")
                     } else {
-                        tr("清空全部数据，需输入「删除」确认", "Wipes all data; type “删除” to confirm")
+                        tr("清空全部数据，需输入「删除」确认", "Wipes all data; type \"DELETE\" to confirm")
                     },
                     danger = true,
                     enabled = !busy && !demo,

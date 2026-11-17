@@ -164,4 +164,36 @@ class RestoreSummaryTest {
             com.milenote.android.i18n.I18n.applyEnglish(false)
         }
     }
+
+    @Test
+    fun `english summary uses singular forms for one`() {
+        com.milenote.android.i18n.I18n.applyEnglish(true)
+        try {
+            val message = restoreSummaryMessage(
+                RestoreSummary(cars = 1, records = 1, reminders = 1),
+            )
+            // 1.0 UX 走查：以前一律复数，「1 vehicles / 1 reminders」读起来就不对。
+            assertTrue(message, message.contains("1 vehicle"))
+            assertTrue(message, message.contains("1 record"))
+            assertTrue(message, message.contains("1 reminder"))
+            assertFalse(message, message.contains("1 vehicles"))
+        } finally {
+            com.milenote.android.i18n.I18n.applyEnglish(false)
+        }
+    }
+
+    @Test
+    fun `english summary keeps plurals for many`() {
+        com.milenote.android.i18n.I18n.applyEnglish(true)
+        try {
+            val message = restoreSummaryMessage(
+                RestoreSummary(cars = 2, records = 12, reminders = 3),
+            )
+            assertTrue(message, message.contains("2 vehicles"))
+            assertTrue(message, message.contains("12 records"))
+            assertTrue(message, message.contains("3 reminders"))
+        } finally {
+            com.milenote.android.i18n.I18n.applyEnglish(false)
+        }
+    }
 }
