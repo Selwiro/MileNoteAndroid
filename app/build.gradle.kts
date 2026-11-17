@@ -14,8 +14,8 @@ android {
         applicationId = "com.milenote.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 107
-        versionName = "0.44.1"
+        versionCode = 108
+        versionName = "1.0.0-rc5"
         vectorDrawables.useSupportLibrary = true
 
         // 只带 ARM 的 native 库：Tesseract4Android 同样按 ABI 分发 .so，x86 只用于模拟器调试，
