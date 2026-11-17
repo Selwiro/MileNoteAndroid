@@ -140,3 +140,24 @@ fun validateRecord(
     requirePlausibleDate = requirePlausibleDate,
     allowBlankCategory = allowBlankCategory,
 )?.message ?: ""
+
+/**
+ * 批量把记录改成 [category] 后，有多少条会通不过校验。
+ *
+ * 只做预检、不改账本：每条按「换分类后的记录」跑一次 [recordIssue]（真实规则），
+ * 这样「0 元保养 → 停车费需要正数金额」这类跨字段约束在提交前就能拦住，
+ * 而不是写盘前账本校验抛异常、界面协程崩溃（1.0 审查 #7）。
+ *
+ * @return 不能改的记录条数；0 表示整批都可以提交。
+ */
+fun categoryChangeRejects(
+    records: List<Record>,
+    category: String,
+    customCategories: List<String> = emptyList(),
+): Int {
+    val normalized = Categories.normalize(category)
+    if (normalized.isEmpty()) return records.size
+    return records.count { record ->
+        recordIssue(record.copy(category = normalized), customCategories) != null
+    }
+}

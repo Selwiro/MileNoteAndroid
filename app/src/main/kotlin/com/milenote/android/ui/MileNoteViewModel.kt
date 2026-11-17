@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.milenote.android.AppContainer
 import com.milenote.android.data.garage.GarageRepository
+import com.milenote.android.data.garage.SaveResult
 import com.milenote.android.data.settings.AppSettings
 import com.milenote.android.data.settings.DarkMode
 import com.milenote.android.data.share.SharedImport
@@ -58,6 +59,7 @@ import com.milenote.android.domain.model.powertrainKey
 import com.milenote.android.domain.calc.Ids
 import com.milenote.android.domain.format.Format
 import com.milenote.android.domain.calc.applyCategoryToRecords
+import com.milenote.android.domain.calc.categoryChangeRejects
 import com.milenote.android.domain.calc.completeImportedServices
 import com.milenote.android.domain.calc.duplicateOf
 import com.milenote.android.domain.calc.manualDuplicateOf
@@ -539,7 +541,7 @@ class MileNoteViewModel(
         val editing = active?.records?.any { it.id == record.id } == true
         _state.value = _state.value.copy(savingRecord = true, editorError = null)
         viewModelScope.launch {
-            val result = repository.update(syncHistory = true) { garage ->
+            val result = repository.save(syncHistory = true) { garage ->
                 updateActive(garage) { ledger ->
                     val exists = ledger.records.any { it.id == record.id }
                     val records = if (exists) {
@@ -556,17 +558,11 @@ class MileNoteViewModel(
                 profile != EnergyProfile.FUEL_ONLY -> tr("已保存 · %s", "Saved · %s", categoryLabel)
                 else -> tr("已保存", "Saved")
             }
-            val failure = if (result == null) {
-                tr(
-                    "保存失败：本机数据尚未加载完成，请稍后重试",
-                    "Could not save: the local data has not loaded yet. Try again in a moment.",
-                )
-            } else {
-                null
-            }
+            // #8：只有真的写进本机才关页面、清草稿。写盘失败（或校验不通过）时保持编辑器与草稿：
+            // 以前 update() 写失败仍返回内存账本，界面当成保存成功直接关掉，退出进程就白填了。
+            val failure = (result as? SaveResult.Failed)?.message
             val current = _state.value
             _state.value = current.copy(
-                // 失败时不关页面：刚填的内容与焦点都还在，可以直接重试 / 继续改（UX1）。
                 editor = if (failure != null) current.editor else null,
                 savingRecord = false,
                 editorError = failure,
@@ -809,25 +805,52 @@ class MileNoteViewModel(
     }
 
     /** 批量改分类：只改选中记录的 `category`，其余字段与账本顺序不动。 */
-    fun changeRecordsCategory(records: List<Record>, category: String) {
+    fun changeRecordsCategory(records: List<Record>, category: String, onResult: (Boolean) -> Unit = {}) {
         val active = _state.value.activeCar ?: return
         val ids = records.map { it.id }.toSet()
         val target = Categories.normalize(category)
         if (ids.isEmpty() || target.isEmpty()) return
         val label = DataLabels.categoryFor(active, target, active.vehicle.energyProfile)
+        // #7：先按真实校验规则预检。把 0 元保养改成停车费这类「换分类才非法」的记录，
+        // 以前会一路写进 repository，再由账本校验抛 BackupException 逃出协程直接闪退。
+        val rejects = categoryChangeRejects(records, target, active.customCategories.orEmpty())
+        if (rejects > 0) {
+            _state.value = _state.value.copy(
+                message = if (rejects == records.size) {
+                    tr(
+                        "这 %d 条记录改成「%s」后金额不合法（需大于 0），请先补金额再改",
+                        "These %d records need a positive amount for %s — enter the amounts first",
+                        rejects,
+                        label,
+                    )
+                } else {
+                    tr(
+                        "其中 %d 条改成「%s」后金额不合法（需大于 0），请先补金额再改",
+                        "%d of them need a positive amount for %s — enter the amounts first",
+                        rejects,
+                        label,
+                    )
+                },
+            )
+            onResult(false)
+            return
+        }
         viewModelScope.launch {
-            repository.update(syncHistory = true) { garage ->
+            val result = repository.save(syncHistory = true) { garage ->
                 updateActive(garage) { applyCategoryToRecords(it, ids, target) }
             }
+            val saved = if (ids.size == 1) {
+                tr("已改为「%s」", "Changed to %s", label)
+            } else {
+                tr("已将 %d 条记录改为「%s」", "Changed %d records to %s", ids.size, label)
+            }
             _state.value = _state.value.copy(
-                message = savedMessage(
-                    if (ids.size == 1) {
-                        tr("已改为「%s」", "Changed to %s", label)
-                    } else {
-                        tr("已将 %d 条记录改为「%s」", "Changed %d records to %s", ids.size, label)
-                    },
-                ),
+                message = when (result) {
+                    is SaveResult.Ok -> savedMessage(saved)
+                    is SaveResult.Failed -> result.message
+                },
             )
+            onResult(result is SaveResult.Ok)
         }
     }
 
@@ -877,7 +900,7 @@ class MileNoteViewModel(
             vehicle
         }
         viewModelScope.launch {
-            val result = repository.update(syncHistory = false) { garage ->
+            val result = repository.save(syncHistory = false) { garage ->
                 updateCar(garage, vehicleId) { ledger ->
                     var next = ledger.copy(vehicle = nextVehicle)
                     if (ledger.vehicle.powertrainKey != nextVehicle.powertrainKey) {
@@ -891,10 +914,11 @@ class MileNoteViewModel(
                     next
                 }
             }
-            val failed = result == null || repository.writeError.value != null
+            val failed = result is SaveResult.Failed
             _state.value = _state.value.copy(
                 showVehicleEditor = failed,
-                message = savedMessage(tr("车辆信息已保存", "Vehicle saved")),
+                message = (result as? SaveResult.Failed)?.message
+                    ?: savedMessage(tr("车辆信息已保存", "Vehicle saved")),
             )
         }
     }
@@ -907,16 +931,17 @@ class MileNoteViewModel(
             else -> vehicle
         }
         viewModelScope.launch {
-            val result = repository.update(syncHistory = false) { garage ->
+            val result = repository.save(syncHistory = false) { garage ->
                 val ledger = blankLedger(powertrain = nextVehicle.powertrain)
                     .copy(id = Ids.newId(), vehicle = nextVehicle)
                 garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
             }
-            val failed = result == null || repository.writeError.value != null
+            val failed = result is SaveResult.Failed
             _state.value = _state.value.copy(
                 showVehicleEditor = failed,
                 vehicleSwitcher = false,
-                message = savedMessage(tr("已添加车辆", "Vehicle added")),
+                message = (result as? SaveResult.Failed)?.message
+                    ?: savedMessage(tr("已添加车辆", "Vehicle added")),
             )
         }
     }
@@ -949,7 +974,7 @@ class MileNoteViewModel(
             } else {
                 emptyList()
             }
-            val result = repository.update(syncHistory = false) { garage ->
+            val result = repository.save(syncHistory = false) { garage ->
                 val ledger = blankLedger(powertrain = nextVehicle.powertrain)
                     .copy(
                         id = Ids.newId(),
@@ -959,11 +984,12 @@ class MileNoteViewModel(
                     )
                 garage.copy(cars = garage.cars + ledger, activeId = ledger.id)
             }
-            val failed = result == null || repository.writeError.value != null
+            val failed = result is SaveResult.Failed
             _state.value = _state.value.copy(
                 showVehicleEditor = failed,
                 vehicleSwitcher = false,
-                message = savedMessage(tr("已添加车辆", "Vehicle added")),
+                message = (result as? SaveResult.Failed)?.message
+                    ?: savedMessage(tr("已添加车辆", "Vehicle added")),
             )
         }
     }
@@ -1353,15 +1379,16 @@ class MileNoteViewModel(
     fun saveServicePlan(entries: List<PlanEntry>, baseDate: String, baseKm: Double, includeFirst: Boolean) {
         viewModelScope.launch {
             try {
-                repository.update(syncHistory = true) { garage ->
+                val result = repository.save(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
                         applyServicePlan(ledger, entries, baseDate, baseKm, includeFirst)
                     }
                 }
-                val failed = repository.writeError.value != null
+                val failed = result is SaveResult.Failed
                 _state.value = _state.value.copy(
                     showServicePlanEditor = failed,
-                    message = savedMessage(tr("保养方案已保存", "Service plan saved")),
+                    message = (result as? SaveResult.Failed)?.message
+                        ?: savedMessage(tr("保养方案已保存", "Service plan saved")),
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(message = e.message ?: tr("保存失败", "Save failed"))
@@ -1372,7 +1399,7 @@ class MileNoteViewModel(
     fun useDefaultServicePlan(baseDate: String, baseKm: Double, includeFirst: Boolean) {
         viewModelScope.launch {
             try {
-                repository.update(syncHistory = true) { garage ->
+                val result = repository.save(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
                         val reminders = defaultServiceReminders(
                             baseDate,
@@ -1386,10 +1413,11 @@ class MileNoteViewModel(
                         ledger.copy(reminders = existing + reminders, servicePlanConfigured = true)
                     }
                 }
-                val failed = repository.writeError.value != null
+                val failed = result is SaveResult.Failed
                 _state.value = _state.value.copy(
                     showServicePlanEditor = failed,
-                    message = savedMessage(tr("已启用默认保养方案", "Default service plan enabled")),
+                    message = (result as? SaveResult.Failed)?.message
+                        ?: savedMessage(tr("已启用默认保养方案", "Default service plan enabled")),
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(message = e.message ?: tr("启用失败", "Enable failed"))
@@ -1515,7 +1543,7 @@ class MileNoteViewModel(
         // 导入前留快照：结果页可一键撤销本次导入（B23）。必须记住具体文件：
         // 导入后自动同步会再写快照，「最新一份」可能已经不是导入前的状态。
         val undoSnapshot = repository.snapshotForUndo()
-        val written = repository.update(syncHistory = true) { garage ->
+        val written = repository.save(syncHistory = true) { garage ->
                     updateActive(garage) { ledger ->
                         // 覆盖模式：先移除命中的旧记录，再走正常合并把导入数据写回。
                         // 复用旧 id / 口径字段，保住「提醒 → 记录」的关联（B17）。
@@ -1572,16 +1600,10 @@ class MileNoteViewModel(
                         )
                     }
                 }
-        // update() 不再抛写盘异常（避免崩溃），但导入必须把失败传给向导，不能显示「导入完成」。
-        if (written == null) {
-            throw IllegalStateException(
-                tr(
-                    "导入失败：本机数据尚未加载完成，请稍后重试",
-                    "Import failed: the local data has not loaded yet. Try again in a moment.",
-                ),
-            )
+        // save() 不再把失败混成成功：导入必须把原因传给向导，不能显示「导入完成」。
+        if (written is SaveResult.Failed) {
+            throw IllegalStateException(written.message)
         }
-        repository.writeError.value?.let { throw IllegalStateException(it) }
         return ImportWriteResult(
             added = added,
             merged = merged,

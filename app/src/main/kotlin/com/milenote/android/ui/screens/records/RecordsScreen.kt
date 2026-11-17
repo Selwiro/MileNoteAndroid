@@ -169,7 +169,7 @@ private fun RecordsContent(
     onAddRecord: () -> Unit,
     onOpenRecord: (String) -> Unit,
     onDeleteRecords: (List<Record>, () -> Unit) -> Unit,
-    onChangeCategory: (List<Record>, String) -> Unit,
+    onChangeCategory: (List<Record>, String, (Boolean) -> Unit) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -500,8 +500,9 @@ private fun RecordsContent(
             onPick = { name ->
                 val picked = selectedRecords
                 showCategorySheet = false
-                exitSelection()
-                onChangeCategory(picked, name)
+                // 成功才退出多选：失败（例如有 0 元记录改成需要金额的分类）时保留选中的记录，
+                // 用户能直接改完再试，不用重新圈一遍。
+                onChangeCategory(picked, name) { ok -> if (ok) exitSelection() }
             },
         )
     }

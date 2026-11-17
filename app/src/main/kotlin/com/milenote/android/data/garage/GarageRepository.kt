@@ -1,6 +1,7 @@
 package com.milenote.android.data.garage
 
 import com.milenote.android.domain.backup.BackupCodec
+import com.milenote.android.domain.backup.BackupException
 import com.milenote.android.domain.backup.GarageOps
 import com.milenote.android.domain.backup.SyncStamps
 import com.milenote.android.domain.calc.syncServiceHistory
@@ -181,18 +182,58 @@ class GarageRepository(
      * 写盘失败**不抛异常**：把原因记到 [writeError] 并保留内存中的修改，由 UI 明确提示
      * 「未写入本机」；下一次成功写入会自动清掉错误并落盘（包含这次累积的修改）。
      */
-    suspend fun update(syncHistory: Boolean = true, transform: (Garage) -> Garage): Garage? = mutex.withLock {
-        val current = _garage.value ?: return@withLock null
-        var next = transform(current)
-        if (syncHistory) next = syncActiveLedger(next)
-        next = GarageOps.normalizeGarage(next)
-        next = SyncStamps.stampChanges(current, next, clock())
-        if (!_demoMode.value && !writeBlocked && writeJson(next)) {
+    suspend fun update(syncHistory: Boolean = true, transform: (Garage) -> Garage): Garage? =
+        save(syncHistory, transform).garageOrNull
+
+    /**
+     * 保存一次账本修改，并**明确回答有没有写进本机**。
+     *
+     * 与 [update] 的区别只有返回值：校验不通过或写盘失败会返回 [SaveResult.Failed]，
+     * 而不是把内存账本当成保存成功。校验异常（[BackupException]，例如把 0 元保养改成
+     * 停车费）在这里就地转成可展示文案——以前它会直接逃出 `viewModelScope.launch` 崩溃。
+     *
+     * 写盘失败时修改仍留在内存（用户刚输入的内容不立刻丢），失败原因写进 [writeError]。
+     *
+     * @param syncHistory 是否按「保存即重算保养」同步当前车的保养历史。
+     */
+    suspend fun save(syncHistory: Boolean = true, transform: (Garage) -> Garage): SaveResult = mutex.withLock {
+        val current = _garage.value ?: return@withLock SaveResult.Failed(
+            tr(
+                "保存失败：本机数据尚未加载完成，请稍后重试",
+                "Could not save: the local data has not loaded yet. Try again in a moment.",
+            ),
+        )
+        val next = try {
+            var candidate = transform(current)
+            if (syncHistory) candidate = syncActiveLedger(candidate)
+            candidate = GarageOps.normalizeGarage(candidate)
+            SyncStamps.stampChanges(current, candidate, clock())
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            throw t
+        } catch (t: BackupException) {
+            // 校验不通过：账本一个字都没动，把原因交给界面（不抛出去，避免协程崩溃）。
+            val message = t.message ?: tr("保存失败：数据校验未通过", "Could not save: the data did not pass validation")
+            _writeError.value = message
+            return@withLock SaveResult.Failed(message)
+        } catch (t: Throwable) {
+            val message = t.message ?: tr("保存失败", "Could not save")
+            _writeError.value = message
+            return@withLock SaveResult.Failed(message)
+        }
+        if (!_demoMode.value && !writeBlocked) {
+            if (!writeJson(next)) {
+                // 内存保留修改，下一次成功写入会把这次累积的改动一起落盘。
+                _garage.value = next
+                return@withLock SaveResult.Failed(
+                    _writeError.value ?: tr("无法写入本机", "Could not write to this device"),
+                    next,
+                )
+            }
             persisted = next
             _localWrites.tryEmit(Unit)
         }
         _garage.value = next
-        next
+        SaveResult.Ok(next)
     }
 
     /** 整体替换（导入/恢复/远端覆盖后用）：覆盖前先留本地快照，便于回滚。 */

@@ -2,6 +2,7 @@ package com.milenote.android.data.garage
 
 import com.milenote.android.domain.backup.BackupCodec
 import com.milenote.android.domain.backup.GarageOps
+import com.milenote.android.domain.model.Record
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -352,5 +353,81 @@ class GarageRepositorySafetyTest {
         }
         assertFalse(repo.rollbackToLatestSnapshot())
         assertEquals(writesBefore, store.writes.size)
+    }
+
+    // ---------- save()：明确区分「写进去了」与「没写进去」（1.0 审查 #1 / #7 / #8） ----------
+
+    @Test
+    fun `save reports success only after the write lands`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson)
+        val repo = GarageRepository(store)
+        repo.load()
+
+        val result = repo.save { it.copy(theme = "forest") }
+
+        assertTrue(result is SaveResult.Ok)
+        assertEquals("forest", BackupCodec.decode(store.content!!).theme)
+        assertEquals("forest", repo.garage.value!!.theme)
+    }
+
+    @Test
+    fun `save reports a write failure and keeps the change in memory only`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson)
+        val repo = GarageRepository(store)
+        repo.load()
+        store.failWrites = true
+
+        val result = repo.save { it.copy(theme = "forest") }
+
+        assertTrue(result is SaveResult.Failed)
+        val failed = result as SaveResult.Failed
+        assertTrue(failed.message.isNotBlank())
+        // 内存保留（用户刚输入的内容不立刻丢），磁盘仍是旧的。
+        assertEquals("forest", failed.garage?.theme)
+        assertEquals("forest", repo.garage.value!!.theme)
+        assertEquals("blue", BackupCodec.decode(store.content!!).theme)
+    }
+
+    @Test
+    fun `save turns a validation failure into a message without touching the ledger`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson)
+        val repo = GarageRepository(store)
+        repo.load()
+        val writesBefore = store.writes.size
+
+        // 0 元停车费：换分类后金额不合法，账本校验会抛 BackupException。
+        val result = repo.save { garage ->
+            val car = garage.cars.first()
+            garage.copy(
+                cars = listOf(
+                    car.copy(
+                        records = car.records + Record(
+                            id = "r-invalid",
+                            date = "2026-11-01",
+                            category = "停车费",
+                            amount = 0.0,
+                            note = "合成测试记录",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        assertTrue(result is SaveResult.Failed)
+        assertTrue((result as SaveResult.Failed).message.isNotBlank())
+        assertEquals(writesBefore, store.writes.size)
+        assertTrue(repo.garage.value!!.cars.first().records.isEmpty())
+        assertEquals(emptyLedgerJson, store.content)
+    }
+
+    @Test
+    fun `save reports not-loaded instead of pretending to save`() = runBlocking {
+        val store = FakeStore(emptyLedgerJson)
+        val repo = GarageRepository(store)
+
+        val result = repo.save { it.copy(theme = "forest") }
+
+        assertTrue(result is SaveResult.Failed)
+        assertTrue(store.writes.isEmpty())
     }
 }

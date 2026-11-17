@@ -1,7 +1,9 @@
 package com.milenote.android.data.garage
 
 import android.content.Context
+import com.milenote.android.i18n.tr
 import java.io.File
+import java.io.IOException
 
 /**
  * 账本文件存储接口。
@@ -16,6 +18,12 @@ interface GarageStore {
     /** 读取原始 JSON；文件不存在返回 null。 */
     fun read(): String?
 
+    /**
+     * 写入整本账本。
+     *
+     * **必须用异常表示失败**（不要静默 return）：调用方据此判断「有没有落盘」，
+     * 静默失败会被当成保存成功。
+     */
     fun write(json: String)
 
     /**
@@ -43,11 +51,17 @@ interface GarageStore {
  * 写入采用「临时文件 + fsync + 原子重命名」，避免半写导致账本损坏。
  * 图片以 base64 dataURL 存在 JSON 内，和 Web 备份完全一致。
  */
-class GarageFileStore(context: Context) : GarageStore {
+class GarageFileStore internal constructor(private val dir: File) : GarageStore {
 
-    private val dir: File = File(context.filesDir, "garage").apply { mkdirs() }
+    /** 应用内使用：`filesDir/garage`（单测可直接传临时目录）。 */
+    constructor(context: Context) : this(File(context.filesDir, "garage"))
+
     private val file: File = File(dir, "garage.json")
     private val lock = Any()
+
+    init {
+        dir.mkdirs()
+    }
 
     override fun exists(): Boolean = file.exists()
 
@@ -55,18 +69,58 @@ class GarageFileStore(context: Context) : GarageStore {
         if (!file.exists()) null else file.readText()
     }
 
+    /**
+     * 写入整本账本：临时文件 + fsync + 原子替换。
+     *
+     * 两条底线（1.0 审查 #1）：
+     * - **刷盘失败必须抛**：以前 `fsync` 包在 `runCatching` 里，失败也照样替换，
+     *   掉电 / 进程被杀会留下半截账本；
+     * - **绝不退化成覆盖原文件**：以前 rename 失败就 `file.writeText(json)`，
+     *   等于先把唯一一份旧账本截断再写，磁盘满或写入中断时旧数据直接没了。
+     *   现在替换失败只删临时文件并抛错，旧账本保持完好。
+     */
     override fun write(json: String) = synchronized(lock) {
+        val bytes = json.toByteArray(Charsets.UTF_8)
         val tmp = File(dir, "garage.json.tmp")
-        tmp.writeText(json)
-        // 尽量把数据刷到磁盘，再原子替换。
-        runCatching {
-            java.io.FileOutputStream(tmp, true).use { it.fd.sync() }
+        // 上一次崩溃可能留下半截临时文件，先清掉，别把它当成本次产物。
+        if (tmp.exists()) tmp.delete()
+        try {
+            java.io.FileOutputStream(tmp).use { out ->
+                out.write(bytes)
+                out.flush()
+                out.fd.sync()
+            }
+            if (!atomicReplace(tmp, file)) {
+                tmp.delete()
+                throw IOException(
+                    tr("账本替换失败，已保留原文件", "Could not replace the data file; the previous one was kept"),
+                )
+            }
+        } catch (t: Throwable) {
+            // 失败路径不碰 file：宁可本次不落盘，也不能毁掉上一份。
+            runCatching { tmp.delete() }
+            throw t
         }
-        if (!tmp.renameTo(file)) {
-            // rename 失败时退化为复制覆盖，保证不丢数据。
-            file.writeText(json)
-            tmp.delete()
+    }
+
+    /** 同目录内原子替换；不支持 `ATOMIC_MOVE` 的存储退化成普通 `move`（仍是 rename，不会截断目标）。 */
+    private fun atomicReplace(tmp: File, target: File): Boolean {
+        val src = tmp.toPath()
+        val dst = target.toPath()
+        if (runCatching {
+                java.nio.file.Files.move(
+                    src,
+                    dst,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                )
+            }.isSuccess
+        ) {
+            return true
         }
+        return runCatching {
+            java.nio.file.Files.move(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }.isSuccess
     }
 
     override fun quarantine(): File? = synchronized(lock) {

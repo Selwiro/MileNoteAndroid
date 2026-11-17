@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import java.io.FileNotFoundException
+import java.security.MessageDigest
 import com.milenote.android.domain.backup.backupsToDelete
 import com.milenote.android.i18n.tr
 import kotlinx.coroutines.Dispatchers
@@ -49,60 +50,153 @@ object BackupFolder {
     }.getOrNull()
 
     /**
-     * 写入一份备份：同名文件已存在则覆盖（截断重写），否则新建。
+     * 写入一份备份：同名文件已存在则**在旧文件可恢复的前提下**替换。
+     *
+     * 1.0 审查 #2：以前三条路径都会先动旧文件（`wt` 先截断 / 删旧再建 / 退 `w` 留旧尾部），
+     * 写到一半失败就留下坏文件，界面还报成功并刷新备份时间。现在改为：
+     *
+     * 1. 新内容先写进独立临时文件 `name.part-<ts>`，**整个过程不碰旧文件**；
+     * 2. 读回临时文件算 SHA-256 与预期比对（provider 写短了 / 静默失败在这里发现）；
+     * 3. 校验通过才换名：旧文件先退成 `name.old-<ts>`，新文件改成正名，成功后再删旧文件；
+     * 4. provider 不支持改名（少数第三方网盘）时，退化为「临时文件已备好 → 原地覆盖 → 再校验」，
+     *    覆盖失败则保留那份已验证的临时文件并在错误里写明文件名，旧备份仍可从它恢复。
+     *
+     * 任何一步失败都会抛异常，调用方因此不会刷新「上次备份时间」。
      *
      * @throws SecurityException 授权失效（目录被删 / 用户撤销 / 换机）
      */
     fun write(context: Context, treeUri: Uri, subdir: String?, name: String, bytes: ByteArray): Uri =
         wrapUnavailable {
+            val resolver = context.contentResolver
             val rootId = rootDocumentId(context, treeUri, subdir)
+            val dirUri = documentUri(treeUri, rootId)
+            val stamp = System.currentTimeMillis()
             val existing = list(context, treeUri, rootId).firstOrNull { !it.isDir && it.name == name }
-            if (existing != null) {
-                // 优先 "wt"（写入 + 截断）：覆盖旧文件时不能留下上一次更长的尾部。
-                val truncating = runCatching {
-                    context.contentResolver.openOutputStream(existing.uri, "wt")
-                }.getOrNull()
-                if (truncating != null) {
-                    truncating.use { it.write(bytes) }
-                    return@wrapUnavailable existing.uri
+            val partName = "$name.part-$stamp"
+            val part = DocumentsContract.createDocument(resolver, dirUri, MIME_JSON, partName)
+                ?: error(tr("无法创建备份文件", "Could not create the backup file"))
+
+            // 临时文件通过校验后，原地覆盖期间它就是那份「可恢复副本」，不能删。
+            var keepPartOnFailure = false
+            try {
+                writeBytes(context, part, bytes)
+                verifyBytes(context, part, bytes)
+
+                if (existing == null) {
+                    val renamed = renameOrNull(context, part, name)
+                    if (renamed != null) {
+                        cleanupSiblings(context, treeUri, rootId, name, keep = emptySet())
+                        return@wrapUnavailable renamed
+                    }
+                    // 不支持改名：直接建正式文件；两个文件都写一遍很便宜，账本最多几十 MB 且备份是低频操作。
+                    val created = DocumentsContract.createDocument(resolver, dirUri, MIME_JSON, name)
+                        ?: error(tr("无法创建备份文件", "Could not create the backup file"))
+                    writeBytes(context, created, bytes)
+                    verifyBytes(context, created, bytes)
+                    cleanupSiblings(context, treeUri, rootId, name, keep = setOf(name))
+                    return@wrapUnavailable created
                 }
-                // 个别 provider 不支持 "wt"，用 "w" 覆盖可能不截断 → 旧文件更长的尾部会让 JSON 变成
-                // 「有效前缀 + 垃圾」。这里删掉旧文档再新建同名文件，从 0 开始写。
-                val deleted = runCatching {
-                    DocumentsContract.deleteDocument(context.contentResolver, existing.uri)
-                }.getOrDefault(false)
-                if (deleted) {
-                    val recreated = DocumentsContract.createDocument(
-                        context.contentResolver,
-                        documentUri(treeUri, rootId),
-                        MIME_JSON,
-                        name,
-                    ) ?: error(tr("无法创建备份文件", "Could not create the backup file"))
-                    writeBytes(context, recreated, bytes)
-                    return@wrapUnavailable recreated
+
+                // 旧文件先退到一边：改名成功才继续，失败说明 provider 不支持这套动作。
+                val aside = renameOrNull(context, existing.uri, "$name.old-$stamp")
+                if (aside != null) {
+                    val renamed = renameOrNull(context, part, name)
+                    if (renamed == null) {
+                        // 至少把旧文件名字改回来，别让用户在自己的目录里找不到上一份备份。
+                        runCatching { DocumentsContract.renameDocument(resolver, aside, name) }
+                        error(
+                            tr(
+                                "无法替换备份文件，已保留上一份",
+                                "Could not replace the backup file; the previous one was kept",
+                            ),
+                        )
+                    }
+                    runCatching { DocumentsContract.deleteDocument(resolver, aside) }
+                    cleanupSiblings(context, treeUri, rootId, name, keep = setOf(name))
+                    return@wrapUnavailable renamed
                 }
-                // 删除也失败（只读 / 被占用）：最后退化为 "w"，最坏情况是多留几份旧文件。
-                val fallback = runCatching {
-                    context.contentResolver.openOutputStream(existing.uri, "w")
-                }.getOrNull() ?: error(tr("无法写入备份文件", "Could not write the backup file"))
-                fallback.use { it.write(bytes) }
-                return@wrapUnavailable existing.uri
+
+                // provider 不支持改名：临时文件已验证可用，原地覆盖，再校验一次。
+                keepPartOnFailure = true
+                val inPlace = runCatching {
+                    // 能截断就截断（避免旧文件更长的尾部）；不支持 "wt" 只能 "w" + 读回校验兜底。
+                    val truncated = runCatching { writeBytes(context, existing.uri, bytes, mode = "wt") }.isSuccess
+                    if (!truncated) writeBytes(context, existing.uri, bytes, mode = "w")
+                    verifyBytes(context, existing.uri, bytes)
+                }
+                if (inPlace.isFailure) {
+                    error(
+                        tr(
+                            "无法替换备份文件，新备份暂存为「%s」，可从它恢复",
+                            "Could not replace the backup file; the new backup was kept as %s and can be recovered from it",
+                            partName,
+                        ),
+                    )
+                }
+                keepPartOnFailure = false
+                cleanupSiblings(context, treeUri, rootId, name, keep = setOf(name))
+                existing.uri
+            } catch (t: Throwable) {
+                if (!keepPartOnFailure) runCatching { DocumentsContract.deleteDocument(resolver, part) }
+                throw t
             }
-            val created = DocumentsContract.createDocument(
-                context.contentResolver,
-                documentUri(treeUri, rootId),
-                MIME_JSON,
-                name,
-            ) ?: error(tr("无法创建备份文件", "Could not create the backup file"))
-            writeBytes(context, created, bytes)
-            created
         }
 
-    /** 写入字节；流打不开就报成可展示的「无法写入」。 */
-    private fun writeBytes(context: Context, uri: Uri, bytes: ByteArray) {
-        val stream = runCatching { context.contentResolver.openOutputStream(uri, "w") }.getOrNull()
+    /** 改名；provider 不支持时返回 null（不同错误类型都按「不支持」处理，由调用方选降级路径）。 */
+    private fun renameOrNull(context: Context, uri: Uri, name: String): Uri? =
+        runCatching { DocumentsContract.renameDocument(context.contentResolver, uri, name) }.getOrNull()
+
+    /**
+     * 读回校验：写入的字节必须一字不差，否则宁可报错也不能留一份坏备份。
+     *
+     * 用流式 SHA-256 比对，不把整份备份再读进内存。
+     */
+    private fun verifyBytes(context: Context, uri: Uri, expected: ByteArray) {
+        val expectedDigest = MessageDigest.getInstance("SHA-256").apply { update(expected) }.digest()
+        val actualDigest = MessageDigest.getInstance("SHA-256")
+        val stream = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            ?: error(
+                tr(
+                    "备份写入后无法读回，已保留上一份",
+                    "The backup could not be read back; the previous one was kept",
+                ),
+            )
+        stream.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                actualDigest.update(buffer, 0, read)
+            }
+        }
+        if (!expectedDigest.contentEquals(actualDigest.digest())) {
+            error(
+                tr(
+                    "备份写入不完整，已保留上一份",
+                    "The backup was written incompletely; the previous one was kept",
+                ),
+            )
+        }
+    }
+
+    /** 清掉同一份备份留下的临时 / 旧文件（只在这次写入已经成功后调用）。 */
+    private fun cleanupSiblings(context: Context, treeUri: Uri, rootId: String, name: String, keep: Set<String>) {
+        val prefixes = listOf("$name.part-", "$name.old-")
+        runCatching {
+            list(context, treeUri, rootId)
+                .filter { doc -> !doc.isDir && doc.name !in keep && prefixes.any { doc.name.startsWith(it) } }
+                .forEach { doc -> DocumentsContract.deleteDocument(context.contentResolver, doc.uri) }
+        }
+    }
+
+    /** 写入字节；打不开流就报成可展示的「无法写入」。`wt` 要求截断（覆盖旧文件时必须）。 */
+    private fun writeBytes(context: Context, uri: Uri, bytes: ByteArray, mode: String = "w") {
+        val stream = runCatching { context.contentResolver.openOutputStream(uri, mode) }.getOrNull()
             ?: error(tr("无法写入备份文件", "Could not write the backup file"))
-        stream.use { it.write(bytes) }
+        stream.use {
+            it.write(bytes)
+            it.flush()
+        }
     }
 
     /**
