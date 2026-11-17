@@ -22,14 +22,16 @@ Refuelling, charging, parking, insurance, repairs and scheduled maintenance all 
 - **Independent multi-vehicle management:** expenses, energy and service records are kept per vehicle; a full backup covers every vehicle.
 - **Customisable categories and item library:** built-in expense categories and service items can be renamed or hidden (Fuel/Insurance/Service/Repair cannot be deleted); hiding only affects new-entry candidates, never existing records or statistics.
 - **Easy migration:** import records from Bear and Qianji; the expense CSV can be exported, edited and imported back (records update in place by ID), with full JSON backups and optional WebDAV sync (encrypted upload supported).
+- **Two devices stay in step:** WebDAV sync merges record by record, so both devices converge, deletions propagate, and neither side silently overwrites the other.
+- **Your data checks itself:** the data check looks for odometer reversals, duplicates, odd dates and amounts across 16 rules, and can delete duplicates or repair reminders for you.
 
 ## Screenshots
 
-These screenshots come from an older build's demo mode (English UI); all data is synthetic. **Since 0.39.0 the bottom bar is Overview / Fuel / ＋ / Service / Me** (the Analytics page was dissolved: expense trend moved to Overview, expense details open from the Overview top-right icon; fuel details and maintenance records open from their page top-right icons). The interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
+Screenshots come from the built-in demo data in 1.0.0 (all data is synthetic). The bottom bar is Overview / Fuel / ＋ / Service / Me; the interface keeps evolving — see the [website](https://selwiro.github.io/MileNoteAndroid/en/#screenshots) for the latest screens.
 
-| Overview | Add entry | Analytics | Service |
+| Overview | Add entry | Vehicle report | Service |
 |:---:|:---:|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/dashboard.webp" width="180" alt="Overview"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/editor.webp" width="180" alt="Add entry"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/analytics.webp" width="180" alt="Analytics"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/maintenance.webp" width="180" alt="Service"> |
+| <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/dashboard.webp" width="180" alt="Overview"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/editor.webp" width="180" alt="Add entry"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/report.webp" width="180" alt="Vehicle report"> | <img src="https://raw.githubusercontent.com/Selwiro/MileNoteAndroid/gh-pages/assets/screens-en/maintenance.webp" width="180" alt="Service"> |
 
 ## Features
 
@@ -94,15 +96,15 @@ Reminders consider both time and mileage, and **whichever threshold is reached f
 
 The plan table shows what was last completed, the next expected date and mileage, and the current status. After you complete a service and save the record, the app schedules the next round automatically.
 
-Due items appear in the in-app to-do list (since 0.39.0 to-dos and the plan share one page: to-dos show only overdue + the next 3–5 items, while the plan table keeps the full schedule). To use system calendar reminders, export a single plan as an `.ics` file; past maintenance records open from the Service page top-right icon and can be filtered by Repair / Service / Detailing.
+Due items appear in the to-do list on the Service page (overdue + the next 3–5 items only, while the plan table keeps the full schedule). Items not yet due get an estimate such as "about N days", based on the last 90 days of driving; it is hidden when there is not enough data or the odometer readings go backwards. To use system calendar reminders, export a single plan as an `.ics` file; past maintenance records open from the Service page top-right icon and can be filtered by Repair / Service / Detailing.
 
-### Spending statistics and expense details
+### Statistics and the vehicle report
 
-**Since 0.39.0** the standalone Analytics page is gone; statistics and the record list live in two places:
+There is no separate statistics page; the numbers live in three places:
 
-- **Overview**: vehicle stats (total spend, recorded mileage, cost per kilometre, average fuel economy — all following the selected range), mileage trend, and expense trend (stacked monthly bars showing how each category changes).
-- **Expense details**: open from the Overview top-right icon; search plus time (all / this month / this year / custom) and category filters, "N records / filtered total", grouped by month, with edit and delete.
-- The expense breakdown now lives in **Me → Monthly / yearly / all-time report**: pick a natural month, a natural year, or everything since the first entry to see total spend, month-over-month and year-over-year comparison, the category breakdown, refueling and fuel economy, trends, and the most memorable entries.
+- **Overview**: vehicle stats (total spend, recorded mileage, cost per kilometre, average fuel economy), mileage trend and expense trend (stacked monthly bars). The range chip in the top-right corner offers all time / this month / last month / last 3 months / this year / custom, and the numbers and charts follow it together.
+- **Expense details**: open from the Overview top-right icon; search plus time and category filters, "N records / filtered total", grouped by month, with edit and delete.
+- **Vehicle report** (Me → Vehicle report): month / year / all-time views. It is chart-first — spend comparison bars, metric columns (daily / per km / entries / distance, current vs previous vs year-ago), a category donut with change bars (MoM / YoY), an energy comparison bar, trends and highlights. Share it as text, or export a 1080×1440 portrait poster.
 
 Cost per kilometre is based on recorded spending and recorded mileage. Unrecorded costs such as depreciation or loan interest are not included automatically.
 
@@ -165,11 +167,16 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 | Today's fuel price | Reference price and expected adjustment direction by fuel grade and located city (city-level for provinces with non-uniform prices, falling back to the province); refreshed once a day (manual refresh available) and kept when fetching fails |
 | Themes | Five themes — Mile Blue, Forest Green, Lilac, Warm Amber and Graphite — all with light and dark modes |
 | Interface language | Simplified Chinese and English |
-| Display units | Fixed to CNY, kilometres and litres; values from older versions are carried over as entered, never converted |
+| Display units | Fixed to CNY, kilometres and litres |
 | Home-screen shortcuts | Long-press the app icon to add an entry or scan a receipt |
 | System integration | System share intake, SAF file picking and in-app update checks |
-| Demo mode | Two virtual vehicles with sample records; exiting the demo restores your real data automatically |
-| Monthly / yearly / all-time report | Open from **Me**: total spend with month/year comparisons, category breakdown, refueling and fuel economy, trends and highlights; share as text or as a portrait summary image |
+| Data check | 16 rules look for odometer reversals, duplicate records, odd dates and amounts, and can delete duplicates, repair reminders or count a record as a cost; it also runs after an import or restore |
+| Backup to a folder | Pick a system folder once and write a full backup there in one tap, keeping the latest 3 / 7 / 14 / 30 copies |
+| Vehicle setup wizard | Three steps for powertrain, current odometer and starting odometer, with the matching default service plan |
+| Garage overview | Compare spend, distance and energy across vehicles side by side (never merged) |
+| Two-device sync | Record-level three-way merge over WebDAV, so both devices converge (last write wins, deletions tombstoned) |
+| Undo import | Undo the changes made by the last import in one tap |
+| Demo mode | Three virtual vehicles (petrol / EV / plug-in hybrid) with sample records; exiting the demo restores your real data automatically |
 
 Today's fuel price is only available for fuel vehicles in the Chinese interface. It is fetched in order from daily-updated public fuel-price datasets → free HTTPS JSON APIs → the local cache, and is reference data only. A successful fetch is cached on the device, not re-requested on the same day, refreshed automatically the next day, and can be refreshed manually from the card.
 
@@ -177,7 +184,7 @@ The app currently uses a portrait phone layout; tablet and landscape two-pane la
 
 ## Download and install
 
-The current release is **v0.41.0 beta (versionCode 100)**. The project is still being tested and actively developed.
+The current release is **v1.0.0-rc6 (versionCode 109, release candidate)**. The project is still being tested and actively developed.
 
 Download from:
 
@@ -192,7 +199,7 @@ GitHub Releases provide the APK, release notes and SHA-256 checksums. The websit
 |---|---|
 | Android version | Android 8.0 (API 26) or later |
 | CPU architecture | arm64-v8a / armeabi-v7a |
-| APK size | About 23 MB |
+| APK size | About 19 MB |
 | Installation | Self-signed APK |
 
 On first install, Android may ask you to allow installing unknown apps from your browser or file manager.
@@ -246,13 +253,14 @@ MileNote is still in active development. Current limitations:
 
 ## Roadmap
 
-The project is in its `0.x` beta phase, continuing to fix issues, add features and polish the experience.
+The project is at the **1.0.0 release-candidate stage** (v1.0.0-rc6). The 1.0 scope is frozen; candidates only take fixes.
 
-**Planned releases:**
+**Release plan:**
 
-- **Beta (0.x):** ongoing iteration and testing.
-- **1.0.0:** the first stable release.
-- **After 1.0:** version numbers follow Semantic Versioning (SemVer).
+- **1.0.0:** the first stable release — multi-vehicle management, energy analysis, service plans, the vehicle report, the data check, folder backups and two-device sync.
+- **1.0.x:** fixes and small improvements.
+- **1.1:** complex-header imports and custom date ranges for the report; **1.2:** quick odometer updates and vehicle to-dos.
+- After that, version numbers follow Semantic Versioning (SemVer).
 
 Feature requests are welcome in [GitHub Issues](https://github.com/Selwiro/MileNoteAndroid/issues). A feature that hasn't been scheduled is not part of the roadmap yet.
 
@@ -307,7 +315,7 @@ Module responsibilities:
 
 ### Build environment
 
-The project requires JDK 17 or later, Android SDK Platform 37 and Build-Tools 37.0.0.
+The project requires JDK 17 or later, Android SDK Platform 37 and Build-Tools 36.0.0 (the AGP 9.5.0 default).
 
 Gradle comes from the repository's wrapper and is downloaded on the first build, so no global Gradle installation is needed.
 
@@ -320,7 +328,7 @@ These versions are known to build and pass tests together:
 | Kotlin | 2.4.21 |
 | Compose BOM | 2026.09.00 |
 | Material 3 | 1.5.0-beta02 |
-| compileSdk / targetSdk | 37 |
+| compileSdk / targetSdk | 37 / 36 |
 | minSdk | 26 |
 
 Prefer this combination, and verify builds and tests before upgrading dependencies.
@@ -354,7 +362,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :domain:test :app:testDebugUnitTest
 ```
 
-The suite currently contains **332 domain unit tests** and **210 app unit tests**.
+The suite currently contains **543 domain unit tests** and **454 app unit tests**.
 
 ### Building a release APK
 
@@ -417,7 +425,6 @@ The project iterates on `main` and marks releases with `vX.Y.Z` Git tags.
 
 Each release tag maps to a GitHub Release containing the APK and a SHA-256 checksum.
 
-The public Android release history in this repository starts at **v0.27.0 (6 November 2026)**.
 
 Release notes and install files are maintained in [GitHub Releases](https://github.com/Selwiro/MileNoteAndroid/releases).
 
