@@ -165,7 +165,7 @@ Encrypted files use the same format as the Web version's "encrypted sync", so th
 | Today's fuel price | Reference price and expected adjustment direction by fuel grade and located city (city-level for provinces with non-uniform prices, falling back to the province); refreshed once a day (manual refresh available) and kept when fetching fails |
 | Themes | Five themes — Mile Blue, Forest Green, Lilac, Warm Amber and Graphite — all with light and dark modes |
 | Interface language | Simplified Chinese and English |
-| Display units | Currency, distance and volume units change labels only; existing values are not converted |
+| Display units | Fixed to CNY, kilometres and litres; values from older versions are carried over as entered, never converted |
 | Home-screen shortcuts | Long-press the app icon to add an entry or scan a receipt |
 | System integration | System share intake, SAF file picking and in-app update checks |
 | Demo mode | Two virtual vehicles with sample records; exiting the demo restores your real data automatically |

@@ -327,9 +327,15 @@ fun MileNoteApp(vm: MileNoteViewModel) {
                     // T008 ④：构成卡分类行 → 费用明细。分类 + 报告期区间写进列表筛选，
                     // 返回报告页时报告自己的周期状态由 rememberSaveable 保留，不受列表筛选影响。
                     onOpenRecords = { categories, range: DateRange ->
+                        // 空窗口 = 累计口径的全部记录：不写时间筛选，明细页用默认「全部」，
+                        // 也不会留下一个 9999 年的日期范围（#20）。
+                        val noTimeFilter = range.from.isEmpty() && range.to.isEmpty()
                         vm.setListFilter(
                             ListFilterPages.RECORDS,
-                            ListFilterState(customRange = range, categories = categories),
+                            ListFilterState(
+                                customRange = range.takeUnless { noTimeFilter },
+                                categories = categories,
+                            ),
                         )
                         navController.navigate(Routes.RECORDS)
                     },

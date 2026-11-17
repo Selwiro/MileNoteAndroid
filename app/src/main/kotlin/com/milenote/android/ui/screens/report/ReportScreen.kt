@@ -1336,9 +1336,11 @@ private fun BreakdownRows(
                         role = Role.Button,
                         onClickLabel = tr("查看 %s 的费用明细", "View %s records", row.label),
                     ) {
+                        // 用生成总额时的窗口：累计 = 空窗口（全部记录，含预录），
+                        // 月 / 年报 = 该期。这样「构成里的金额」和点进去的明细对得上（#20）。
                         onOpenRecords(
                             row.names.toSet(),
-                            DateRange(data.range.from, data.range.to),
+                            data.statsRange,
                         )
                     }
                     .semantics(mergeDescendants = true) {

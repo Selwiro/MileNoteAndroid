@@ -164,6 +164,13 @@ data class ReportHighlights(
 data class ReportData(
     val period: ReportPeriod,
     val range: DateRange,
+    /**
+     * 生成总额与分类构成时真正用的日期窗口（下钻用它，保证「报告里的数 = 点进去看到的数」）。
+     *
+     * 累计口径是没有上界的全量统计（含预录），这里就是空窗口（[DateRange] 两端为空 = 不过滤）；
+     * 月报 / 年报与 [range] 相同（1.0 审查 #20）。
+     */
+    val statsRange: DateRange,
     val firstDate: String?,
     val inProgress: Boolean,
     val days: Int,
@@ -378,6 +385,9 @@ fun report(ledger: Ledger, period: ReportPeriod, today: LocalDate = Dates.today(
     return ReportData(
         period = period,
         range = range,
+        // 累计走 stats(ledger) 全量（含未来预录），下钻必须用同一个窗口，否则
+        // 「报告 100 元、点进去只剩 20 元」（1.0 审查 #20）。空窗口 = 不过滤。
+        statsRange = if (fullRange == null) DateRange("", "") else range,
         firstDate = if (fullRange == null) firstRecordDate?.let(Dates::iso) else null,
         inProgress = inProgress,
         days = days,

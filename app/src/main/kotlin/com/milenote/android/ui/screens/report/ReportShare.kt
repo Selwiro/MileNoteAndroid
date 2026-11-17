@@ -64,6 +64,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -259,7 +260,10 @@ internal fun ReportShareOverlay(
             Box(
                 modifier = Modifier
                     .size(ShareWidth, ShareHeight)
-                    .alpha(0.01f),
+                    .alpha(0.01f)
+                    // 1.0 审查 #15：这一层只为离屏录制存在，1% 不透明度仍然会进无障碍树，
+                    // TalkBack 会先读到海报里的金额 / 分类 / 日期。清掉语义、保留绘制。
+                    .clearAndSetSemantics {},
             ) {
                 Box(
                     modifier = Modifier

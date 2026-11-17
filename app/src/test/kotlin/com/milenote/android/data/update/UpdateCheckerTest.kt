@@ -78,4 +78,60 @@ class UpdateCheckerTest {
         }
         append('"')
     }
+
+    // ---------- 渠道筛选（1.0 审查 #14） ----------
+
+    private fun release(version: String, prerelease: Boolean = false, draft: Boolean = false) = UpdateInfo(
+        version = version,
+        pageUrl = "https://example.com/$version",
+        apkUrl = null,
+        notes = "",
+        prerelease = prerelease,
+        draft = draft,
+    )
+
+    @Test
+    fun `stable build never gets offered a newer prerelease`() {
+        val releases = listOf(release("1.0.0"), release("1.1.0-beta", prerelease = true))
+
+        val selected = UpdateChecker.selectUpdate(releases, "1.0.0")
+
+        assertEquals("1.0.0", selected?.version)
+        assertFalse(com.milenote.android.domain.update.isNewerVersion(selected!!.version, "1.0.0"))
+    }
+
+    @Test
+    fun `beta build can still upgrade to a newer prerelease`() {
+        val releases = listOf(release("0.44.1"), release("1.0.0"), release("1.1.0-beta", prerelease = true))
+
+        val selected = UpdateChecker.selectUpdate(releases, "0.44.1")
+
+        assertEquals("1.1.0-beta", selected?.version)
+    }
+
+    @Test
+    fun `drafts are ignored`() {
+        val releases = listOf(release("1.2.0", draft = true), release("1.0.1"))
+
+        assertEquals("1.0.1", UpdateChecker.selectUpdate(releases, "1.0.0")?.version)
+    }
+
+    @Test
+    fun `parse marks prerelease and draft flags`() {
+        val json = """
+            [{"tag_name":"v1.1.0-beta","html_url":"https://example.com/b","prerelease":true,"draft":false,"assets":[]},
+             {"tag_name":"v1.2.0","html_url":"https://example.com/d","prerelease":false,"draft":true,"assets":[]}]
+        """.trimIndent()
+        val parsed = UpdateChecker.parseReleases(json)
+
+        assertTrue(parsed.first { it.version == "1.1.0-beta" }.prerelease)
+        assertTrue(parsed.first { it.version == "1.2.0" }.draft)
+    }
+
+    @Test
+    fun `prerelease channel detection`() {
+        assertTrue(UpdateChecker.isPrereleaseVersion("0.44.1"))
+        assertTrue(UpdateChecker.isPrereleaseVersion("1.1.0-beta"))
+        assertFalse(UpdateChecker.isPrereleaseVersion("1.0.0"))
+    }
 }

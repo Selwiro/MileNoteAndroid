@@ -13,7 +13,7 @@ android {
     defaultConfig {
         applicationId = "com.milenote.android"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 107
         versionName = "0.44.1"
         vectorDrawables.useSupportLibrary = true

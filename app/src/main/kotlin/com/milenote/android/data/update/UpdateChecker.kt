@@ -18,6 +18,10 @@ data class UpdateInfo(
     val pageUrl: String,
     val apkUrl: String?,
     val notes: String,
+    /** Release 被标成预发布（1.0 审查 #14：正式版不能推荐它）。 */
+    val prerelease: Boolean = false,
+    /** Release 还是草稿：草稿不该出现在列表里，解析时直接丢掉。 */
+    val draft: Boolean = false,
 )
 
 /** 检查更新的结果。 */
@@ -69,10 +73,8 @@ object UpdateChecker {
                         tr("GitHub 上还没有发布版本", "No releases published yet"),
                     )
                 }
-                val info = releases.fold(releases.first()) { best, next ->
-                    if (isNewerVersion(next.version, best.version)) next else best
-                }
-                if (isNewerVersion(info.version, currentVersion)) {
+                val info = selectUpdate(releases, currentVersion)
+                if (info != null && isNewerVersion(info.version, currentVersion)) {
                     UpdateCheckResult.Available(info)
                 } else {
                     UpdateCheckResult.UpToDate
@@ -108,9 +110,41 @@ object UpdateChecker {
                     ?.jsonPrimitive
                     ?.content
             }.getOrNull()
-            UpdateInfo(version = version, pageUrl = pageUrl, apkUrl = apkUrl, notes = notes)
+            UpdateInfo(
+                version = version,
+                pageUrl = pageUrl,
+                apkUrl = apkUrl,
+                notes = notes,
+                prerelease = root["prerelease"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true,
+                draft = root["draft"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true,
+            )
         }
     }.getOrDefault(emptyList())
+
+    /**
+     * 从 Release 列表里挑出「该给当前版本推荐的那一条」（1.0 审查 #14）。
+     *
+     * 规则：
+     * - 草稿永远不选；
+     * - **正式版只从稳定版里选**，否则发布 1.1.0-beta 之后正式版用户会被推去装 beta；
+     * - 预发布版（`0.x` 或版本号带 `-`）仍然能拿到预发布，测试版用户升级路径不变。
+     */
+    internal fun selectUpdate(releases: List<UpdateInfo>, currentVersion: String): UpdateInfo? {
+        val allowPrerelease = isPrereleaseVersion(currentVersion)
+        val candidates = releases.filter { !it.draft && (allowPrerelease || !it.prerelease) }
+        if (candidates.isEmpty()) return null
+        return candidates.fold(candidates.first()) { best, next ->
+            if (isNewerVersion(next.version, best.version)) next else best
+        }
+    }
+
+    /** 当前版本是不是预发布渠道（`0.x` 或带 `-beta` 一类后缀）。 */
+    internal fun isPrereleaseVersion(version: String): Boolean {
+        val cleaned = version.trim().removePrefix("v").removePrefix("V")
+        if (cleaned.contains('-')) return true
+        val major = cleaned.substringBefore('.').toIntOrNull() ?: return false
+        return major < 1
+    }
 
     /**
      * 整理 GitHub Release 正文，供检查更新弹层展示。

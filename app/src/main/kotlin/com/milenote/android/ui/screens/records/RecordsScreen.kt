@@ -954,8 +954,9 @@ internal fun filterRecords(
     val wantsUncategorized = Categories.UNCATEGORIZED in selectedCategories
     return ledger.records
         .filter { record ->
+            // 两端为空 = 不过滤（累计报告下钻用空窗口表示「全部记录」，#20）。
             val inPeriod = (range.from.isEmpty() || record.date >= range.from) &&
-                record.date <= range.to
+                (range.to.isEmpty() || record.date <= range.to)
             val normalizedCategory = Categories.normalize(record.category)
             val matchCategory = selectedCategories.isEmpty() ||
                 normalizedCategory in selectedCategories ||
