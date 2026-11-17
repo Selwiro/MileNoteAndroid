@@ -220,6 +220,41 @@ class DemoDataTest {
     }
 
     @Test
+    fun `demo consumption varies like a real car`() {
+        // 2026-11-17 用户反馈：演示账本的油耗每次都是 6.6，看着像写死的。
+        // 真实区间油耗随季节、路况浮动，但全年平均仍然回到标定值。
+        val garage = DemoData.createDemoGarage(d("2026-11-01"))
+        val weekend = stats(garage.cars[0])
+        val city = stats(garage.cars[1])
+        val phev = stats(garage.cars[2])
+
+        val fuel = weekend.intervals.map { Math.round(it.rate * 10) / 10.0 }
+        assertTrue("燃油区间只有 ${fuel.size} 个", fuel.size >= 20)
+        assertTrue("油耗只有 ${fuel.distinct().size} 个值：${fuel.distinct()}", fuel.distinct().size >= 6)
+        assertTrue("油耗区间 ${fuel.min()}–${fuel.max()}", fuel.min()!! in 5.2..6.3 && fuel.max()!! in 6.9..7.8)
+
+        val charge = city.intervals.map { Math.round(it.rate * 10) / 10.0 }
+        assertTrue("电耗只有 ${charge.distinct().size} 个值", charge.distinct().size >= 8)
+        assertTrue("电耗区间 ${charge.min()}–${charge.max()}", charge.min()!! in 10.5..12.2 && charge.max()!! in 14.0..17.0)
+
+        // 冬天（1–2 月）比春天（4–5 月）费油费电：同一台车、同一段通勤，季节差要看得出来。
+        fun monthMean(intervals: List<com.milenote.android.domain.calc.EnergyInterval>, months: List<String>): Double =
+            intervals.filter { it.date.substring(5, 7) in months }.map { it.rate }.average()
+        val fuelWinter = monthMean(weekend.intervals, listOf("01", "02"))
+        val fuelSpring = monthMean(weekend.intervals, listOf("04", "05"))
+        assertTrue("燃油冬 $fuelWinter 春 $fuelSpring", fuelWinter >= fuelSpring + 0.3)
+        val evWinter = monthMean(city.intervals, listOf("01", "02"))
+        val evSpring = monthMean(city.intervals, listOf("04", "05"))
+        assertTrue("电耗冬 $evWinter 春 $evSpring", evWinter >= evSpring + 1.0)
+
+        // 插混两条流各自浮动，合计年均仍贴标定值。
+        assertTrue("插混油耗 ${phev.fuelEnergy!!.rate}", phev.fuelEnergy!!.rate!! in 3.2..3.6)
+        assertTrue("插混电耗 ${phev.electricEnergy!!.rate}", phev.electricEnergy!!.rate!! in 2.7..3.1)
+        val phevFuel = phev.fuelEnergy!!.intervals.map { Math.round(it.rate * 10) / 10.0 }
+        assertTrue("插混油耗只有一个值", phevFuel.distinct().size >= 5)
+    }
+
+    @Test
     fun `demo report months and years stay realistic`() {
         val today = d("2026-11-14")
         for (car in DemoData.createDemoGarage(today).cars) {

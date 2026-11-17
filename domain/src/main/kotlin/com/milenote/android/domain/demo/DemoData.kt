@@ -29,8 +29,9 @@ import java.time.YearMonth
  *
  * - 里程读数由「起始里程 + 逐月行驶里程 + 月内按日插值」同一个单调函数生成，
  *   月报 / 年报的里程差、环比同比都有真实基期，不会再出现负数里程或几十倍的涨幅；
- * - 加油量 / 充电量按「区间里程 × 百公里能耗」反推，满箱法 / 满电法算出来的油耗电耗
- *   就是设定值（燃油 6.6 L/100km、纯电 13 kWh/100km、插混 3.4 L + 2.9 kWh）；
+ * - 加油量 / 充电量按「区间里程 × 百公里能耗」反推，标定值是燃油 6.6 L/100km、
+ *   纯电 13 kWh/100km、插混 3.4 L + 2.9 kWh；每个区间再乘季节系数与单次抖动
+ *   （见 [consumptionFactor]），所以单次油耗有 6.0–7.3 这种正常浮动，年均仍回到标定值；
  * - 金额贴真实：95# 7.5–7.9 元/L、家充 0.62 元/度、公共快充 1.2–1.4 元/度；
  *   平均用车成本燃油车约 1.0 元/km、纯电约 0.65 元/km（含保险与停车）；
  * - 去年整年有完整数据，年报可看 2025 / 2026 两年、月报有「去年同月」可比；
@@ -130,30 +131,35 @@ object DemoData {
         val gear: Double,
     )
 
-    /** 按「每次补能的区间里程」累计换算量：未加满的量滚到下次加满，漏记 / 缺里程会重设基准。 */
+    /**
+     * 按「每次补能的区间里程」累计换算量：未加满的量滚到下次加满，漏记 / 缺里程会重设基准。
+     *
+     * [take] 的 factor 是本区间的能耗系数（季节 + 单次抖动），只影响这一次反推出来的量，
+     * 不会改变标定值本身；未加满的那部分用当时的系数，下一次加满时按自己的系数补足。
+     */
     private class Feeder(private val per100: Double) {
         private var anchor: Double? = null
         private var pending = 0.0
 
-        fun take(odometer: Double?, fallback: Double, mode: Fill): Double = when (mode) {
+        fun take(odometer: Double?, fallback: Double, mode: Fill, factor: Double = 1.0): Double = when (mode) {
             Fill.NO_ODOMETER -> {
                 anchor = null
                 pending = 0.0
-                fallback
+                fallback * factor
             }
             Fill.MISSED -> {
                 anchor = odometer
                 pending = 0.0
-                fallback
+                fallback * factor
             }
             Fill.PARTIAL -> {
-                val need = need(odometer, fallback)
+                val need = need(odometer, fallback, factor)
                 val amount = (need * 0.4).coerceIn(1.0, (need - 1.0).coerceAtLeast(1.0))
                 pending += amount
                 amount
             }
             Fill.FULL -> {
-                val need = need(odometer, fallback)
+                val need = need(odometer, fallback, factor)
                 val amount = (need - pending).coerceAtLeast(1.0)
                 anchor = odometer
                 pending = 0.0
@@ -161,10 +167,11 @@ object DemoData {
             }
         }
 
-        private fun need(odometer: Double?, fallback: Double): Double {
-            val prev = anchor ?: return fallback
-            if (odometer == null) return fallback
-            return (odometer - prev).coerceAtLeast(0.0) * per100 / 100.0
+        private fun need(odometer: Double?, fallback: Double, factor: Double): Double {
+            val scaled = fallback * factor
+            val prev = anchor ?: return scaled
+            if (odometer == null) return scaled
+            return (odometer - prev).coerceAtLeast(0.0) * per100 * factor / 100.0
         }
     }
 
@@ -220,6 +227,52 @@ object DemoData {
 
     /** 游走起点：2024-01，演示账本最多回溯两年，循环次数可控。 */
     private const val PriceWalkEpochPeriod = 2024 * 36
+
+    // ------------------------------------------------------------------ 能耗
+
+    /**
+     * 燃油车 / 插混的月度能耗系数（1 月…12 月，均值归一到 1.0）。
+     *
+     * 冬天冷启动、暖风与短途多，油耗最高；夏天空调次之；4–5 月与 9–10 月最省。
+     * 数组在 [consumptionFactor] 里除以自身均值，任何长度账本的年均油耗都不会偏离标定值。
+     */
+    private val FuelSeason = doubleArrayOf(
+        1.08, 1.07, 1.02, 0.96, 0.94, 0.99, 1.03, 1.02, 0.96, 0.94, 1.02, 1.08,
+    )
+
+    /** 纯电车的月度电耗系数：低温掉电比燃油明显，冬天高 18–20%，夏天开空调约 +7%。 */
+    private val ElectricSeason = doubleArrayOf(
+        1.20, 1.18, 1.06, 0.96, 0.92, 1.00, 1.07, 1.06, 0.95, 0.93, 1.06, 1.19,
+    )
+
+    /**
+     * 单次补能的能耗系数（2026-11-17 用户反馈：演示油耗每次都是 6.6，像写死的）。
+     *
+     * 真实车的区间油耗随季节、路况、载重、油品/充电桩浮动，不会是一条水平线：
+     * - 季节项按月取值并归一（12 个月均值 = 1），年均能耗仍是标定值；
+     * - 单次项是 ±2.5%（燃油）/ ±4%（电）的确定性抖动，同一天同一箱永远得到同一个值（演示可重复）；
+     * - 8 次里有一次偏高（堵车 / 长途载满）或偏低（高速巡航），幅度再 +/−3%，
+     *   但结果钳在 0.88–1.24，不会出现 9 L / 20 kWh 这种夸张数字。
+     */
+    private fun consumptionFactor(stream: Stream, date: LocalDate, turn: Int): Double {
+        val season = if (stream.electric) ElectricSeason else FuelSeason
+        val seasonMean = season.average()
+        val monthly = season[(date.monthValue - 1).coerceIn(0, 11)] / seasonMean
+        val jitter = if (stream.electric) 0.04 else 0.025
+        val noise = pathNoise(turn * 37 + date.dayOfYear) * jitter
+        val trip = pathNoise(turn * 53 + date.monthValue) * if (turn % 8 == 0) 0.03 else 0.0
+        return (monthly + noise + trip).coerceIn(0.88, 1.24)
+    }
+
+    /** 整数 → [-1, 1] 的确定性伪随机：与油价用同一套整数哈希，但换一个索引域。 */
+    private fun pathNoise(index: Int): Double {
+        var mixed = index * 0x2545f491
+        mixed = mixed xor (mixed ushr 15)
+        mixed *= 0x7feb352d
+        mixed = mixed xor (mixed ushr 13)
+        return (mixed and 0xFFFF) / 65535.0 * 2.0 - 1.0
+    }
+
 
     // ------------------------------------------------------------------ 三台车
 
@@ -521,7 +574,9 @@ object DemoData {
                     val home = stream.homePrice != null && turn % 3 != 2
                     val odometer = if (mode == Fill.NO_ODOMETER) null else odo(i, dayOfMonth)
                     val fallback = monthly[i] / stream.days.size * stream.per100 / 100.0
-                    val quantity = feeders[index].take(odometer, fallback, mode)
+                    // 每箱油 / 每次充电按季节与单次路况浮动，年均仍是 spec 里的标定值。
+                    val factor = consumptionFactor(stream, month.atDay(dayOfMonth), turn)
+                    val quantity = feeders[index].take(odometer, fallback, mode, factor)
                     val stationIndex = turn % stations.size
                     val price = priceOf(stream, month.atDay(dayOfMonth), home, stationIndex)
                     add(
