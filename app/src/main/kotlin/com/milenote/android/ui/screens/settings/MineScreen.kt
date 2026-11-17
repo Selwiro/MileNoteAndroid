@@ -454,7 +454,7 @@ private fun MineFooter() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = tr("里程志 MileNote", "MileNote"),
+            text = tr("里程志 · MileNote", "MileNote"),
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

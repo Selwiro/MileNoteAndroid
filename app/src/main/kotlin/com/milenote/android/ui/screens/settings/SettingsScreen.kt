@@ -1967,7 +1967,7 @@ private fun AboutPage(
                 Spacer(modifier = Modifier.size(10.dp))
                 Text(
                     text = tr(
-                        "本地优先的多车用车小助手：记油耗、管保养、算清用车开销；" +
+                        "本地优先的用车小助手：记油耗、管保养、算清用车开销；" +
                             "数据只保存在本机，无账号、无后端。",
                         "A local-first companion for your car: log fuel and running costs, compute real fuel " +
                             "economy with the full-tank method, and keep service plans on schedule. " +

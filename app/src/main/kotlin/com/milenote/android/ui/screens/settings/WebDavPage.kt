@@ -75,7 +75,7 @@ private enum class WebDavOverwrite { UPLOAD, DOWNLOAD }
  *    「保存并测试」/「清除连接」。
  * 3. **同步**（仅已配置时显示）：立即同步（智能比较）+ 上传覆盖 / 下载覆盖（均二次确认）；
  *    busy 时进度条 + 禁用按钮；错误/结果用 [MessageBar] 展示。
- * 4. **说明**：HTTPS、坚果云应用密码、远端目录需先创建、加密上传需另一台设备用同一密码读取等。
+ * 4. **说明**：应用密码、远端目录需先创建、加密上传需另一台设备用同一密码读取等。
  *
  * 冲突时由 VM 设置 `conflict`，本页弹 AlertDialog 提供「用本地覆盖远端 / 用远端覆盖本地 /
  * 合并（只新增远端记录）」；「取消」只关闭弹层、保持现状（不调用 resolve）。
@@ -368,10 +368,9 @@ internal fun WebDavPage(
             )
             Text(
                 text = tr(
-                    "建议使用服务商提供的应用密码：坚果云「账户安全 → 应用密钥 → 添加应用」生成，" +
-                        "不要填写登录密码。密码仅保存在本机，不进入数据备份。",
-                    "Use the app password from your provider (Jianguoyun: Account security → App keys → Add app). " +
-                        "Do not enter your login password. The password stays on this device and is not included in data backups.",
+                    "建议使用服务商提供的应用密码，而不是登录密码；密码仅保存在本机，不进入数据备份。",
+                    "Use the app password issued by your provider rather than your login password; " +
+                        "it stays on this device and is not included in data backups.",
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
@@ -667,8 +666,6 @@ internal fun WebDavPage(
 
         // ---------------- 说明 ----------------
         SectionCard(title = tr("说明", "Notes")) {
-            WebDavNote(tr("推荐使用 HTTPS。开启「允许 HTTP」仅建议自建局域网服务器，公网切勿使用明文 HTTP。", "HTTPS is recommended. “Allow HTTP” is only for a self-hosted LAN server; never use plain HTTP on the public internet."))
-            WebDavNote(tr("坚果云：账户安全 → 添加应用 → 生成应用密码，用应用密码而不是登录密码。", "Jianguoyun: Account security → Add app → generate an app password; use the app password, not your login password."))
             WebDavNote(tr("目标文件夹需先在 WebDAV 服务中创建；应用只读写你填写的那个 JSON 文件。", "Create the target folder in your WebDAV service first; the app only reads and writes the JSON file you entered."))
             WebDavNote(tr("未开启加密时数据以明文 JSON 保存在远端，传输由 HTTPS 保护；建议开启加密上传。", "Without encryption the data is stored remotely as plain JSON, protected in transit by HTTPS; enabling encrypted uploads is recommended."))
             WebDavNote(tr("加密上传的文件可由另一台安装了本应用的设备用同一密码读取；加密密码只在本机 Keystore，换设备需重新输入。", "Encrypted files can be read on another device with the same password; the password stays in this device's Keystore and must be re-entered on a new device."))

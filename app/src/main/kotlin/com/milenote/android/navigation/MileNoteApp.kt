@@ -222,7 +222,7 @@ fun MileNoteApp(vm: MileNoteViewModel) {
             vm.consumeMessage()
             return@LaunchedEffect
         }
-        delay(MessageBarDurationMillis)
+        delay(messageBarDurationMillis(message))
         vm.consumeMessage()
     }
 
@@ -946,5 +946,14 @@ private fun androidx.compose.foundation.layout.RowScope.BottomBarTab(
     }
 }
 
-/** 根级消息条的停留时间：够读完一句「已恢复备份：…」又不挡操作。 */
-private const val MessageBarDurationMillis = 3_200L
+/**
+ * 根级消息条的停留时间：按长度分档，短句快走、长句留够读的时间。
+ *
+ * 以前固定 3.2 秒，「已切换到「某某车」」这种一句话也要赖在屏幕上三秒多；
+ * 恢复摘要那种长句又需要更久。18 字以内 1.6 s、48 字以内 2.6 s、更长 3.6 s。
+ */
+internal fun messageBarDurationMillis(message: String): Long = when {
+    message.length <= 18 -> 1_600L
+    message.length <= 48 -> 2_600L
+    else -> 3_600L
+}
