@@ -184,7 +184,7 @@ The app currently uses a portrait phone layout; tablet and landscape two-pane la
 
 ## Download and install
 
-The current release is **v1.0.0-rc6 (versionCode 109, release candidate)**. The project is still being tested and actively developed.
+The current release is **v1.0.0 (versionCode 110), the first stable release**, published on GitHub Releases on 2026-11-20. You can install it over 0.43.0 / 0.44.x / 1.0.0-rcN and keep your data.
 
 Download from:
 
@@ -253,11 +253,11 @@ MileNote is still in active development. Current limitations:
 
 ## Roadmap
 
-The project is at the **1.0.0 release-candidate stage** (v1.0.0-rc6). The 1.0 scope is frozen; candidates only take fixes.
+**1.0.0 is out** (2026-11-20, vc 110); the feature scope is frozen and 1.0.x only takes fixes and small improvements.
 
 **Release plan:**
 
-- **1.0.0:** the first stable release — multi-vehicle management, energy analysis, service plans, the vehicle report, the data check, folder backups and two-device sync.
+- **1.0.0:** the first stable release (shipped 2026-11-20) — multi-vehicle management, energy analysis, service plans, the vehicle report, the data check, folder backups and two-device sync.
 - **1.0.x:** fixes and small improvements.
 - **1.1:** complex-header imports and custom date ranges for the report; **1.2:** quick odometer updates and vehicle to-dos.
 - After that, version numbers follow Semantic Versioning (SemVer).
