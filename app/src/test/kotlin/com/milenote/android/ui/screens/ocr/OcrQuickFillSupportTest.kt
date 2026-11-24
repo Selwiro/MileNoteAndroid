@@ -54,13 +54,15 @@ class OcrQuickFillSupportTest {
     @Test
     fun `amount and liters derive unit price`() {
         val receipt = buildQuickFillReceipt(null, "228.78", "31.47", "")!!
-        assertEquals(228.78 / 31.47, receipt.unitPrice!!, 1e-6)
+        // 派生单价按分收口，不再把 7.2697… 的长尾写进表单。
+        assertEquals(7.27, receipt.unitPrice!!, 0.0)
     }
 
     @Test
     fun `liters and unit price derive amount`() {
         val receipt = buildQuickFillReceipt(null, "", "31.47", "7.27")!!
-        assertEquals(31.47 * 7.27, receipt.amount!!, 1e-6)
+        // 派生金额同样按分收口：31.47 × 7.27 = 228.7869 → 228.79。
+        assertEquals(228.79, receipt.amount!!, 0.0)
     }
 
     @Test

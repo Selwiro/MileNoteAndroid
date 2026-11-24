@@ -1,6 +1,7 @@
 package com.milenote.android.domain.ocr
 
 import com.milenote.android.domain.calc.Dates
+import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.i18n.tr
 import java.text.Normalizer
 
@@ -56,10 +57,15 @@ object FuelReceiptParser {
     private val TOTAL_LABEL = Regex("^.*?(?:订单金额|订单金額|合计金额|总金额|应付金额|应付金額|合计)[:：]?")
     private val LITERS_LABEL = Regex("^.*?(?:加油量|加油升数|油量|升数|升數|升效|数量)[:：]?")
     private val UNIT_PRICE_LABEL = Regex(
-        // 「元/L」的「元」常被 OCR 读成 T（7.27 T/L），两种都认。
-        "(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|T|τ)?\\s*/\\s*L",
+        // 「元/L」的「元」常被 OCR 读成 T（7.27 T/L），两种都认；
+        // 中文账单多写「元/升」（昆仑 e 享卡等小程序账单），不认就会退化成「金额 ÷ 升数」的派生值。
+        "(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|T|τ)?\\s*[/／]\\s*(?:L|升|公升)",
         RegexOption.IGNORE_CASE,
     )
+
+    /** 「单价 / 油价 / 价格」标签（单位常被写在括号里，如「单价（元/升）8.67」）。 */
+    private val UNIT_PRICE_ANY_LABEL = Regex("单价|油价|價格|价格")
+    private val AFTER_LABEL_NUMBER = Regex("^\\D{0,8}?(\\d[\\d,]*(?:\\.\\d{1,2})?)(?![\\d.])")
     private val PAYABLE_LABEL = Regex("^.*?(?:应付金额|应付金額|订单金额|订单金額|订单全额|合计金额|总金额)[:：]?")
     private val DISCOUNT_LABEL = Regex("^.*?(?:优惠金额|优惠金額|优惠|折扣)[:：]?")
     private val ODOMETER_LABEL = Regex("^.*?(?:总里程|当前里程|表显里程)[:：]?")
@@ -256,17 +262,23 @@ object FuelReceiptParser {
         val date = if (dates.size == 1) dates[0] else ""
         if (dates.size > 1) warnings.add(tr("识别到多个日期，请选择实际支付日期", "Multiple dates detected — choose the actual payment date"))
 
-        val unitPrice = pick(
-            rows.mapNotNull { line ->
-                UNIT_PRICE_LABEL.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
-                    ?.takeIf { it > 0.1 && it < 100.0 }
-            },
-            tr("油价", "Unit price"),
-        ) ?: if (isPumpDisplay) {
-            pumpNumberAfterLabel("单价")?.takeIf { it > 0.1 && it < 100.0 }
-        } else {
-            null
+        val unitPriceFromUnit = rows.mapNotNull { line ->
+            UNIT_PRICE_LABEL.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
+                ?.takeIf { it > 0.1 && it < 100.0 }
         }
+        // 「单价（元/升）8.67」这类带括号单位、或干脆没写单位的排版：本来会漏识别，
+        // 然后退化成「金额 ÷ 升数」的派生值（8.669267446900736 这种长尾）。
+        val unitPriceFromLabel = if (unitPriceFromUnit.isEmpty()) {
+            rows.flatMap { line -> listOfNotNull(priceAfterLabel(line)) }
+        } else {
+            emptyList()
+        }
+        val unitPrice = pick(unitPriceFromUnit + unitPriceFromLabel, tr("油价", "Unit price"))
+            ?: if (isPumpDisplay) {
+                pumpNumberAfterLabel("单价")?.takeIf { it > 0.1 && it < 100.0 }
+            } else {
+                null
+            }
         val payable = pick(values(PAYABLE_LABEL, NUMERIC), tr("应付金额", "Payable amount"))
             ?.takeIf { it > 0.0 && it < 100_000.0 }
             ?: columns.total
@@ -388,6 +400,19 @@ object FuelReceiptParser {
         )
     }
 
+    /**
+     * 「单价 8.67」「油价（元/升）8.67」这类标签 + 数值同行的写法。
+     *
+     * 只认同一行、标签后 8 个字符内的第一个数：不跨行猜，避免把「油价」标题下方的
+     * 里程 / 金额噪声当油价值；取值还要落在合理油价区间（0.1–100 元/L）。
+     */
+    private fun priceAfterLabel(line: String): Double? {
+        val label = UNIT_PRICE_ANY_LABEL.find(line) ?: return null
+        val value = AFTER_LABEL_NUMBER.find(line.substring(label.range.last + 1))
+            ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull() ?: return null
+        return value.takeIf { it > 0.1 && it < 100.0 }
+    }
+
     private fun cleanText(text: String): String =
         Normalizer.normalize(text, Normalizer.Form.NFKC)
             .replace('\u00A0', ' ')
@@ -433,7 +458,7 @@ object FuelReceiptParser {
 
         when {
             amount != null && discount != null -> {
-                val expected = amount + discount
+                val expected = Numbers.round2(amount + discount)
                 if (payable == null || kotlin.math.abs(payable - expected) > 0.01) {
                     if (payable != null) {
                         warn(
@@ -450,14 +475,14 @@ object FuelReceiptParser {
             amount != null && payable != null -> {
                 val diff = payable - amount
                 if (diff >= -0.01) {
-                    discount = diff.coerceAtLeast(0.0)
+                    discount = Numbers.round2(diff.coerceAtLeast(0.0))
                 } else {
                     warn(tr("校验修正：应付金额低于实付，已按实付重算", "Check fix: payable was below paid — recalculated from paid amount"))
-                    payable = amount + (discount ?: 0.0)
+                    payable = Numbers.round2(amount + (discount ?: 0.0))
                 }
             }
             payable != null && discount != null -> {
-                amount = (payable - discount).takeIf { it >= 0.0 }
+                amount = Numbers.round2(payable - discount).takeIf { it >= 0.0 }
             }
             pumpDisplay && amount != null -> {
                 payable = amount
@@ -466,8 +491,10 @@ object FuelReceiptParser {
         }
 
         val liters = receipt.liters
+        // 派生单价按「分」收口：200 ÷ 23.07 = 8.669267446900736，直接写进表单既不是屏幕上
+        // 的 8.67，也会让「升数 × 单价」与应付差出分以下的浮点尾数。
         if (liters != null && unitPrice == null && payable != null) {
-            unitPrice = (payable / liters).takeIf { it in 0.1..100.0 }
+            unitPrice = Numbers.round2(payable / liters).takeIf { it in 0.1..100.0 }
         }
         if (liters != null && unitPrice != null && payable != null) {
             val calculated = liters * unitPrice
@@ -573,7 +600,8 @@ object FuelReceiptParser {
         if (amount !in 1.0..100_000.0 || liters !in 1.0..200.0) return null
         // 金额 ÷ 升数应落在合理油价区间（本币/升，覆盖常见市场 0.5–20）；
         // 噪声凑出来的「35.46 ÷ 1.11 = 31.95」会在这里被拒掉，宁可不填也不静默写错值。
-        val unitPrice = (amount / liters).takeIf { it in 0.5..20.0 } ?: return null
+        // 按分收口：金额 ÷ 升数 的浮点长尾（8.669267446900736）不能直接回填表单。
+        val unitPrice = Numbers.round2(amount / liters).takeIf { it in 0.5..20.0 } ?: return null
         return FuelReceipt(
             amount = amount,
             liters = liters,

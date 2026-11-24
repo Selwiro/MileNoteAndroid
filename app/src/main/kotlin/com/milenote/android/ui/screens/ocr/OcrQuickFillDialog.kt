@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.milenote.android.domain.calc.Numbers
 import com.milenote.android.domain.ocr.FuelReceipt
 import com.milenote.android.domain.ocr.FuelReceiptParser
 import com.milenote.android.i18n.tr
@@ -89,14 +90,15 @@ internal fun buildQuickFillReceipt(
     var unitPrice = parseDecimal(unitPriceText)?.takeIf { it in UNIT_PRICE_RANGE }
     if (amount == null && liters == null && unitPrice == null) return null
 
+    // 派生值一律按「分 / 0.01」收口：不把浮点长尾写进表单（200 ÷ 23.07 = 8.669267446900736）。
     if (amount == null && liters != null && unitPrice != null) {
-        amount = (liters * unitPrice).takeIf { it in AMOUNT_RANGE }
+        amount = Numbers.round2(liters * unitPrice).takeIf { it in AMOUNT_RANGE }
     }
     if (liters == null && amount != null && unitPrice != null && unitPrice > 0.0) {
-        liters = (amount / unitPrice).takeIf { it in LITERS_RANGE }
+        liters = Numbers.round2(amount / unitPrice).takeIf { it in LITERS_RANGE }
     }
     if (unitPrice == null && amount != null && liters != null && liters > 0.0) {
-        unitPrice = (amount / liters).takeIf { it in UNIT_PRICE_RANGE }
+        unitPrice = Numbers.round2(amount / liters).takeIf { it in UNIT_PRICE_RANGE }
     }
 
     val gateway = initial?.payable?.takeIf { it > 0.0 } ?: amount

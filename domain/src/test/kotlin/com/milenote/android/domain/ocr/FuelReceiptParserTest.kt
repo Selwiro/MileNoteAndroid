@@ -212,7 +212,8 @@ class FuelReceiptParserTest {
         val receipt = FuelReceiptParser.parsePumpDisplay(texts)!!
         assertEquals(228.78, receipt.amount!!, 1e-9)
         assertEquals(31.47, receipt.liters!!, 1e-9)
-        assertEquals(228.78 / 31.47, receipt.unitPrice!!, 1e-9)
+        // 机屏兜底的派生单价也按分收口（228.78 ÷ 31.47 = 7.269780743565301 → 7.27）。
+        assertEquals(7.27, receipt.unitPrice!!, 0.0)
     }
 
     @Test
@@ -322,5 +323,46 @@ class FuelReceiptParserTest {
             1e-9,
         )
         assertNull(FuelReceiptParser.parse("公里数 23456\n2026-09-16").odometer)
+    }
+
+    @Test
+    fun `unit price written per litre in chinese is parsed not derived`() {
+        // 昆仑 e 享卡等小程序账单写「8.67元/升」；旧正则只认「元/L」，漏识别后退化成
+        // 200 ÷ 23.07 = 8.669267446900736 的长尾，结果页显示 8.67、表单里却是 8.66…
+        val text = "实付金额\n¥200\n单价              8.67元/升\n升数              23.07升\n" +
+            "订单金额             200元\n支付时间 2026-11-24 14:36:18"
+        val parsed = FuelReceiptParser.parse(text)
+        assertEquals(8.67, parsed.unitPrice!!, 0.0)
+
+        val reconciled = FuelReceiptParser.reconcile(parsed, pumpDisplay = false)
+        assertEquals(8.67, reconciled.unitPrice!!, 0.0)
+        assertEquals(200.0, reconciled.payable!!, 1e-9)
+    }
+
+    @Test
+    fun `unit price label with parenthesised unit is parsed`() {
+        val parsed = FuelReceiptParser.parse("单价（元/升） 8.67\n升数 23.07升\n实付金额 200")
+        assertEquals(8.67, parsed.unitPrice!!, 0.0)
+    }
+
+    @Test
+    fun `pump display derived unit price is rounded to fen`() {
+        // 机屏兜底也要按分收口：200.00 ÷ 23.07 = 8.669267446900736。
+        val parsed = FuelReceiptParser.parsePumpDisplay(
+            listOf("提枪加油\n20000\n23O7", "提枪加油\n20000\n23O7"),
+        )
+        assertEquals(200.0, parsed!!.amount!!, 0.0)
+        assertEquals(23.07, parsed.liters!!, 0.0)
+        assertEquals(8.67, parsed.unitPrice!!, 0.0)
+    }
+
+    @Test
+    fun `derived unit price is rounded to fen`() {
+        // 识别不到单价时的兜底派生也不能把浮点长尾带进表单。
+        val receipt = FuelReceiptParser.reconcile(
+            FuelReceipt(amount = 200.0, payable = 200.0, liters = 23.07),
+            pumpDisplay = false,
+        )
+        assertEquals(8.67, receipt.unitPrice!!, 0.0)
     }
 }

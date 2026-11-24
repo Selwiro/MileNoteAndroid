@@ -181,8 +181,9 @@ class RecordEditorStateTest {
         form.amount = "30"
         form.onFuelFieldChanged("amount")
         assertEquals("30", form.amount)
-        assertEquals("28.8", form.payable)
-        assertEquals("-1.2", form.discount)
+        // 实付为准：45 度 × 0.64 = 28.80 低于实付 30，不再把应付压成 28.8、也不制造「优惠 -1.2」。
+        assertEquals("30", form.payable)
+        assertEquals("0", form.discount)
     }
 
     @Test

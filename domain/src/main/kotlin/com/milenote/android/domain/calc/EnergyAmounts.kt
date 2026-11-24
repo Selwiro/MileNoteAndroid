@@ -1,9 +1,9 @@
 package com.milenote.android.domain.calc
 
 import com.milenote.android.domain.model.Record
-import kotlin.math.round
 
-private fun round2(value: Double): Double = round(value * 100.0) / 100.0
+/** 金额 / 量按「分」收口，统一走 [Numbers.round2]（十进制舍入，不受二进制表示影响）。 */
+private fun round2(value: Double): Double = Numbers.round2(value)
 
 /**
  * 能源费记录金额字段自动补全（燃油「加油量×油价」/ 纯电「充电量×电价」）。
@@ -13,7 +13,8 @@ private fun round2(value: Double): Double = round(value * 100.0) / 100.0
  *
  * 覆盖的典型场景：
  * - 填了实付金额 + 能源量：补单价（实付 / 能源量）、应付金额 = 实付、优惠 = 0；
- * - 填了能源量 + 单价 + 实付金额：补应付金额（量 × 价）、优惠金额（应付 - 实付）；
+ * - 填了能源量 + 单价 + 实付金额：补应付金额（量 × 价）、优惠金额（应付 - 实付）；量 × 价与实付
+ *   只差「量 / 单价各保留两位」的取整误差时以实付为准（应付 = 实付、优惠 = 0，不伪造 0.02 元优惠）；
  * - 填了能源量 + 单价（未填实付）：补应付金额 = 量 × 价，再补实付 = 应付 - 优惠；
  * - 填了实付/应付 + 单价（未填能源量）：补能源量 = 应付（或实付）/ 单价（能算就补）。
  *
@@ -41,9 +42,16 @@ fun fillEnergyAmounts(record: Record, ev: Boolean = false): Record {
     if (amountOf == null && unitPrice == null && payable == null && discount == null) return record
 
     if (amountOf != null && unitPrice != null) {
-        if (payable == null) payable = round2(amountOf * unitPrice)
+        val computed = round2(amountOf * unitPrice)
+        if (payable == null) {
+            // **实付为准**：量 × 价 与实付只差「量 / 单价各保留两位」带来的取整误差时
+            // （23.07 × 8.67 = 200.0169 对实付 200.00），按无优惠处理——既不把应付改成
+            // 200.02，也不伪造出「优惠 0.02」；差得更多才说明确实有优惠，仍按量 × 价补应付。
+            val slack = amountOf * 0.005 + unitPrice * 0.005 + 0.01
+            payable = if (amount != null && computed <= amount + slack) amount else computed
+        }
         when {
-            amount != null && discount == null -> discount = round2(payable!! - amount)
+            amount != null && discount == null -> discount = round2(payable!! - amount).coerceAtLeast(0.0)
             amount == null && discount != null -> amount = round2(payable!! - discount)
             amount == null && discount == null -> {
                 amount = payable

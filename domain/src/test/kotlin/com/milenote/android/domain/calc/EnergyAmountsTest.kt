@@ -20,6 +20,36 @@ class EnergyAmountsTest {
     }
 
     @Test
+    fun `paid amount wins when product only differs by rounding`() {
+        // 小票：实付 200、23.07 L、8.67 元/L → 量 × 价 = 200.0169，不能变成「应付 200.02 + 优惠 0.02」。
+        val filled = fillEnergyAmounts(
+            Record(category = "油费", amount = 200.0, liters = 23.07, unitPrice = 8.67),
+        )
+        assertEquals(200.0, filled.payable!!, 0.0)
+        assertEquals(0.0, filled.discount!!, 0.0)
+        assertEquals(8.67, filled.unitPrice!!, 0.0)
+        assertEquals(23.07, filled.liters!!, 0.0)
+    }
+
+    @Test
+    fun `product below paid amount keeps paid amount and no negative discount`() {
+        val filled = fillEnergyAmounts(
+            Record(category = "油费", amount = 200.0, liters = 23.0, unitPrice = 8.5),
+        )
+        assertEquals(200.0, filled.payable!!, 0.0)
+        assertEquals(0.0, filled.discount!!, 0.0)
+    }
+
+    @Test
+    fun `real discount beyond rounding still surfaces`() {
+        val filled = fillEnergyAmounts(
+            Record(category = "油费", amount = 198.0, liters = 23.07, unitPrice = 8.67),
+        )
+        assertEquals(200.02, filled.payable!!, 0.0)
+        assertEquals(2.02, filled.discount!!, 0.0)
+    }
+
+    @Test
     fun `liters price and amount fill payable and discount`() {
         val filled = fillEnergyAmounts(
             Record(category = "油费", amount = 290.0, liters = 40.0, unitPrice = 7.5),

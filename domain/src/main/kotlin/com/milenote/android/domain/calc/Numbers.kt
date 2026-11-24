@@ -92,6 +92,17 @@ object Numbers {
     fun toFixed2(value: Double): String =
         BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toPlainString()
 
+    /**
+     * 金额 / 单价按「分」四舍五入（0.01 元）。
+     *
+     * 派生出来的数字（应付 ÷ 升数、升数 × 单价）不能把浮点长尾带进表单与账本：
+     * `200 / 23.07 = 8.669267446900736` 落到油价输入框里既不是屏幕上的 8.67，也不是
+     * 真实报价；这里统一按分收口。走十进制字符串再舍入，避免 `value * 100` 的二进制误差。
+     */
+    fun round2(value: Double): Double =
+        if (!value.isFinite()) value
+        else BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toDouble()
+
     /** 将单元格转成 JS `String(cell)` 的结果：null→""，布尔→"true"/"false"。 */
     fun cellString(value: Any?): String = when (value) {
         null -> ""
