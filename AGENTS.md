@@ -38,7 +38,7 @@
 （`ANDROID_HOME` 或 `local.properties`）。任何人 clone 后 `./gradlew assembleDebug` 即可出 APK。
 
 ```bash
-./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（378 + 297），必须全绿
+./gradlew :domain:test :app:testDebugUnitTest  # 领域 + app 单测（550 + 454），必须全绿
 ./gradlew :app:assembleDebug                   # 编译检查，产物在 app/build/outputs/apk/debug/
 ./build.sh debug                               # 编译 + 归档到 dist/
 ./build.sh release                             # R8 +（有密钥时）签名，归档到 dist/ 并生成 .sha256
@@ -58,7 +58,7 @@ wrapper 发行包下载慢时改 `gradle/wrapper/gradle-wrapper.properties` 的 
 
 ## 验收（每次 UI 改动）
 
-1. `./dev-gradle.sh :domain:test :app:testDebugUnitTest` 全绿（2026-11-15 基线 domain 468 + app 394）；
+1. `./dev-gradle.sh :domain:test :app:testDebugUnitTest` 全绿（2026-11-24 基线 domain 550 + app 454）；
 2. `./dev-gradle.sh :app:assembleDebug` 通过；
 3. **只要动了界面，就按「1.0× / 1.3× / 2.0× 字号 × 中 / 英」至少各看一眼**（模拟器
    `adb shell settings put system font_scale 1.0|1.3|2.0` + 我的 → 外观 → 语言），
